@@ -2,4 +2,13 @@
 
 This is the Lattice Mico32 backend.
 
+git remotes:
+mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (fetch)
+mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (push)
+origin	http://llvm.org/git/llvm.git (fetch)
+origin	http://llvm.org/git/llvm.git (push)
+
+To update while in mico32 branch:
+# git pull origin master
+# git push mico32 mico32
 
