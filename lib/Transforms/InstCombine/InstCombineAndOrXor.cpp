@@ -274,10 +274,11 @@ Instruction *InstCombiner::OptAndOp(Instruction *Op,
     ConstantInt *CI = ConstantInt::get(AndRHS->getContext(),
                                        AndRHS->getValue() & ShlMask);
 
-    if (CI->getValue() == ShlMask) { 
-    // Masking out bits that the shift already masks
+    if (CI->getValue() == ShlMask)
+      // Masking out bits that the shift already masks.
       return ReplaceInstUsesWith(TheAnd, Op);   // No need for the and.
-    } else if (CI != AndRHS) {                  // Reducing bits set in and.
+    
+    if (CI != AndRHS) {                  // Reducing bits set in and.
       TheAnd.setOperand(1, CI);
       return &TheAnd;
     }
@@ -294,10 +295,11 @@ Instruction *InstCombiner::OptAndOp(Instruction *Op,
     ConstantInt *CI = ConstantInt::get(Op->getContext(),
                                        AndRHS->getValue() & ShrMask);
 
-    if (CI->getValue() == ShrMask) {   
-    // Masking out bits that the shift already masks.
+    if (CI->getValue() == ShrMask)
+      // Masking out bits that the shift already masks.
       return ReplaceInstUsesWith(TheAnd, Op);
-    } else if (CI != AndRHS) {
+    
+    if (CI != AndRHS) {
       TheAnd.setOperand(1, CI);  // Reduce bits set in and cst.
       return &TheAnd;
     }
@@ -1065,7 +1067,7 @@ Instruction *InstCombiner::visitAnd(BinaryOperator &I) {
         }
         break;
       }
-
+          
       if (ConstantInt *Op0CI = dyn_cast<ConstantInt>(Op0I->getOperand(1)))
         if (Instruction *Res = OptAndOp(Op0I, Op0CI, AndRHS, I))
           return Res;
@@ -1138,7 +1140,11 @@ Instruction *InstCombiner::visitAnd(BinaryOperator &I) {
         cast<BinaryOperator>(Op1)->swapOperands();
         std::swap(A, B);
       }
-      if (A == Op0)                                // A&(A^B) -> A & ~B
+      // Notice that the patten (A&(~B)) is actually (A&(-1^B)), so if
+      // A is originally -1 (or a vector of -1 and undefs), then we enter
+      // an endless loop. By checking that A is non-constant we ensure that
+      // we will never get to the loop.
+      if (A == Op0 && !isa<Constant>(A)) // A&(A^B) -> A & ~B
         return BinaryOperator::CreateAnd(A, Builder->CreateNot(B, "tmp"));
     }
 
