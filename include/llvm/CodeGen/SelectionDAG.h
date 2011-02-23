@@ -100,10 +100,6 @@ public:
     return DbgValMap[Node];
   }
 
-  void removeSDDbgValues(const SDNode *Node) {
-    DbgValMap.erase(Node);
-  }
-
   typedef SmallVector<SDDbgValue*,32>::iterator DbgIterator;
   DbgIterator DbgBegin() { return DbgValues.begin(); }
   DbgIterator DbgEnd()   { return DbgValues.end(); }
@@ -634,7 +630,7 @@ public:
                   MachinePointerInfo PtrInfo, bool isVolatile,
                   bool isNonTemporal, unsigned Alignment,
                   const MDNode *TBAAInfo = 0);
-  SDValue getExtLoad(ISD::LoadExtType ExtType, EVT VT, DebugLoc dl,
+  SDValue getExtLoad(ISD::LoadExtType ExtType, DebugLoc dl, EVT VT,
                      SDValue Chain, SDValue Ptr, MachinePointerInfo PtrInfo,
                      EVT MemVT, bool isVolatile,
                      bool isNonTemporal, unsigned Alignment,

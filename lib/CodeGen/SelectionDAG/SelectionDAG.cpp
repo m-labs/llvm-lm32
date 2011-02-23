@@ -3462,7 +3462,7 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, DebugLoc dl,
       // FIXME does the case above also need this?
       EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), VT);
       assert(NVT.bitsGE(VT));
-      Value = DAG.getExtLoad(ISD::EXTLOAD, NVT, dl, Chain,
+      Value = DAG.getExtLoad(ISD::EXTLOAD, dl, NVT, Chain,
                              getMemBasePlusOffset(Src, SrcOff, DAG),
                              SrcPtrInfo.getWithOffset(SrcOff), VT, isVol, false,
                              MinAlign(SrcAlign, SrcOff));
@@ -4113,7 +4113,7 @@ SDValue SelectionDAG::getLoad(EVT VT, DebugLoc dl,
                  PtrInfo, VT, isVolatile, isNonTemporal, Alignment, TBAAInfo);
 }
 
-SDValue SelectionDAG::getExtLoad(ISD::LoadExtType ExtType, EVT VT, DebugLoc dl,
+SDValue SelectionDAG::getExtLoad(ISD::LoadExtType ExtType, DebugLoc dl, EVT VT,
                                  SDValue Chain, SDValue Ptr,
                                  MachinePointerInfo PtrInfo, EVT MemVT,
                                  bool isVolatile, bool isNonTemporal,
@@ -5507,15 +5507,21 @@ void SelectionDAG::TransferDbgValues(SDValue From, SDValue To) {
     return;
   SDNode *FromNode = From.getNode();
   SDNode *ToNode = To.getNode();
-  SmallVector<SDDbgValue*,2> &DVs = GetDbgValues(FromNode);
-  DbgInfo->removeSDDbgValues(FromNode);
+  SmallVector<SDDbgValue *, 2> &DVs = GetDbgValues(FromNode);
+  SmallVector<SDDbgValue *, 2> ClonedDVs;
   for (SmallVector<SDDbgValue *, 2>::iterator I = DVs.begin(), E = DVs.end();
        I != E; ++I) {
-    if ((*I)->getKind() == SDDbgValue::SDNODE) {
-      AddDbgValue(*I, ToNode, false);
-      (*I)->setSDNode(ToNode, To.getResNo());
+    SDDbgValue *Dbg = *I;
+    if (Dbg->getKind() == SDDbgValue::SDNODE) {
+      SDDbgValue *Clone = getDbgValue(Dbg->getMDPtr(), ToNode, To.getResNo(),
+                                      Dbg->getOffset(), Dbg->getDebugLoc(),
+                                      Dbg->getOrder());
+      ClonedDVs.push_back(Clone);
     }
   }
+  for (SmallVector<SDDbgValue *, 2>::iterator I = ClonedDVs.begin(),
+         E = ClonedDVs.end(); I != E; ++I)
+    AddDbgValue(*I, ToNode, false);
 }
 
 //===----------------------------------------------------------------------===//

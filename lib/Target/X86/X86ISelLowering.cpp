@@ -16,9 +16,9 @@
 #include "X86.h"
 #include "X86InstrBuilder.h"
 #include "X86ISelLowering.h"
-#include "X86ShuffleDecode.h"
 #include "X86TargetMachine.h"
 #include "X86TargetObjectFile.h"
+#include "Utils/X86ShuffleDecode.h"
 #include "llvm/CallingConv.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
@@ -1713,7 +1713,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
       else
         llvm_unreachable("Unknown argument type!");
 
-      unsigned Reg = MF.addLiveIn(VA.getLocReg(), RC, dl);
+      unsigned Reg = MF.addLiveIn(VA.getLocReg(), RC);
       ArgValue = DAG.getCopyFromReg(Chain, dl, Reg, RegVT);
 
       // If this is an 8 or 16-bit value, it is really passed promoted to 32
@@ -1845,7 +1845,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
         SDValue FIN = DAG.getNode(ISD::ADD, dl, getPointerTy(), RSFIN,
                                   DAG.getIntPtrConstant(Offset));
         unsigned VReg = MF.addLiveIn(GPR64ArgRegs[NumIntRegs],
-                                     X86::GR64RegisterClass, dl);
+                                     X86::GR64RegisterClass);
         SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
         SDValue Store =
           DAG.getStore(Val.getValue(1), dl, Val, FIN,
@@ -1861,7 +1861,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
         SmallVector<SDValue, 11> SaveXMMOps;
         SaveXMMOps.push_back(Chain);
 
-        unsigned AL = MF.addLiveIn(X86::AL, X86::GR8RegisterClass, dl);
+        unsigned AL = MF.addLiveIn(X86::AL, X86::GR8RegisterClass);
         SDValue ALVal = DAG.getCopyFromReg(DAG.getEntryNode(), dl, AL, MVT::i8);
         SaveXMMOps.push_back(ALVal);
 
@@ -1872,7 +1872,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
 
         for (; NumXMMRegs != TotalNumXMMRegs; ++NumXMMRegs) {
           unsigned VReg = MF.addLiveIn(XMMArgRegs64Bit[NumXMMRegs],
-                                       X86::VR128RegisterClass, dl);
+                                       X86::VR128RegisterClass);
           SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::v4f32);
           SaveXMMOps.push_back(Val);
         }
@@ -2693,6 +2693,10 @@ static bool isTargetShuffle(unsigned Opcode) {
   case X86ISD::MOVSD:
   case X86ISD::UNPCKLPS:
   case X86ISD::UNPCKLPD:
+  case X86ISD::VUNPCKLPS:
+  case X86ISD::VUNPCKLPD:
+  case X86ISD::VUNPCKLPSY:
+  case X86ISD::VUNPCKLPDY:
   case X86ISD::PUNPCKLWD:
   case X86ISD::PUNPCKLBW:
   case X86ISD::PUNPCKLDQ:
@@ -2760,6 +2764,10 @@ static SDValue getTargetShuffleNode(unsigned Opc, DebugLoc dl, EVT VT,
   case X86ISD::MOVSD:
   case X86ISD::UNPCKLPS:
   case X86ISD::UNPCKLPD:
+  case X86ISD::VUNPCKLPS:
+  case X86ISD::VUNPCKLPD:
+  case X86ISD::VUNPCKLPSY:
+  case X86ISD::VUNPCKLPDY:
   case X86ISD::PUNPCKLWD:
   case X86ISD::PUNPCKLBW:
   case X86ISD::PUNPCKLDQ:
@@ -5472,6 +5480,10 @@ SDValue getMOVLP(SDValue &Op, DebugLoc &dl, SelectionDAG &DAG, bool HasSSE2) {
   if (MayFoldVectorLoad(V1) && MayFoldIntoStore(Op))
     CanFoldLoad = true;
 
+  // Both of them can't be memory operations though.
+  if (MayFoldVectorLoad(V1) && MayFoldVectorLoad(V2))
+    CanFoldLoad = false;
+  
   if (CanFoldLoad) {
     if (HasSSE2 && NumElems == 2)
       return getTargetShuffleNode(X86ISD::MOVLPD, dl, VT, V1, V2, DAG);
@@ -5509,7 +5521,7 @@ static inline unsigned getUNPCKLOpcode(EVT VT) {
   case MVT::v16i8: return X86ISD::PUNPCKLBW;
   case MVT::v8i16: return X86ISD::PUNPCKLWD;
   default:
-    llvm_unreachable("Unknow type for unpckl");
+    llvm_unreachable("Unknown type for unpckl");
   }
   return 0;
 }
@@ -5523,7 +5535,7 @@ static inline unsigned getUNPCKHOpcode(EVT VT) {
   case MVT::v16i8: return X86ISD::PUNPCKHBW;
   case MVT::v8i16: return X86ISD::PUNPCKHWD;
   default:
-    llvm_unreachable("Unknow type for unpckh");
+    llvm_unreachable("Unknown type for unpckh");
   }
   return 0;
 }
@@ -6889,7 +6901,7 @@ SDValue X86TargetLowering::LowerUINT_TO_FP(SDValue Op,
 
   // Load the value out, extending it from f32 to f80.
   // FIXME: Avoid the extend by constructing the right constant pool?
-  SDValue Fudge = DAG.getExtLoad(ISD::EXTLOAD, MVT::f80, dl, DAG.getEntryNode(),
+  SDValue Fudge = DAG.getExtLoad(ISD::EXTLOAD, dl, MVT::f80, DAG.getEntryNode(),
                                  FudgePtr, MachinePointerInfo::getConstantPool(),
                                  MVT::f32, false, false, 4);
   // Extend everything to 80 bits to force it to be done on x87.
@@ -9323,6 +9335,10 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::MOVSS:              return "X86ISD::MOVSS";
   case X86ISD::UNPCKLPS:           return "X86ISD::UNPCKLPS";
   case X86ISD::UNPCKLPD:           return "X86ISD::UNPCKLPD";
+  case X86ISD::VUNPCKLPS:          return "X86ISD::VUNPCKLPS";
+  case X86ISD::VUNPCKLPD:          return "X86ISD::VUNPCKLPD";
+  case X86ISD::VUNPCKLPSY:         return "X86ISD::VUNPCKLPSY";
+  case X86ISD::VUNPCKLPDY:         return "X86ISD::VUNPCKLPDY";
   case X86ISD::UNPCKHPS:           return "X86ISD::UNPCKHPS";
   case X86ISD::UNPCKHPD:           return "X86ISD::UNPCKHPD";
   case X86ISD::PUNPCKLBW:          return "X86ISD::PUNPCKLBW";
@@ -11980,6 +11996,10 @@ SDValue X86TargetLowering::PerformDAGCombine(SDNode *N,
   case X86ISD::PUNPCKLQDQ:
   case X86ISD::UNPCKLPS:
   case X86ISD::UNPCKLPD:
+  case X86ISD::VUNPCKLPS:
+  case X86ISD::VUNPCKLPD:
+  case X86ISD::VUNPCKLPSY:
+  case X86ISD::VUNPCKLPDY:
   case X86ISD::MOVHLPS:
   case X86ISD::MOVLHPS:
   case X86ISD::PSHUFD:

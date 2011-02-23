@@ -70,6 +70,8 @@ if( NOT NM_PATH )
   message(FATAL_ERROR "`nm' not found")
 endif()
 
+get_property(llvm_libs GLOBAL PROPERTY LLVM_LIBS)
+
 add_custom_command(OUTPUT ${LIBDEPS_TMP}
   COMMAND ${PERL_EXECUTABLE} ${LLVM_MAIN_SRC_DIR}/utils/GenLibDeps.pl -flat ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR} ${NM_PATH} > ${LIBDEPS_TMP}
   DEPENDS ${llvm_libs}
@@ -122,7 +124,7 @@ add_custom_command(OUTPUT ${LLVM_CONFIG}
 add_custom_target(llvm-config.target ALL
   DEPENDS ${LLVM_CONFIG})
 
-add_dependencies(llvm-config.target ${llvm_lib_targets})
+add_dependencies( llvm-config.target ${llvm_libs} )
 
 # Make sure that llvm-config builds before the llvm tools, so we have
 # LibDeps.txt and can use it for updating the hard-coded library

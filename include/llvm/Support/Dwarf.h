@@ -45,11 +45,9 @@ enum llvm_dwarf_constants {
   // llvm mock tags
   DW_TAG_invalid = ~0U,                 // Tag for invalid results.
 
-  DW_TAG_anchor = 0,                    // Tag for descriptor anchors.
   DW_TAG_auto_variable = 0x100,         // Tag for local (auto) variables.
   DW_TAG_arg_variable = 0x101,          // Tag for argument variables.
   DW_TAG_return_variable = 0x102,       // Tag for return variables.
-
   DW_TAG_vector_type = 0x103,           // Tag for vector types.
 
   DW_TAG_user_base = 0x1000,            // Recommended base for user tags.

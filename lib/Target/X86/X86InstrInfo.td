@@ -1293,6 +1293,12 @@ def : MnemonicAlias<"cdqe", "cltq">;
 // lret maps to lretl, it is not ambiguous with lretq.
 def : MnemonicAlias<"lret", "lretl">;
 
+def : MnemonicAlias<"leavel", "leave">, Requires<[In32BitMode]>;
+def : MnemonicAlias<"leaveq", "leave">, Requires<[In64BitMode]>;
+
+def : MnemonicAlias<"loopz", "loope">;
+def : MnemonicAlias<"loopnz", "loopne">;
+
 def : MnemonicAlias<"pop", "popl">, Requires<[In32BitMode]>;
 def : MnemonicAlias<"pop", "popq">, Requires<[In64BitMode]>;
 def : MnemonicAlias<"popf", "popfl">, Requires<[In32BitMode]>;
@@ -1399,6 +1405,9 @@ defm : IntegerCondCodeMnemonicAlias<"cmov", "q">;
 // aad/aam default to base 10 if no operand is specified.
 def : InstAlias<"aad", (AAD8i8 10)>;
 def : InstAlias<"aam", (AAM8i8 10)>;
+
+// Disambiguate the mem/imm form of bt-without-a-suffix as btl.
+def : InstAlias<"bt $imm, $mem", (BT32mi8 i32mem:$mem, i32i8imm:$imm)>;
 
 // clr aliases.
 def : InstAlias<"clrb $reg", (XOR8rr  GR8 :$reg, GR8 :$reg)>;

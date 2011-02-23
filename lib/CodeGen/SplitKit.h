@@ -43,6 +43,7 @@ typedef DomTreeNodeBase<MachineBasicBlock> MachineDomTreeNode;
 class SplitAnalysis {
 public:
   const MachineFunction &MF;
+  const VirtRegMap &VRM;
   const LiveIntervals &LIS;
   const MachineLoopInfo &Loops;
   const TargetInstrInfo &TII;
@@ -105,7 +106,7 @@ private:
   bool canAnalyzeBranch(const MachineBasicBlock *MBB);
 
 public:
-  SplitAnalysis(const MachineFunction &mf, const LiveIntervals &lis,
+  SplitAnalysis(const VirtRegMap &vrm, const LiveIntervals &lis,
                 const MachineLoopInfo &mli);
 
   /// analyze - set CurLI to the specified interval, and analyze how it may be
@@ -116,10 +117,20 @@ public:
   /// new interval.
   void clear();
 
+  /// getParent - Return the last analyzed interval.
+  const LiveInterval &getParent() const { return *CurLI; }
+
   /// hasUses - Return true if MBB has any uses of CurLI.
   bool hasUses(const MachineBasicBlock *MBB) const {
     return UsingBlocks.lookup(MBB);
   }
+
+  /// isOriginalEndpoint - Return true if the original live range was killed or
+  /// (re-)defined at Idx. Idx should be the 'def' slot for a normal kill/def,
+  /// and 'use' for an early-clobber def.
+  /// This can be used to recognize code inserted by earlier live range
+  /// splitting.
+  bool isOriginalEndpoint(SlotIndex Idx) const;
 
   typedef SmallPtrSet<const MachineBasicBlock*, 16> BlockPtrSet;
 
@@ -257,7 +268,7 @@ public:
 /// - Rewrite instructions with finish().
 ///
 class SplitEditor {
-  SplitAnalysis &sa_;
+  SplitAnalysis &SA;
   LiveIntervals &LIS;
   VirtRegMap &VRM;
   MachineRegisterInfo &MRI;
@@ -312,7 +323,7 @@ public:
               MachineDominatorTree&, LiveRangeEdit&);
 
   /// getAnalysis - Get the corresponding analysis.
-  SplitAnalysis &getAnalysis() { return sa_; }
+  SplitAnalysis &getAnalysis() { return SA; }
 
   /// Create a new virtual register and live interval.
   void openIntv();

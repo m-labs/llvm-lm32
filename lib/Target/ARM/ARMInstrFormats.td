@@ -127,13 +127,14 @@ def IndexModePost : IndexMode<2>;
 def IndexModeUpd  : IndexMode<3>;
 
 // Instruction execution domain.
-class Domain<bits<2> val> {
-  bits<2> Value = val;
+class Domain<bits<3> val> {
+  bits<3> Value = val;
 }
 def GenericDomain : Domain<0>;
 def VFPDomain     : Domain<1>; // Instructions in VFP domain only
 def NeonDomain    : Domain<2>; // Instructions in Neon domain only
 def VFPNeonDomain : Domain<3>; // Instructions in both VFP & Neon domains
+def VFPNeonA8Domain : Domain<5>; // Instructions in VFP & Neon under A8
 
 //===----------------------------------------------------------------------===//
 // ARM special operands.
@@ -159,6 +160,12 @@ def ProcIFlagsOperand : AsmOperandClass {
   let Name = "ProcIFlags";
   let SuperClasses = [];
   let ParserMethod = "tryParseProcIFlagsOperand";
+}
+
+def MSRMaskOperand : AsmOperandClass {
+  let Name = "MSRMask";
+  let SuperClasses = [];
+  let ParserMethod = "tryParseMSRMaskOperand";
 }
 
 // ARM imod and iflag operands, used only by the CPS instruction.
@@ -205,6 +212,7 @@ def cps_opt : Operand<i32> {
 
 def msr_mask : Operand<i32> {
   let PrintMethod = "printMSRMaskOperand";
+  let ParserMatchClass = MSRMaskOperand;
 }
 
 // A8.6.117, A8.6.118.  Different instructions are generated for #0 and #-0.
@@ -242,7 +250,7 @@ class InstTemplate<AddrMode am, SizeFlagVal sz, IndexMode im,
   let TSFlags{15-10} = Form;
   let TSFlags{16}    = isUnaryDataProc;
   let TSFlags{17}    = canXformTo16Bit;
-  let TSFlags{19-18} = D.Value;
+  let TSFlags{20-18} = D.Value;
 
   let Constraints = cstr;
   let Itinerary = itin;
@@ -1200,7 +1208,7 @@ class ADI5<bits<4> opcod1, bits<2> opcod2, dag oops, dag iops,
   let Inst{11-9}  = 0b101;
   let Inst{8}     = 1;          // Double precision
 
-  // 64-bit loads & stores operate on both NEON and VFP pipelines.
+  // Loads & stores operate on both NEON and VFP pipelines.
   let D = VFPNeonDomain;
 }
 
@@ -1225,6 +1233,9 @@ class ASI5<bits<4> opcod1, bits<2> opcod2, dag oops, dag iops,
   let Inst{21-20} = opcod2;
   let Inst{11-9}  = 0b101;
   let Inst{8}     = 0;          // Single precision
+
+  // Loads & stores operate on both NEON and VFP pipelines.
+  let D = VFPNeonDomain;
 }
 
 // VFP Load / store multiple pseudo instructions.
@@ -1257,9 +1268,6 @@ class AXDI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,
   let Inst{27-25} = 0b110;
   let Inst{11-9}  = 0b101;
   let Inst{8}     = 1;          // Double precision
-
-  // 64-bit loads & stores operate on both NEON and VFP pipelines.
-  let D = VFPNeonDomain;
 }
 
 class AXSI4<dag oops, dag iops, IndexMode im, InstrItinClass itin,

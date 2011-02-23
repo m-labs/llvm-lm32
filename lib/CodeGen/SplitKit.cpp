@@ -37,13 +37,14 @@ AllowSplit("spiller-splits-edges",
 //                                 Split Analysis
 //===----------------------------------------------------------------------===//
 
-SplitAnalysis::SplitAnalysis(const MachineFunction &mf,
+SplitAnalysis::SplitAnalysis(const VirtRegMap &vrm,
                              const LiveIntervals &lis,
                              const MachineLoopInfo &mli)
-  : MF(mf),
+  : MF(vrm.getMachineFunction()),
+    VRM(vrm),
     LIS(lis),
     Loops(mli),
-    TII(*mf.getTarget().getInstrInfo()),
+    TII(*MF.getTarget().getInstrInfo()),
     CurLI(0) {}
 
 void SplitAnalysis::clear() {
@@ -164,6 +165,20 @@ void SplitAnalysis::calcLiveBlockInfo() {
     else
       MFI = LIS.getMBBFromIndex(LVI->start);
   }
+}
+
+bool SplitAnalysis::isOriginalEndpoint(SlotIndex Idx) const {
+  unsigned OrigReg = VRM.getOriginal(CurLI->reg);
+  const LiveInterval &Orig = LIS.getInterval(OrigReg);
+  assert(!Orig.empty() && "Splitting empty interval?");
+  LiveInterval::const_iterator I = Orig.find(Idx);
+
+  // Range containing Idx should begin at Idx.
+  if (I != Orig.end() && I->start <= Idx)
+    return I->start == Idx;
+
+  // Range does not contain Idx, previous must end at Idx.
+  return I != Orig.begin() && (--I)->end == Idx;
 }
 
 void SplitAnalysis::print(const BlockPtrSet &B, raw_ostream &OS) const {
@@ -549,7 +564,7 @@ SplitEditor::SplitEditor(SplitAnalysis &sa,
                          VirtRegMap &vrm,
                          MachineDominatorTree &mdt,
                          LiveRangeEdit &edit)
-  : sa_(sa), LIS(lis), VRM(vrm),
+  : SA(sa), LIS(lis), VRM(vrm),
     MRI(vrm.getMachineFunction().getRegInfo()),
     MDT(mdt),
     TII(*vrm.getMachineFunction().getTarget().getInstrInfo()),
@@ -898,7 +913,7 @@ void SplitEditor::finish() {
   }
 
   // Calculate spill weight and allocation hints for new intervals.
-  VirtRegAuxInfo vrai(VRM.getMachineFunction(), LIS, sa_.Loops);
+  VirtRegAuxInfo vrai(VRM.getMachineFunction(), LIS, SA.Loops);
   for (LiveRangeEdit::iterator I = Edit.begin(), E = Edit.end(); I != E; ++I){
     LiveInterval &li = **I;
     vrai.CalculateRegClass(li.reg);
@@ -939,8 +954,8 @@ bool SplitAnalysis::getMultiUseBlocks(BlockPtrSet &Blocks) {
 void SplitEditor::splitSingleBlocks(const SplitAnalysis::BlockPtrSet &Blocks) {
   DEBUG(dbgs() << "  splitSingleBlocks for " << Blocks.size() << " blocks.\n");
 
-  for (unsigned i = 0, e = sa_.LiveBlocks.size(); i != e; ++i) {
-    const SplitAnalysis::BlockInfo &BI = sa_.LiveBlocks[i];
+  for (unsigned i = 0, e = SA.LiveBlocks.size(); i != e; ++i) {
+    const SplitAnalysis::BlockInfo &BI = SA.LiveBlocks[i];
     if (!BI.Uses || !Blocks.count(BI.MBB))
       continue;
 
@@ -982,9 +997,9 @@ const MachineBasicBlock *SplitAnalysis::getBlockForInsideSplit() {
 /// splitInsideBlock - Split CurLI into multiple intervals inside MBB.
 void SplitEditor::splitInsideBlock(const MachineBasicBlock *MBB) {
   SmallVector<SlotIndex, 32> Uses;
-  Uses.reserve(sa_.UsingInstrs.size());
-  for (SplitAnalysis::InstrPtrSet::const_iterator I = sa_.UsingInstrs.begin(),
-       E = sa_.UsingInstrs.end(); I != E; ++I)
+  Uses.reserve(SA.UsingInstrs.size());
+  for (SplitAnalysis::InstrPtrSet::const_iterator I = SA.UsingInstrs.begin(),
+       E = SA.UsingInstrs.end(); I != E; ++I)
     if ((*I)->getParent() == MBB)
       Uses.push_back(LIS.getInstructionIndex(*I));
   DEBUG(dbgs() << "  splitInsideBlock BB#" << MBB->getNumber() << " for "
