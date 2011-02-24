@@ -12,3 +12,5 @@ To update while in mico32 branch:
 # git pull origin master
 # git push mico32 mico32
 
+
+Currently the port only supports the standard Mico32.  For LM32 Baker variant look at ARM Thumb modes for examples of how to implement.  Specifically search for IsThumb1Only and see how ARM handles the instructions.

@@ -20,23 +20,25 @@ class Format<bits<6> val> {
 //
 //       |31|30       26|25     21|20      16|15      11|10       5|4        0|
 // RI    |0 | Op        | Reg A   | Reg D    | Immediate                      |
-// RI5   |0 | Op        | Reg A   | Reg D    | 0                   |Immediate |
+// RIS   |0 | Op        | Reg A   | Reg D    | 0                   |Immediate |
 // RR    |1 | Op        | Reg A   | Reg B    | Reg D    | 0                   |
-// RRac  |1 | Op        | Reg A   | 0        | Reg D    | 0                   |
-// RRab  |1 | Op        | CSR     | Reg      | 0                              |
-// RRa   |1 | Op        | Reg A   | 0                                         |
-// I26   |1 |1|1|00/11|0| Immediate                                           |
-// I5    |1 |01011      | 0                                        |subopcode |
+// SX    |1 | Op        | Reg A   | 0        | Reg D    | 0                   |
+// RCSR  |1 | Op        | CSR     | 0        | Reg D    | 0                   |
+// CR    |1 | Op        | CSR     | Reg      | 0                              |
+// BR    |1 | Op        | Reg A   | 0                                         |
+// I     |1 |1|1|00/11|0| Immediate                                           |
+// SC    |1 |01011      | 0                                        |subopcode |
 //
 def FPseudo : Format<0>;
 def FRI     : Format<1>;  // ADD, OR, etc.
-def FRI5    : Format<2>;  // SRI, SLI, SRUI
+def FRIS    : Format<2>;  // SRI, SLI, SRUI
 def FRR     : Format<3>;  // ADDI, ORI, etc.
-def FRRac   : Format<4>;  // RCSR, SEXTB, SEXTH
-def FRRab   : Format<5>;  // WCSR
-def FRRa    : Format<6>;  // B, BRET, CALL, ERET (uses register as subopcode)
-def FI5     : Format<7>;  // SCALL, BREAK
-def FI26    : Format<8>;  // BI, CALLI
+def FSX     : Format<4>;  // SEXTB, SEXTH
+def FRCSR   : Format<5>;  // RCSR
+def FCR     : Format<6>;  // WCSR
+def FBR     : Format<7>;  // B, BRET, CALL, ERET (uses register as subopcode)
+def FSC     : Format<8>;  // SCALL, BREAK
+def FI      : Format<9>;  // BI, CALLI
 
 //===----------------------------------------------------------------------===//
 //  Describe Mico32 instructions format
@@ -47,9 +49,9 @@ def FI26    : Format<8>;  // BI, CALLI
 //  rd      - dst reg.
 //  ra      - first src. reg.
 //  rb      - second src. reg.
-//  imm5    - 5-bit immediate value. (RI5 format)
+//  imm5    - 5-bit immediate value. (RIS format)
 //  imm16   - 16-bit immediate value.
-//  imm26   - 26-bit immediate value (FI26 format instructions).
+//  imm26   - 26-bit immediate value (FI format instructions).
 //
 //===----------------------------------------------------------------------===//
 
@@ -125,10 +127,10 @@ class TRI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type RI5 instruction class in Mico32 : <|opcode|ra|rd|0|imm5|>
+// Type RIS instruction class in Mico32 : <|opcode|ra|rd|0|imm5|>
 //===----------------------------------------------------------------------===//
 
-class TRI5<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+class TRIS<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
            InstrItinClass itin> :
            Mico32Inst<op, FRRI, outs, ins, asmstr, pattern, itin>
 {
@@ -144,9 +146,9 @@ class TRI5<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 
 
 //===----------------------------------------------------------------------===//
-// Type RRac instruction class in Mico32 : <|opcode|ra|0|rd|0|>
+// Type SX instruction class in Mico32 : <|opcode|ra|0|rd|0|>
 //===----------------------------------------------------------------------===//
-class TRRac<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+class TSX<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
             InstrItinClass itin> :
             Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
   bits<5> rd;
@@ -159,11 +161,11 @@ class TRRac<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type RRab instruction class in Mico32 : <|opcode|cr|ra|0|>
+// Type CR instruction class in Mico32 : <|opcode|cr|ra|0|>
 //===----------------------------------------------------------------------===//
-class TRRab<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-            InstrItinClass itin> :
-            Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+class TCR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+          InstrItinClass itin> :
+          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
   bits<5> cr;
   bits<5> ra;
 
@@ -173,11 +175,11 @@ class TRRab<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type RRa instruction class in Mico32 : <|opcode|ra|0|>
+// Type BR instruction class in Mico32 : <|opcode|ra|0|>
 //===----------------------------------------------------------------------===//
-class TRRa<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-           InstrItinClass itin> :
-           Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+class TBR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+          InstrItinClass itin> :
+          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
   bits<5> ra;
 
   let Inst{21-25} = ra;
@@ -185,20 +187,20 @@ class TRRa<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type I26 instruction class in Mico32 : <|opcode|imm26|>
+// Type I instruction class in Mico32 : <|opcode|imm26|>
 //===----------------------------------------------------------------------===//
-class TI26<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-           InstrItinClass itin> :
-           Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+class TI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+         InstrItinClass itin> :
+         Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
   bits<26> imm26;
 
   let Inst{0-25} = imm26;
 }
 
 //===----------------------------------------------------------------------===//
-// Type I5 instruction class in Mico32 : <|opcode|0|imm5|>
+// Type SC instruction class in Mico32 : <|opcode|0|imm5|>
 //===----------------------------------------------------------------------===//
-class TI5<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+class TSC<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
           Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
   bits<5> imm5;
