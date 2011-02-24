@@ -894,15 +894,27 @@ def SETV_1r : _F1R<(outs), (ins GRRegs:$r),
                "setv res[$r], r11",
                [(int_xcore_setv GRRegs:$r, R11)]>;
 
+def EEU_1r : _F1R<(outs), (ins GRRegs:$r),
+               "eeu res[$r]",
+               [(int_xcore_eeu GRRegs:$r)]>;
+
 // Zero operand short
-// TODO waiteu, clre, ssync, freet, ldspc, stspc, ldssr, stssr, ldsed, stsed,
+// TODO ssync, freet, ldspc, stspc, ldssr, stssr, ldsed, stsed,
 // stet, geted, getet, getkep, getksp, setkep, getid, kret, dcall, dret,
 // dentsp, drestsp
+
+def CLRE_0R : _F0R<(outs), (ins), "clre", [(int_xcore_clre)]>;
 
 let Defs = [R11] in
 def GETID_0R : _F0R<(outs), (ins),
                  "get r11, id",
                  [(set R11, (int_xcore_getid))]>;
+
+let isBranch=1, isIndirectBranch=1, isTerminator=1, isBarrier = 1,
+    hasSideEffects = 1 in
+def WAITEU_0R : _F0R<(outs), (ins),
+                 "waiteu",
+                 [(brind (int_xcore_waitevent))]>;
 
 //===----------------------------------------------------------------------===//
 // Non-Instruction Patterns
