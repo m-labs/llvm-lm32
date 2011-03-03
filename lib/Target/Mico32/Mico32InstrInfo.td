@@ -502,6 +502,11 @@ def SEXTB : SX<0x2c, (outs GPR:$dst), (ins GPR:$b),
 def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall ", [], IISC>;
 def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break ", [], IISC>;
 
+def RCSR  : TRCSR<0x24, (outs GPR:$d), (ins CSR:$csr),
+                  "rcsr  $d, $csr", [], IIAlu>;
+def WCSR  : TCR<0x34, (outs CSR:$csr), (ins GPR:$a),
+                "wcsr  $csr, $a", [], IIAlu>;
+
 
 //===----------------------------------------------------------------------===//
 // Misc. instructions
