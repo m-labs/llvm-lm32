@@ -301,24 +301,26 @@ class BranchCI<bits<6> op, bits<5> br, string instr_asm> :
 //===----------------------------------------------------------------------===//
 
 let isCommutable = 1, isAsCheapAsAMove = 1 in {
-  def ADD    :  Arith<0x2d, "add   ", add,  IIAlu>;
-  def AND    :  Logic<0x28, 0x000, "and    ", and>;
-  def OR     :  Logic<0x2e, 0x000, "or     ", or>;
-  def XOR    :  Logic<0x26, 0x000, "xor    ", xor>;
+  def ADD    :  ArithRR<0x2d, "add   ", add,  IIAlu>;
+  def AND    :  ArithRR<0x28, "and   ", and, IIAlu>;
+  def OR     :  ArithRR<0x2e, "or    ", or, IIAlu>;
+  def XOR    :  ArithRR<0x26, "xor   ", xor, IIAlu>;
+  def NOR    :  ArithNRR<0x21, "nor    ", or, IIAlu>;
+  def XNOR   :  ArithNRR<0x29, "xnor   ", xor, IIAlu>;
 }
 
 let isAsCheapAsAMove = 1 in {
-  def SUB  :  Arith<0x32, "sub  ", sub,  IIAlu>;
+  def SUB  :  ArithRR<0x32, "sub  ", sub,  IIAlu>;
 }
 
 let isCommutable = 1, Predicates=[HasMul] in {
-  def MUL    : Arith<0x22, "mul    ", mul,   IIAlu>;
+  def MUL    : ArithRR<0x22, "mul    ", mul,   IIAlu>;
 }
 
 let Predicates=[HasBarrel] in {
-  def SRU    :  Arith<0x20, "sru  ", srl, IIAlu>;
-  def SR     :  Arith<0x25, "sr   ", sra, IIAlu>;
-  def SL     :  Arith<0x2f, "sl   ", shl, IIAlu>;
+  def SRU    :  ArithRR<0x20, "sru   ", srl, IIAlu>;
+  def SR     :  ArithRR<0x25, "sr    ", sra, IIAlu>;
+  def SL     :  ArithRR<0x2f, "sl    ", shl, IIAlu>;
   def SRUI   :  ShiftI<0x00, "srui  ", srl>;
   def SRI    :  ShiftI<0x05, "sri   ", sra>;
   def SLI    :  ShiftI<0x0f, "sli   ", shl>;
@@ -326,16 +328,16 @@ let Predicates=[HasBarrel] in {
 
 let Predicates=[HasDiv] in {
 // FIXME: check the scheduling on this.
-  def DIVU   :  Arith<0x23, "divu  ", udiv, IIAlu>; 
-  def MODU   :  Arith<0x31, "modu  ", remu, IIAlu>;
+  def DIVU   :  ArithRR<0x23, "divu  ", udiv, IIAlu>; 
+  def MODU   :  ArithRR<0x31, "modu  ", remu, IIAlu>;
 }
 
 let Predicates=[HasFP] in {
 //  The chip currently does not implement div or mod
 // FIXME: check the scheduling on this.
-//  def DIV   :  Arith<0x27, "div   ", sdiv, IFIXTHIS>;
+//  def DIV   :  ArithRR<0x27, "div   ", sdiv, IFIXTHIS>;
 // FIXME: check that mod does handle negative numbers the same as frem.
-//  def MOD   :  Arith<0x35, "mod   ", frem, IFIXTHIS>;
+//  def MOD   :  ArithRR<0x35, "mod   ", frem, IFIXTHIS>;
 }
 
 
@@ -348,8 +350,8 @@ let isAsCheapAsAMove = 1 in {
   def ORI     :  ArithRIz<0x0e, "ori    ", or>;
   def XORI    :  ArithRIz<0x06, "xori   ", xor>;
 
-  def NORI    :  ArithNRIz<0x01, "nori    ", or>;
-  def XNORI   :  ArithNRIz<0x09, "xnori   ", xor>;
+  def NORI    :  ArithNRIz<0x01, "nori   ", or>;
+  def XNORI   :  ArithNRIz<0x09, "xnori  ", xor>;
 
   def ADDI    :  ArithRIs<0x0d, "addi   ", add>;
 }
@@ -488,32 +490,6 @@ let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1,
 //===----------------------------------------------------------------------===//
 // MBlaze misc instructions
 //===----------------------------------------------------------------------===//
-
-let neverHasSideEffects = 1 in {
-  def NOP :  MBlazeInst< 0x20, FC, (outs), (ins), "nop    ", [], IIAlu>;
-}
-
-let usesCustomInserter = 1 in {
-  def Select_CC : MBlazePseudo<(outs GPR:$dst),
-    (ins GPR:$T, GPR:$F, GPR:$CMP, i32imm:$CC), // F T reversed
-    "; SELECT_CC PSEUDO!",
-    []>;
-
-  def ShiftL : MBlazePseudo<(outs GPR:$dst),
-    (ins GPR:$L, GPR:$R),
-    "; ShiftL PSEUDO!",
-    []>;
-
-  def ShiftRA : MBlazePseudo<(outs GPR:$dst),
-    (ins GPR:$L, GPR:$R),
-    "; ShiftRA PSEUDO!",
-    []>;
-
-  def ShiftRL : MBlazePseudo<(outs GPR:$dst),
-    (ins GPR:$L, GPR:$R),
-    "; ShiftRL PSEUDO!",
-    []>;
-}
 
 def SEXTH : SX<0x37, (outs GPR:$dst), (ins GPR:$b),
                "sexth    $dst, $b", 
