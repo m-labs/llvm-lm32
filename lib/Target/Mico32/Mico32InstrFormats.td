@@ -46,10 +46,10 @@ def FI      : Format<9>;  // BI, CALLI
 //  CPU INSTRUCTION FORMATS
 //
 //  opcode  - operation code.
-//  rd      - dst reg.
-//  ra      - first src. reg.
-//  rb      - second src. reg.
-//  imm5    - 5-bit immediate value. (RIS format)
+//  rd      - destination register.
+//  ra      - first register operand.
+//  rb      - second register operand.
+//  imm5    - 5-bit immediate value (RIS format).
 //  imm16   - 16-bit immediate value.
 //  imm26   - 26-bit immediate value (FI format instructions).
 //
@@ -88,6 +88,8 @@ class Mico32Inst<bits<6> op, Format form, dag outs, dag ins, string asmstr,
 //===----------------------------------------------------------------------===//
 // Pseudo instruction class
 //===----------------------------------------------------------------------===//
+
+// Used for ADJCALLSTACKDOWN etc.
 class Mico32Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
       Mico32Inst<0x0, FPseudo, outs, ins, asmstr, pattern, IIPseudo>;
 
@@ -95,13 +97,13 @@ class Mico32Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
 // Type RR instruction class in Mico32 : <|opcode|ra|rb|rd|0|>
 //===----------------------------------------------------------------------===//
 
-class TRR<bits<6> op, bits<11> flags, dag outs, dag ins, string asmstr,
+class TRR<bits<6> op, dag outs, dag ins, string asmstr,
           list<dag> pattern, InstrItinClass itin> :
           Mico32Inst<op,FRRR,outs, ins, asmstr, pattern, itin>
 {
+  bits<5> rd;
   bits<5> ra;
   bits<5> rb;
-  bits<5> rd;
 
   let Inst{21-25} = ra;
   let Inst{16-20} = rb;
@@ -117,8 +119,8 @@ class TRI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
           Mico32Inst<op, FRRI, outs, ins, asmstr, pattern, itin>
 {
-  bits<5>  ra;
   bits<5>  rd;
+  bits<5>  ra;
   bits<16> imm16;
 
   let Inst{21-25} = ra;
@@ -134,8 +136,8 @@ class TRIS<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
            InstrItinClass itin> :
            Mico32Inst<op, FRRI, outs, ins, asmstr, pattern, itin>
 {
-  bits<5>  ra;
   bits<5>  rd;
+  bits<5>  ra;
   bits<5> imm5;
 
   let Inst{21-25} = ra;
@@ -161,15 +163,30 @@ class TSX<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type CR instruction class in Mico32 : <|opcode|cr|ra|0|>
+// Type RCSR instruction class in Mico32 : <|opcode|csr|0|rd|0|>
+//===----------------------------------------------------------------------===//
+class TRCSR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
+              InstrItinClass itin> :
+              Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+  bits<5> rd;
+  bits<5> csr;
+
+  let Inst{21-25} = csr;
+  let Inst{16-20} = 0;
+  let Inst{11-15} = rd;
+  let Inst{0-15} = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// Type CR instruction class in Mico32 : <|opcode|csr|ra|0|>
 //===----------------------------------------------------------------------===//
 class TCR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
           Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
-  bits<5> cr;
+  bits<5> csr;
   bits<5> ra;
 
-  let Inst{21-25} = cr;
+  let Inst{21-25} = csr;
   let Inst{16-20} = ra;
   let Inst{0-15} = 0;
 }
