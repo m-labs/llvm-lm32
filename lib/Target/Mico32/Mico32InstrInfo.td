@@ -488,24 +488,29 @@ let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1,
 }
 
 //===----------------------------------------------------------------------===//
-// MBlaze misc instructions
+// Mico32 misc instructions
 //===----------------------------------------------------------------------===//
 
 def SEXTH : SX<0x37, (outs GPR:$dst), (ins GPR:$b),
                "sexth    $dst, $b", 
                [(set GPR:$dst, (sext_inreg GPR:$b, i16))], IIAlu>;
+
 def SEXTB : SX<0x2c, (outs GPR:$dst), (ins GPR:$b),
                "sextb     $dst, $b", 
                [(set GPR:$dst, (sext_inreg GPR:$b, i8))], IIAlu>;
+
+def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall ", [], IISC>;
+def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break ", [], IISC>;
+
+
+//===----------------------------------------------------------------------===//
+// Misc. instructions
+//===----------------------------------------------------------------------===//
 
 let isCodeGenOnly=1 in {
   def ORI32   : LogicI32<0x28, "ori    ">;
   def BRLID32 : BranchLI<0x2E, 0x14, "brlid  ">;
 }
-
-//===----------------------------------------------------------------------===//
-// Misc. instructions
-//===----------------------------------------------------------------------===//
 
 let Form=FRCS in {
   def MFS : SPC<0x25, 0x2, (outs GPR:$dst), (ins SPR:$src),

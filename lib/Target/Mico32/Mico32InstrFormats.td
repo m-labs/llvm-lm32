@@ -215,14 +215,13 @@ class TI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 //===----------------------------------------------------------------------===//
-// Type SC instruction class in Mico32 : <|opcode|0|imm5|>
+// Type SC instruction class in Mico32 : <|opcode|0|subop|>
 //===----------------------------------------------------------------------===//
-class TSC<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-          InstrItinClass itin> :
-          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
-  bits<5> imm5;
+class TSC<bits<6> op, bits<5> subop, dag outs, dag ins, string asmstr,
+          list<dag> pattern, InstrItinClass itin> :
+         Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
 
   let Inst{5-25} = 0;
-  let Inst{0-4} = imm5;
+  let Inst{0-4} = subop;
 }
 
