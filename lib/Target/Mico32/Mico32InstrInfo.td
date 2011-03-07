@@ -180,18 +180,28 @@ def ADJCALLSTACKUP   : Mico32Pseudo<(outs),
 //===----------------------------------------------------------------------===//
 // Arithmetic Instruction Formats
 //===----------------------------------------------------------------------===//
+// RR instruction
 class ArithRR<bits<6> op, string instr_asm, SDNode OpNode,
               InstrItinClass itin> :
              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
                  [(set GPR:$dst, (OpNode GPR:$b, GPR:$c))], itin>;
 
+// RR instruction with not in pattern.
 class ArithNRR<bits<6> op, string instr_asm, SDNode OpNode,
               InstrItinClass itin> :
              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
 
+// RI instruction with 16bit zero extended immediate.
+class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
+               InstrItinClass itin> :
+              TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
+                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
+
+// ArithRIz with not in pattern.
 class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode, list<dag> pattern,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
@@ -199,18 +209,21 @@ class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode, list<dag> pattern,
                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
                    itin>;
 
-class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
-               InstrItinClass itin> :
-              TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                  !strconcat(instr_asm, "   $dst, $b, $c"),
-                  [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
-
+// RI instruction with 16bit sign extended immediate.
 class ArithRIs<bits<6> op, string instr_asm, SDNode OpNode,
                InstrItinClass itin> :
               TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
                   !strconcat(instr_asm, "   $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, immSExt16:$c))], itin>;
 
+// ArithRIs instruction with not in pattern.
+class ArithNRIs<bits<6> op, string instr_asm, SDNode OpNode,
+                InstrItinClass itin> :
+               TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
+                !strconcat(instr_asm, "   $dst, $b, $c"),
+                [(set GPR:$dst, (not (OpNode GPR:$b, immSExt16:$c)))], itin>;
+
+// Shift instruction with 5bit zero extended immediate.
 class ShiftI<bits<6> op, string instr_asm, SDNode OpNode> :
             TRIS<op, (outs GPR:$dst), (ins GPR:$b, uimm5:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
@@ -305,8 +318,8 @@ let isCommutable = 1, isAsCheapAsAMove = 1 in {
   def AND    :  ArithRR<0x28, "and   ", and, IIAlu>;
   def OR     :  ArithRR<0x2e, "or    ", or, IIAlu>;
   def XOR    :  ArithRR<0x26, "xor   ", xor, IIAlu>;
-  def NOR    :  ArithNRR<0x21, "nor    ", or, IIAlu>;
-  def XNOR   :  ArithNRR<0x29, "xnor   ", xor, IIAlu>;
+  def NOR    :  ArithNRR<0x21, "nor    ", or, IIAlu>; // (not (or ...))
+  def XNOR   :  ArithNRR<0x29, "xnor   ", xor, IIAlu>; // (not (xor ...))
 }
 
 let isAsCheapAsAMove = 1 in {
@@ -346,18 +359,18 @@ let Predicates=[HasFP] in {
 //===----------------------------------------------------------------------===//
 
 let isAsCheapAsAMove = 1 in {
-  def ANDI    :  ArithRIz<0x08, "andi  ", and>;
-  def ORI     :  ArithRIz<0x0e, "ori   ", or>;
-  def XORI    :  ArithRIz<0x06, "xori  ", xor>;
+  def ANDI    :  ArithRIz<0x08, "andi  ", and, IIAlu>;
+  def ORI     :  ArithRIz<0x0e, "ori   ", or, IIAlu>;
+  def XORI    :  ArithRIz<0x06, "xori  ", xor, IIAlu>;
 
-  def NORI    :  ArithNRIz<0x01, "nori  ", or>;
-  def XNORI   :  ArithNRIz<0x09, "xnori ", xor>;
+  def NORI    :  ArithNRIz<0x01, "nori  ", or, IIAlu>;
+  def XNORI   :  ArithNRIz<0x09, "xnori ", xor, IIAlu>;
 
-  def ADDI    :  ArithRIs<0x0d, "addi  ", add>;
+  def ADDI    :  ArithRIs<0x0d, "addi  ", add, IIAlu>;
 }
 
 let Predicates=[HasMul] in {
-  def MULI    :  ArithRIs<0x02, "muli  ", mul>;
+  def MULI    :  ArithRIs<0x02, "muli  ", mul, IIAlu>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -380,8 +393,19 @@ def SW  :  StoreM<0x16, "sw    ", store>;
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
 //===----------------------------------------------------------------------===//
-def CMPEI : CMPRI<0x19, "cmpei ", seteq>
+def CMPEI   : ArithRIs<0x19, "cmpei   ", seteq, IIAlu>;
+def CMPGI   : ArithRIs<0x1a, "cmpgi   ", setgt, IIAlu>;
+def CMPGEI  : ArithRIs<0x1b, "cmpgei  ", setge, IIAlu>;
+def CMPGEUI : ArithRIz<0x1c, "cmpgeui ", setuge, IIAlu>;
+def CMPGUI  : ArithRIz<0x1d, "cmpgui  ", setugt, IIAlu>;
+def CMPNEI  : ArithNRIz<0x1f, "cmpnei  ", seteq, IIAlu>;  // (not (seteq ...))
 
+def CMPE    : ArithRR<0x39, "cmpe    ", seteq, IIALu>;
+def CMPG    : ArithRR<0x3a, "cmpg    ", setgt, IIALu>;
+def CMPGE   : ArithRR<0x3b, "cmpge   ", setge, IIALu>;
+def CMPGEU  : ArithRR<0x3c, "cmpgeu  ", setuge, IIALu>;
+def CMPGU   : ArithRR<0x3d, "cmpgu   ", setugt, IIALu>;
+def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IIAlu>;  // (not (seteq ...))
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions
