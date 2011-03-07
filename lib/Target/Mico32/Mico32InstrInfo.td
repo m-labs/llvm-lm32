@@ -346,18 +346,18 @@ let Predicates=[HasFP] in {
 //===----------------------------------------------------------------------===//
 
 let isAsCheapAsAMove = 1 in {
-  def ANDI    :  ArithRIz<0x08, "andi   ", and>;
-  def ORI     :  ArithRIz<0x0e, "ori    ", or>;
-  def XORI    :  ArithRIz<0x06, "xori   ", xor>;
+  def ANDI    :  ArithRIz<0x08, "andi  ", and>;
+  def ORI     :  ArithRIz<0x0e, "ori   ", or>;
+  def XORI    :  ArithRIz<0x06, "xori  ", xor>;
 
-  def NORI    :  ArithNRIz<0x01, "nori   ", or>;
-  def XNORI   :  ArithNRIz<0x09, "xnori  ", xor>;
+  def NORI    :  ArithNRIz<0x01, "nori  ", or>;
+  def XNORI   :  ArithNRIz<0x09, "xnori ", xor>;
 
-  def ADDI    :  ArithRIs<0x0d, "addi   ", add>;
+  def ADDI    :  ArithRIs<0x0d, "addi  ", add>;
 }
 
 let Predicates=[HasMul] in {
-  def MULI    :  ArithRIs<0x02, "muli   ", mul>;
+  def MULI    :  ArithRIs<0x02, "muli  ", mul>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -373,9 +373,15 @@ let canFoldAsLoad = 1, isReMaterializable = 1 in {
   def LW   : LoadM<0x0a, "lw    ", load>;
 }
 
-def SB  :  StoreM<0x0c, "sb     ", truncstorei8>;
-def SH  :  StoreM<0x03, "sh     ", truncstorei16>;
-def SW  :  StoreM<0x16, "sw     ", store>;
+def SB  :  StoreM<0x0c, "sb    ", truncstorei8>;
+def SH  :  StoreM<0x03, "sh    ", truncstorei16>;
+def SW  :  StoreM<0x16, "sw    ", store>;
+
+//===----------------------------------------------------------------------===//
+// Mico32 comparison instructions
+//===----------------------------------------------------------------------===//
+def CMPEI : CMPRI<0x19, "cmpei ", seteq>
+
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions
