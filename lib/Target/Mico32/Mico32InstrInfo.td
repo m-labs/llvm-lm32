@@ -314,29 +314,29 @@ class BranchCI<bits<6> op, bits<5> br, string instr_asm> :
 //===----------------------------------------------------------------------===//
 
 let isCommutable = 1, isAsCheapAsAMove = 1 in {
-  def ADD    :  ArithRR<0x2d, "add   ", add,  IIAlu>;
-  def AND    :  ArithRR<0x28, "and   ", and, IIAlu>;
-  def OR     :  ArithRR<0x2e, "or    ", or, IIAlu>;
-  def XOR    :  ArithRR<0x26, "xor   ", xor, IIAlu>;
-  def NOR    :  ArithNRR<0x21, "nor    ", or, IIAlu>; // (not (or ...))
-  def XNOR   :  ArithNRR<0x29, "xnor   ", xor, IIAlu>; // (not (xor ...))
+  def ADD    :  ArithRR<0x2d, "add     ", add,  IIAlu>;
+  def AND    :  ArithRR<0x28, "and     ", and, IIAlu>;
+  def OR     :  ArithRR<0x2e, "or      ", or, IIAlu>;
+  def XOR    :  ArithRR<0x26, "xor     ", xor, IIAlu>;
+  def NOR    :  ArithNRR<0x21, "nor      ", or, IIAlu>; // (not (or ...))
+  def XNOR   :  ArithNRR<0x29, "xnor     ", xor, IIAlu>; // (not (xor ...))
 }
 
 let isAsCheapAsAMove = 1 in {
-  def SUB  :  ArithRR<0x32, "sub  ", sub,  IIAlu>;
+  def SUB  :  ArithRR<0x32, "sub     ", sub,  IIAlu>;
 }
 
 let isCommutable = 1, Predicates=[HasMul] in {
-  def MUL    : ArithRR<0x22, "mul    ", mul,   IIAlu>;
+  def MUL    : ArithRR<0x22, "mul     ", mul,   IIAlu>;
 }
 
 let Predicates=[HasBarrel] in {
-  def SRU    :  ArithRR<0x20, "sru   ", srl, IIAlu>;
-  def SR     :  ArithRR<0x25, "sr    ", sra, IIAlu>;
-  def SL     :  ArithRR<0x2f, "sl    ", shl, IIAlu>;
-  def SRUI   :  ShiftI<0x00, "srui  ", srl>;
-  def SRI    :  ShiftI<0x05, "sri   ", sra>;
-  def SLI    :  ShiftI<0x0f, "sli   ", shl>;
+  def SRU    :  ArithRR<0x20, "sru     ", srl, IIAlu>;
+  def SR     :  ArithRR<0x25, "sr      ", sra, IIAlu>;
+  def SL     :  ArithRR<0x2f, "sl      ", shl, IIAlu>;
+  def SRUI   :  ShiftI<0x00, "srui    ", srl>;
+  def SRI    :  ShiftI<0x05, "sri     ", sra>;
+  def SLI    :  ShiftI<0x0f, "sli     ", shl>;
 }
 
 let Predicates=[HasDiv] in {
@@ -359,18 +359,18 @@ let Predicates=[HasFP] in {
 //===----------------------------------------------------------------------===//
 
 let isAsCheapAsAMove = 1 in {
-  def ANDI    :  ArithRIz<0x08, "andi  ", and, IIAlu>;
-  def ORI     :  ArithRIz<0x0e, "ori   ", or, IIAlu>;
-  def XORI    :  ArithRIz<0x06, "xori  ", xor, IIAlu>;
+  def ANDI    :  ArithRIz<0x08, "andi    ", and, IIAlu>;
+  def ORI     :  ArithRIz<0x0e, "ori     ", or, IIAlu>;
+  def XORI    :  ArithRIz<0x06, "xori    ", xor, IIAlu>;
 
-  def NORI    :  ArithNRIz<0x01, "nori  ", or, IIAlu>;
-  def XNORI   :  ArithNRIz<0x09, "xnori ", xor, IIAlu>;
+  def NORI    :  ArithNRIz<0x01, "nori     ", or, IIAlu>;
+  def XNORI   :  ArithNRIz<0x09, "xnori    ", xor, IIAlu>;
 
-  def ADDI    :  ArithRIs<0x0d, "addi  ", add, IIAlu>;
+  def ADDI    :  ArithRIs<0x0d, "addi    ", add, IIAlu>;
 }
 
 let Predicates=[HasMul] in {
-  def MULI    :  ArithRIs<0x02, "muli  ", mul, IIAlu>;
+  def MULI    :  ArithRIs<0x02, "muli    ", mul, IIAlu>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -378,17 +378,17 @@ let Predicates=[HasMul] in {
 //===----------------------------------------------------------------------===//
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
-  def LB   : LoadM<0x04, "lb    ", sextloadi8>;
-  def LH   : LoadM<0x07, "lh    ", sextloadi16>;
+  def LB   : LoadM<0x04, "lb      ", sextloadi8>;
+  def LH   : LoadM<0x07, "lh      ", sextloadi16>;
 
-  def LBU  : LoadM<0x10, "lbu   ", zextloadi8>;
-  def LHU  : LoadM<0x0b, "lhu   ", zextloadi16>;
-  def LW   : LoadM<0x0a, "lw    ", load>;
+  def LBU  : LoadM<0x10, "lbu     ", zextloadi8>;
+  def LHU  : LoadM<0x0b, "lhu     ", zextloadi16>;
+  def LW   : LoadM<0x0a, "lw      ", load>;
 }
 
-def SB  :  StoreM<0x0c, "sb    ", truncstorei8>;
-def SH  :  StoreM<0x03, "sh    ", truncstorei16>;
-def SW  :  StoreM<0x16, "sw    ", store>;
+def SB  :  StoreM<0x0c, "sb      ", truncstorei8>;
+def SH  :  StoreM<0x03, "sh      ", truncstorei16>;
+def SW  :  StoreM<0x16, "sw      ", store>;
 
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
@@ -412,77 +412,77 @@ def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IIAlu>;  // (not (seteq ...))
 //===----------------------------------------------------------------------===//
 
 let isBranch = 1, isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in {
-  def BRI    :  BranchI<0x2E, 0x00, "bri    ">;
-  def BRAI   :  BranchI<0x2E, 0x08, "brai   ">;
+  def BRI    :  BranchI<0x2E, 0x00, "bri     ">;
+  def BRAI   :  BranchI<0x2E, 0x08, "brai    ">;
 }
 
 let isBranch = 1, isTerminator = 1, hasCtrlDep = 1 in {
-  def BEQI   : BranchCI<0x2F, 0x00, "beqi   ">;
-  def BNEI   : BranchCI<0x2F, 0x01, "bnei   ">;
-  def BLTI   : BranchCI<0x2F, 0x02, "blti   ">;
-  def BLEI   : BranchCI<0x2F, 0x03, "blei   ">;
-  def BGTI   : BranchCI<0x2F, 0x04, "bgti   ">;
-  def BGEI   : BranchCI<0x2F, 0x05, "bgei   ">;
+  def BEQI   : BranchCI<0x2F, 0x00, "beqi    ">;
+  def BNEI   : BranchCI<0x2F, 0x01, "bnei    ">;
+  def BLTI   : BranchCI<0x2F, 0x02, "blti    ">;
+  def BLEI   : BranchCI<0x2F, 0x03, "blei    ">;
+  def BGTI   : BranchCI<0x2F, 0x04, "bgti    ">;
+  def BGEI   : BranchCI<0x2F, 0x05, "bgei    ">;
 }
 
 let isBranch = 1, isIndirectBranch = 1, isTerminator = 1, hasCtrlDep = 1,
     isBarrier = 1 in {
-  def BR     :   Branch<0x26, 0x00, 0x000, "br     ">;
-  def BRA    :   Branch<0x26, 0x08, 0x000, "bra    ">;
+  def BR     :   Branch<0x26, 0x00, 0x000, "br      ">;
+  def BRA    :   Branch<0x26, 0x08, 0x000, "bra     ">;
 }
 
 let isBranch = 1, isIndirectBranch = 1, isTerminator = 1, hasCtrlDep = 1 in {
-  def BEQ    :  BranchC<0x27, 0x00, 0x000, "beq    ">;
-  def BNE    :  BranchC<0x27, 0x01, 0x000, "bne    ">;
-  def BLT    :  BranchC<0x27, 0x02, 0x000, "blt    ">;
-  def BLE    :  BranchC<0x27, 0x03, 0x000, "ble    ">;
-  def BGT    :  BranchC<0x27, 0x04, 0x000, "bgt    ">;
-  def BGE    :  BranchC<0x27, 0x05, 0x000, "bge    ">;
+  def BEQ    :  BranchC<0x27, 0x00, 0x000, "beq     ">;
+  def BNE    :  BranchC<0x27, 0x01, 0x000, "bne     ">;
+  def BLT    :  BranchC<0x27, 0x02, 0x000, "blt     ">;
+  def BLE    :  BranchC<0x27, 0x03, 0x000, "ble     ">;
+  def BGT    :  BranchC<0x27, 0x04, 0x000, "bgt     ">;
+  def BGE    :  BranchC<0x27, 0x05, 0x000, "bge     ">;
 }
 
 let isBranch = 1, isTerminator = 1, hasDelaySlot = 1, hasCtrlDep = 1,
     isBarrier = 1 in {
-  def BRID   :  BranchI<0x2E, 0x10, "brid   ">;
-  def BRAID  :  BranchI<0x2E, 0x18, "braid  ">;
+  def BRID   :  BranchI<0x2E, 0x10, "brid    ">;
+  def BRAID  :  BranchI<0x2E, 0x18, "braid   ">;
 }
 
 let isBranch = 1, isTerminator = 1, hasDelaySlot = 1, hasCtrlDep = 1 in {
-  def BEQID  : BranchCI<0x2F, 0x10, "beqid  ">;
-  def BNEID  : BranchCI<0x2F, 0x11, "bneid  ">;
-  def BLTID  : BranchCI<0x2F, 0x12, "bltid  ">;
-  def BLEID  : BranchCI<0x2F, 0x13, "bleid  ">;
-  def BGTID  : BranchCI<0x2F, 0x14, "bgtid  ">;
-  def BGEID  : BranchCI<0x2F, 0x15, "bgeid  ">;
+  def BEQID  : BranchCI<0x2F, 0x10, "beqid   ">;
+  def BNEID  : BranchCI<0x2F, 0x11, "bneid   ">;
+  def BLTID  : BranchCI<0x2F, 0x12, "bltid   ">;
+  def BLEID  : BranchCI<0x2F, 0x13, "bleid   ">;
+  def BGTID  : BranchCI<0x2F, 0x14, "bgtid   ">;
+  def BGEID  : BranchCI<0x2F, 0x15, "bgeid   ">;
 }
 
 let isBranch = 1, isIndirectBranch = 1, isTerminator = 1,
     hasDelaySlot = 1, hasCtrlDep = 1, isBarrier = 1 in {
-  def BRD    :   Branch<0x26, 0x10, 0x000, "brd    ">;
-  def BRAD   :   Branch<0x26, 0x18, 0x000, "brad   ">;
+  def BRD    :   Branch<0x26, 0x10, 0x000, "brd     ">;
+  def BRAD   :   Branch<0x26, 0x18, 0x000, "brad    ">;
 }
 
 let isBranch = 1, isIndirectBranch = 1, isTerminator = 1,
     hasDelaySlot = 1, hasCtrlDep = 1 in {
-  def BEQD   :  BranchC<0x27, 0x10, 0x000, "beqd   ">;
-  def BNED   :  BranchC<0x27, 0x11, 0x000, "bned   ">;
-  def BLTD   :  BranchC<0x27, 0x12, 0x000, "bltd   ">;
-  def BLED   :  BranchC<0x27, 0x13, 0x000, "bled   ">;
-  def BGTD   :  BranchC<0x27, 0x14, 0x000, "bgtd   ">;
-  def BGED   :  BranchC<0x27, 0x15, 0x000, "bged   ">;
+  def BEQD   :  BranchC<0x27, 0x10, 0x000, "beqd    ">;
+  def BNED   :  BranchC<0x27, 0x11, 0x000, "bned    ">;
+  def BLTD   :  BranchC<0x27, 0x12, 0x000, "bltd    ">;
+  def BLED   :  BranchC<0x27, 0x13, 0x000, "bled    ">;
+  def BGTD   :  BranchC<0x27, 0x14, 0x000, "bgtd    ">;
+  def BGED   :  BranchC<0x27, 0x15, 0x000, "bged    ">;
 }
 
 let isCall =1, hasDelaySlot = 1,
     Defs = [R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,CARRY],
     Uses = [R1] in {
-  def BRLID  : BranchLI<0x2E, 0x14, "brlid  ">;
-  def BRALID : BranchLI<0x2E, 0x1C, "bralid ">;
+  def BRLID  : BranchLI<0x2E, 0x14, "brlid   ">;
+  def BRALID : BranchLI<0x2E, 0x1C, "bralid  ">;
 }
 
 let isCall = 1, hasDelaySlot = 1,
     Defs = [R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,CARRY],
     Uses = [R1] in {
-  def BRLD   : BranchL<0x26, 0x14, 0x000, "brld   ">;
-  def BRALD  : BranchL<0x26, 0x1C, 0x000, "brald  ">;
+  def BRLD   : BranchL<0x26, 0x14, 0x000, "brld    ">;
+  def BRALD  : BranchL<0x26, 0x1C, 0x000, "brald   ">;
 }
 
 let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1,
@@ -522,20 +522,20 @@ let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1,
 //===----------------------------------------------------------------------===//
 
 def SEXTH : SX<0x37, (outs GPR:$dst), (ins GPR:$b),
-               "sexth    $dst, $b", 
+               "sexth   $dst, $b", 
                [(set GPR:$dst, (sext_inreg GPR:$b, i16))], IIAlu>;
 
 def SEXTB : SX<0x2c, (outs GPR:$dst), (ins GPR:$b),
-               "sextb     $dst, $b", 
+               "sextb   $dst, $b", 
                [(set GPR:$dst, (sext_inreg GPR:$b, i8))], IIAlu>;
 
-def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall ", [], IISC>;
-def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break ", [], IISC>;
+def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall   ", [], IISC>;
+def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break   ", [], IISC>;
 
 def RCSR  : TRCSR<0x24, (outs GPR:$d), (ins CSR:$csr),
-                  "rcsr  $d, $csr", [], IIAlu>;
+                  "rcsr    $d, $csr", [], IIAlu>;
 def WCSR  : TCR<0x34, (outs CSR:$csr), (ins GPR:$a),
-                "wcsr  $csr, $a", [], IIAlu>;
+                "wcsr    $csr, $a", [], IIAlu>;
 
 
 //===----------------------------------------------------------------------===//
@@ -543,7 +543,7 @@ def WCSR  : TCR<0x34, (outs CSR:$csr), (ins GPR:$a),
 //===----------------------------------------------------------------------===//
 
 let isCodeGenOnly=1 in {
-  def ORI32   : LogicI32<0x28, "ori    ">;
+  def ORI32   : LogicI32<0x28, "ori     ">;
   def BRLID32 : BranchLI<0x2E, 0x14, "brlid  ">;
 }
 
@@ -574,8 +574,8 @@ let rd=0x0, Form=FCRR in {
                 "wic       $a, $b", [], IIAlu>;
 }
 
-def BRK  :  BranchL<0x26, 0x0C, 0x000, "brk    ">;
-def BRKI : BranchLI<0x2E, 0x0C, "brki   ">;
+def BRK  :  BranchL<0x26, 0x0C, 0x000, "brk     ">;
+def BRKI : BranchLI<0x2E, 0x0C, "brki    ">;
 
 def IMM : MBlazeInst<0x2C, FCCI, (outs), (ins simm16:$imm),
                      "imm       $imm", [], IIAlu>;
