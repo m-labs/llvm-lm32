@@ -224,10 +224,11 @@ class ArithNRIs<bits<6> op, string instr_asm, SDNode OpNode,
                 [(set GPR:$dst, (not (OpNode GPR:$b, immSExt16:$c)))], itin>;
 
 // Shift instruction with 5bit zero extended immediate.
-class ShiftI<bits<6> op, string instr_asm, SDNode OpNode> :
+class ShiftI<bits<6> op, string instr_asm, SDNode OpNode,
+                InstrItinClass itin> :
             TRIS<op, (outs GPR:$dst), (ins GPR:$b, uimm5:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
-                 [(set GPR:$dst, (OpNode GPR:$b, immZExt5:$c))], IIAlu>;
+                 [(set GPR:$dst, (OpNode GPR:$b, immZExt5:$c))], init>;
 
 
 //===----------------------------------------------------------------------===//
@@ -322,22 +323,22 @@ let isAsCheapAsAMove = 1 in {
 }
 
 let isCommutable = 1, Predicates=[HasMul] in {
-  def MUL    : ArithRR<0x22, "mul     ", mul,   IIAlu>;
+  def MUL    : ArithRR<0x22, "mul     ", mul,   IIMul>;
 }
 
 let Predicates=[HasBarrel] in {
-  def SRU    :  ArithRR<0x20, "sru     ", srl, IIAlu>;
-  def SR     :  ArithRR<0x25, "sr      ", sra, IIAlu>;
-  def SL     :  ArithRR<0x2f, "sl      ", shl, IIAlu>;
-  def SRUI   :  ShiftI<0x00, "srui    ", srl>;
-  def SRI    :  ShiftI<0x05, "sri     ", sra>;
-  def SLI    :  ShiftI<0x0f, "sli     ", shl>;
+  def SRU    :  ArithRR<0x20, "sru     ", srl, IIShift>;
+  def SR     :  ArithRR<0x25, "sr      ", sra, IIShift>;
+  def SL     :  ArithRR<0x2f, "sl      ", shl, IIShift>;
+  def SRUI   :  ShiftI<0x00, "srui    ", srl, IIShift>;
+  def SRI    :  ShiftI<0x05, "sri     ", sra, IIShift>;
+  def SLI    :  ShiftI<0x0f, "sli     ", shl, IIShift>;
 }
 
 let Predicates=[HasDiv] in {
 // FIXME: check the scheduling on this.
-  def DIVU   :  ArithRR<0x23, "divu  ", udiv, IIAlu>; 
-  def MODU   :  ArithRR<0x31, "modu  ", remu, IIAlu>;
+  def DIVU   :  ArithRR<0x23, "divu  ", udiv, IIDiv>; 
+  def MODU   :  ArithRR<0x31, "modu  ", remu, IIDiv>;
 }
 
 let Predicates=[HasFP] in {
@@ -365,7 +366,7 @@ let isAsCheapAsAMove = 1 in {
 }
 
 let Predicates=[HasMul] in {
-  def MULI    :  ArithRIs<0x02, "muli    ", mul, IIAlu>;
+  def MULI    :  ArithRIs<0x02, "muli    ", mul, IIMul>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -388,19 +389,19 @@ def SW      :  StoreM<0x16, "sw      ", store>;
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
 //===----------------------------------------------------------------------===//
-def CMPEI   : ArithRIs<0x19, "cmpei   ", seteq, IIAlu>;
-def CMPGI   : ArithRIs<0x1a, "cmpgi   ", setgt, IIAlu>;
-def CMPGEI  : ArithRIs<0x1b, "cmpgei  ", setge, IIAlu>;
-def CMPGEUI : ArithRIz<0x1c, "cmpgeui ", setuge, IIAlu>;
-def CMPGUI  : ArithRIz<0x1d, "cmpgui  ", setugt, IIAlu>;
-def CMPNEI  : ArithNRIz<0x1f, "cmpnei  ", seteq, IIAlu>;  // (not (seteq ...))
+def CMPEI   : ArithRIs<0x19, "cmpei   ", seteq, IICmp>;
+def CMPGI   : ArithRIs<0x1a, "cmpgi   ", setgt, IICmp>;
+def CMPGEI  : ArithRIs<0x1b, "cmpgei  ", setge, IICmp>;
+def CMPGEUI : ArithRIz<0x1c, "cmpgeui ", setuge, IICmp>;
+def CMPGUI  : ArithRIz<0x1d, "cmpgui  ", setugt, IICmp>;
+def CMPNEI  : ArithNRIz<0x1f, "cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
 
-def CMPE    : ArithRR<0x39, "cmpe    ", seteq, IIALu>;
-def CMPG    : ArithRR<0x3a, "cmpg    ", setgt, IIALu>;
-def CMPGE   : ArithRR<0x3b, "cmpge   ", setge, IIALu>;
-def CMPGEU  : ArithRR<0x3c, "cmpgeu  ", setuge, IIALu>;
-def CMPGU   : ArithRR<0x3d, "cmpgu   ", setugt, IIALu>;
-def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IIAlu>;  // (not (seteq ...))
+def CMPE    : ArithRR<0x39, "cmpe    ", seteq, IICmp>;
+def CMPG    : ArithRR<0x3a, "cmpg    ", setgt, IICmp>;
+def CMPGE   : ArithRR<0x3b, "cmpge   ", setge, IICmp>;
+def CMPGEU  : ArithRR<0x3c, "cmpgeu  ", setuge, IICmp>;
+def CMPGU   : ArithRR<0x3d, "cmpgu   ", setugt, IICmp>;
+def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IICmp>;  // (not (seteq ...))
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions
@@ -418,8 +419,8 @@ def SEXTB : SX<0x2c, (outs GPR:$dst), (ins GPR:$b),
                "sextb   $dst, $b", 
                [(set GPR:$dst, (sext_inreg GPR:$b, i8))], IIAlu>;
 
-def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall   ", [], IISC>;
-def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break   ", [], IISC>;
+def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall   ", [], IICall>;
+def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break   ", [], IICall>;
 
 def RCSR  : TRCSR<0x24, (outs GPR:$d), (ins CSR:$csr),
                   "rcsr    $d, $csr", [], IIAlu>;
