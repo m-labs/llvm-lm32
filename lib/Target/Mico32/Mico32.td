@@ -18,27 +18,24 @@ include "llvm/Target/Target.td"
 //===----------------------------------------------------------------------===//
 // Subtarget Features. 
 //===----------------------------------------------------------------------===//
-//FIXME: want to add invoke instruction and alternate instruction encoding.
-//def FeatureZ10 : SubtargetFeature<"z10", "HasZ10Insts", "true",
-//                                  "Support Z10 instructions">;
+//FIXME: added for the (currently) undocumented DIV/MOD instructions
+//def FeatureSDIV : 
+//  SubtargetFeature<"sdiv", "IsSDIVenabled", "true",
+//                   "enable div and mod instructions - currently does nothing">;
+
 
 //===----------------------------------------------------------------------===//
 // Mico32 supported processors.
 //===----------------------------------------------------------------------===//
-//class Proc<string Name, list<SubtargetFeature> Features>
-// : Processor<Name, NoItineraries, Features>;
-//
-//def : Proc<"z9",  []>;
-//def : Proc<"z10", [FeatureZ10]>;
-
-def : Processor< "mico32", NoItineraries, []>;
+def : Processor< "mico32", Mico32Itineraries, []>;
 
 
 //===----------------------------------------------------------------------===//
-//Register File, Calling Convention, and Instruction Descriptions 
+// Register File, Calling Convention, and Instruction Descriptions 
 //===----------------------------------------------------------------------===//
 
 include "Mico32RegisterInfo.td"
+include "Mico32Schedule.td"
 include "Mico32CallingConv.td"
 include "Mico32InstrInfo.td"
 
@@ -46,10 +43,20 @@ def Mico32InstrInfo : InstrInfo {
 } 
 
 //===----------------------------------------------------------------------===//
+// Use an MC assembly printer
+//===----------------------------------------------------------------------===//
+
+def Mico32AsmWriter : AsmWriter {
+  string AsmWriterClassName  = "InstPrinter";
+  bit isMCAsmWriter = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // Target Declaration
 //===----------------------------------------------------------------------===//
 
 def Mico32 : Target {
   let InstructionSet = Mico32InstrInfo;
+  let AssemblyWriters = [Mico32AsmWriter];
 }
 
