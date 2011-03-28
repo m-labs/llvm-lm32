@@ -1800,6 +1800,26 @@ static bool SimplifyTerminatorOnSelect(TerminatorInst *OldTerm, Value *Cond,
   return true;
 }
 
+// SimplifySwitchOnSelect - Replaces
+//   (switch (select cond, X, Y)) on constant X, Y
+// with a branch - conditional if X and Y lead to distinct BBs,
+// unconditional otherwise.
+static bool SimplifySwitchOnSelect(SwitchInst *SI, SelectInst *Select) {
+  // Check for constant integer values in the select.
+  ConstantInt *TrueVal = dyn_cast<ConstantInt>(Select->getTrueValue());
+  ConstantInt *FalseVal = dyn_cast<ConstantInt>(Select->getFalseValue());
+  if (!TrueVal || !FalseVal)
+    return false;
+
+  // Find the relevant condition and destinations.
+  Value *Condition = Select->getCondition();
+  BasicBlock *TrueBB = SI->getSuccessor(SI->findCaseValue(TrueVal));
+  BasicBlock *FalseBB = SI->getSuccessor(SI->findCaseValue(FalseVal));
+
+  // Perform the actual simplification.
+  return SimplifyTerminatorOnSelect(SI, Condition, TrueBB, FalseBB);
+}
+
 // SimplifyIndirectBrOnSelect - Replaces
 //   (indirectbr (select cond, blockaddress(@fn, BlockA),
 //                             blockaddress(@fn, BlockB)))
@@ -2148,7 +2168,9 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
       if (LI->isVolatile())
         break;
     
-    // Delete this instruction
+    // Delete this instruction (any uses are guaranteed to be dead)
+    if (!BBI->use_empty())
+      BBI->replaceAllUsesWith(UndefValue::get(BBI->getType()));
     BBI->eraseFromParent();
     Changed = true;
   }
@@ -2189,17 +2211,28 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
       // If the default value is unreachable, figure out the most popular
       // destination and make it the default.
       if (SI->getSuccessor(0) == BB) {
-        std::map<BasicBlock*, unsigned> Popularity;
-        for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i)
-          Popularity[SI->getSuccessor(i)]++;
-        
+        std::map<BasicBlock*, std::pair<unsigned, unsigned> > Popularity;
+        for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i) {
+          std::pair<unsigned, unsigned>& entry =
+              Popularity[SI->getSuccessor(i)];
+          if (entry.first == 0) {
+            entry.first = 1;
+            entry.second = i;
+          } else {
+            entry.first++;
+          }
+        }
+
         // Find the most popular block.
         unsigned MaxPop = 0;
+        unsigned MaxIndex = 0;
         BasicBlock *MaxBlock = 0;
-        for (std::map<BasicBlock*, unsigned>::iterator
+        for (std::map<BasicBlock*, std::pair<unsigned, unsigned> >::iterator
              I = Popularity.begin(), E = Popularity.end(); I != E; ++I) {
-          if (I->second > MaxPop) {
-            MaxPop = I->second;
+          if (I->second.first > MaxPop || 
+              (I->second.first == MaxPop && MaxIndex > I->second.second)) {
+            MaxPop = I->second.first;
+            MaxIndex = I->second.second;
             MaxBlock = I->first;
           }
         }
@@ -2309,7 +2342,12 @@ bool SimplifyCFGOpt::SimplifySwitch(SwitchInst *SI) {
   if (BasicBlock *OnlyPred = BB->getSinglePredecessor())
     if (SimplifyEqualityComparisonWithOnlyPredecessor(SI, OnlyPred))
       return SimplifyCFG(BB) | true;
-  
+
+  Value *Cond = SI->getCondition();
+  if (SelectInst *Select = dyn_cast<SelectInst>(Cond))
+    if (SimplifySwitchOnSelect(SI, Select))
+      return SimplifyCFG(BB) | true;
+
   // If the block only contains the switch, see if we can fold the block
   // away into any preds.
   BasicBlock::iterator BBI = BB->begin();

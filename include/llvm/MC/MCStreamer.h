@@ -239,11 +239,6 @@ namespace llvm {
     /// EndCOFFSymbolDef - Marks the end of the symbol definition.
     virtual void EndCOFFSymbolDef() = 0;
 
-    /// EmitCOFFSecRel32 - Emits a COFF section relative relocation.
-    ///
-    /// @param Symbol - Symbol the section relative realocation should point to.
-    virtual void EmitCOFFSecRel32(MCSymbol const *Symbol) = 0;
-
     /// EmitELFSize - Emit an ELF .size directive.
     ///
     /// This corresponds to an assembler statement such as:
@@ -461,6 +456,19 @@ namespace llvm {
     /// indicated by the hasRawTextSupport() predicate.  By default this aborts.
     virtual void EmitRawText(StringRef String);
     void EmitRawText(const Twine &String);
+
+    /// ARM-related methods.
+    /// FIXME: Eventually we should have some "target MC streamer" and move
+    /// these methods there.
+    virtual void EmitFnStart();
+    virtual void EmitFnEnd();
+    virtual void EmitCantUnwind();
+    virtual void EmitPersonality(const MCSymbol *Personality);
+    virtual void EmitHandlerData();
+    virtual void EmitSetFP(unsigned FpReg, unsigned SpReg, int64_t Offset = 0);
+    virtual void EmitPad(int64_t Offset);
+    virtual void EmitRegSave(const SmallVectorImpl<unsigned> &RegList,
+                             bool isVector);
 
     /// Finish - Finish emission of machine code.
     virtual void Finish() = 0;

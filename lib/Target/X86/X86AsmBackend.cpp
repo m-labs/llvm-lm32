@@ -40,7 +40,6 @@ static unsigned getFixupKindLog2Size(unsigned Kind) {
   case X86::reloc_riprel_4byte_movq_load:
   case X86::reloc_signed_4byte:
   case X86::reloc_global_offset_table:
-  case X86::reloc_coff_secrel32:
   case FK_Data_4: return 2;
   case FK_PCRel_8:
   case FK_Data_8: return 3;
@@ -70,8 +69,7 @@ public:
       { "reloc_riprel_4byte", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel },
       { "reloc_riprel_4byte_movq_load", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel},
       { "reloc_signed_4byte", 0, 4 * 8, 0},
-      { "reloc_global_offset_table", 0, 4 * 8, 0},
-      { "reloc_coff_secrel32", 0, 4 * 8, 0}
+      { "reloc_global_offset_table", 0, 4 * 8, 0}
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -309,9 +307,12 @@ public:
     : ELFX86AsmBackend(T, OSType) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createELFObjectWriter(new X86ELFObjectWriter(false, OSType,
-                                                        ELF::EM_386, false),
+    return createELFObjectWriter(createELFObjectTargetWriter(),
                                  OS, /*IsLittleEndian*/ true);
+  }
+
+  MCELFObjectTargetWriter *createELFObjectTargetWriter() const {
+    return new X86ELFObjectWriter(false, OSType, ELF::EM_386, false);
   }
 };
 
@@ -321,9 +322,12 @@ public:
     : ELFX86AsmBackend(T, OSType) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createELFObjectWriter(new X86ELFObjectWriter(true, OSType,
-                                                        ELF::EM_X86_64, true),
+    return createELFObjectWriter(createELFObjectTargetWriter(),
                                  OS, /*IsLittleEndian*/ true);
+  }
+
+  MCELFObjectTargetWriter *createELFObjectTargetWriter() const {
+    return new X86ELFObjectWriter(true, OSType, ELF::EM_X86_64, true);
   }
 };
 

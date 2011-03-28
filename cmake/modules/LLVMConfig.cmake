@@ -23,7 +23,8 @@ function(is_llvm_target_library library return_var)
   string(TOUPPER "${library}" capitalized_lib)
   string(TOUPPER "${LLVM_ALL_TARGETS}" targets)
   foreach(t ${targets})
-    if( capitalized_lib STREQUAL "LLVM${t}" OR
+    if( capitalized_lib STREQUAL t OR
+	capitalized_lib STREQUAL "LLVM${t}" OR
 	capitalized_lib STREQUAL "LLVM${t}CODEGEN" OR
 	capitalized_lib STREQUAL "LLVM${t}ASMPARSER" OR
 	capitalized_lib STREQUAL "LLVM${t}ASMPRINTER" OR
@@ -61,6 +62,26 @@ function(explicit_map_components_to_libraries out_libs)
   set( link_components ${ARGN} )
   get_property(llvm_libs GLOBAL PROPERTY LLVM_LIBS)
   string(TOUPPER "${llvm_libs}" capitalized_libs)
+
+  # Expand some keywords:
+  list(FIND LLVM_TARGETS_TO_BUILD "${LLVM_NATIVE_ARCH}" have_native_backend)
+  list(FIND link_components "engine" engine_required)
+  if( NOT engine_required EQUAL -1 )
+    list(FIND LLVM_TARGETS_WITH_JIT "${LLVM_NATIVE_ARCH}" have_jit)
+    if( NOT have_native_backend EQUAL -1 AND NOT have_jit EQUAL -1 )
+      list(APPEND link_components "jit")
+      list(APPEND link_components "native")
+    else()
+      list(APPEND link_components "interpreter")
+    endif()
+  endif()
+  list(FIND link_components "native" native_required)
+  if( NOT native_required EQUAL -1 )
+    if( NOT have_native_backend EQUAL -1 )
+      list(APPEND link_components ${LLVM_NATIVE_ARCH})
+    endif()
+  endif()
+
   # Translate symbolic component names to real libraries:
   foreach(c ${link_components})
     # add codegen, asmprinter, asmparser, disassembler
@@ -94,14 +115,13 @@ function(explicit_map_components_to_libraries out_libs)
         list(APPEND expanded_components "LLVM${c}Disassembler")
       endif()
     elseif( c STREQUAL "native" )
-      list(APPEND expanded_components "LLVM${LLVM_NATIVE_ARCH}CodeGen")
+      # already processed
     elseif( c STREQUAL "nativecodegen" )
       list(APPEND expanded_components "LLVM${LLVM_NATIVE_ARCH}CodeGen")
     elseif( c STREQUAL "backend" )
       # same case as in `native'.
     elseif( c STREQUAL "engine" )
-      # TODO: as we assume we are on X86, this is `jit'.
-      list(APPEND expanded_components "LLVMJIT")
+      # already processed
     elseif( c STREQUAL "all" )
       list(APPEND expanded_components ${llvm_libs})
     else( NOT idx LESS 0 )

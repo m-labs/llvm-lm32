@@ -33,6 +33,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include <algorithm>
 #include <map>
+#include <cstdarg>
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -325,18 +326,44 @@ ConstantInt::ConstantInt(const IntegerType *Ty, const APInt& V)
   assert(V.getBitWidth() == Ty->getBitWidth() && "Invalid constant for type");
 }
 
-ConstantInt* ConstantInt::getTrue(LLVMContext &Context) {
+ConstantInt *ConstantInt::getTrue(LLVMContext &Context) {
   LLVMContextImpl *pImpl = Context.pImpl;
   if (!pImpl->TheTrueVal)
     pImpl->TheTrueVal = ConstantInt::get(Type::getInt1Ty(Context), 1);
   return pImpl->TheTrueVal;
 }
 
-ConstantInt* ConstantInt::getFalse(LLVMContext &Context) {
+ConstantInt *ConstantInt::getFalse(LLVMContext &Context) {
   LLVMContextImpl *pImpl = Context.pImpl;
   if (!pImpl->TheFalseVal)
     pImpl->TheFalseVal = ConstantInt::get(Type::getInt1Ty(Context), 0);
   return pImpl->TheFalseVal;
+}
+
+Constant *ConstantInt::getTrue(const Type *Ty) {
+  const VectorType *VTy = dyn_cast<VectorType>(Ty);
+  if (!VTy) {
+    assert(Ty->isIntegerTy(1) && "True must be i1 or vector of i1.");
+    return ConstantInt::getTrue(Ty->getContext());
+  }
+  assert(VTy->getElementType()->isIntegerTy(1) &&
+         "True must be vector of i1 or i1.");
+  SmallVector<Constant*, 16> Splat(VTy->getNumElements(),
+                                   ConstantInt::getTrue(Ty->getContext()));
+  return ConstantVector::get(Splat);
+}
+
+Constant *ConstantInt::getFalse(const Type *Ty) {
+  const VectorType *VTy = dyn_cast<VectorType>(Ty);
+  if (!VTy) {
+    assert(Ty->isIntegerTy(1) && "False must be i1 or vector of i1.");
+    return ConstantInt::getFalse(Ty->getContext());
+  }
+  assert(VTy->getElementType()->isIntegerTy(1) &&
+         "False must be vector of i1 or i1.");
+  SmallVector<Constant*, 16> Splat(VTy->getNumElements(),
+                                   ConstantInt::getFalse(Ty->getContext()));
+  return ConstantVector::get(Splat);
 }
 
 
@@ -345,7 +372,7 @@ ConstantInt* ConstantInt::getFalse(LLVMContext &Context) {
 // operator== and operator!= to ensure that the DenseMap doesn't attempt to
 // compare APInt's of different widths, which would violate an APInt class
 // invariant which generates an assertion.
-ConstantInt *ConstantInt::get(LLVMContext &Context, const APInt& V) {
+ConstantInt *ConstantInt::get(LLVMContext &Context, const APInt &V) {
   // Get the corresponding integer type for the bit width of the value.
   const IntegerType *ITy = IntegerType::get(Context, V.getBitWidth());
   // get an existing value or the insertion position
@@ -355,9 +382,8 @@ ConstantInt *ConstantInt::get(LLVMContext &Context, const APInt& V) {
   return Slot;
 }
 
-Constant *ConstantInt::get(const Type* Ty, uint64_t V, bool isSigned) {
-  Constant *C = get(cast<IntegerType>(Ty->getScalarType()),
-                               V, isSigned);
+Constant *ConstantInt::get(const Type *Ty, uint64_t V, bool isSigned) {
+  Constant *C = get(cast<IntegerType>(Ty->getScalarType()), V, isSigned);
 
   // For vectors, broadcast the value.
   if (const VectorType *VTy = dyn_cast<VectorType>(Ty))
@@ -596,8 +622,6 @@ Constant *ConstantArray::get(LLVMContext &Context, StringRef Str,
   return get(ATy, ElementVals);
 }
 
-
-
 ConstantStruct::ConstantStruct(const StructType *T,
                                const std::vector<Constant*> &V)
   : Constant(T, ConstantStructVal,
@@ -642,6 +666,19 @@ Constant *ConstantStruct::get(LLVMContext &Context,
                               bool Packed) {
   // FIXME: make this the primary ctor method.
   return get(Context, std::vector<Constant*>(Vals, Vals+NumVals), Packed);
+}
+
+Constant* ConstantStruct::get(LLVMContext &Context, bool Packed,
+                              Constant * Val, ...) {
+  va_list ap;
+  std::vector<Constant*> Values;
+  va_start(ap, Val);
+  while (Val) {
+    Values.push_back(Val);
+    Val = va_arg(ap, llvm::Constant*);
+  }
+  va_end(ap);
+  return get(Context, Values, Packed);
 }
 
 ConstantVector::ConstantVector(const VectorType *T,

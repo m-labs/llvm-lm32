@@ -127,7 +127,15 @@ lto_module_create_from_memory(const void* mem, size_t length);
  * Returns NULL on error (check lto_get_error_message() for details).
  */
 extern lto_module_t
-lto_module_create_from_fd(int fd, const char *path, off_t size);
+lto_module_create_from_fd(int fd, const char *path, size_t file_size);
+
+/**
+ * Loads an object file from disk. The seek point of fd is not preserved.
+ * Returns NULL on error (check lto_get_error_message() for details).
+ */
+extern lto_module_t
+lto_module_create_from_fd_at_offset(int fd, const char *path, size_t file_size,
+                                    size_t map_size, off_t offset);
 
 
 /**
@@ -263,6 +271,13 @@ lto_codegen_write_merged_modules(lto_code_gen_t cg, const char* path);
  */
 extern const void*
 lto_codegen_compile(lto_code_gen_t cg, size_t* length);
+
+/**
+ * Generates code for all added modules into one native object file.
+ * The name of the file is written to name. Returns true on error.
+ */
+extern bool
+lto_codegen_compile_to_file(lto_code_gen_t cg, const char** name);
 
 
 /**

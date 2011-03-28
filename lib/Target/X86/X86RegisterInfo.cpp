@@ -337,7 +337,27 @@ X86RegisterInfo::getCrossCopyRegClass(const TargetRegisterClass *RC) const {
     else
       return &X86::GR32RegClass;
   }
-  return NULL;
+  return RC;
+}
+
+unsigned
+X86RegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
+                                     MachineFunction &MF) const {
+  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+
+  unsigned FPDiff = TFI->hasFP(MF) ? 1 : 0;
+  switch (RC->getID()) {
+  default:
+    return 0;
+  case X86::GR32RegClassID:
+    return 4 - FPDiff;
+  case X86::GR64RegClassID:
+    return 12 - FPDiff;
+  case X86::VR128RegClassID:
+    return TM.getSubtarget<X86Subtarget>().is64Bit() ? 10 : 4;
+  case X86::VR64RegClassID:
+    return 4;
+  }
 }
 
 const unsigned *

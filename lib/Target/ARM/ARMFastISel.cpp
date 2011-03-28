@@ -123,14 +123,15 @@ class ARMFastISel : public FastISel {
                                      const TargetRegisterClass *RC,
                                      unsigned Op0, bool Op0IsKill,
                                      const ConstantFP *FPImm);
-    virtual unsigned FastEmitInst_i(unsigned MachineInstOpcode,
-                                    const TargetRegisterClass *RC,
-                                    uint64_t Imm);
     virtual unsigned FastEmitInst_rri(unsigned MachineInstOpcode,
                                       const TargetRegisterClass *RC,
                                       unsigned Op0, bool Op0IsKill,
                                       unsigned Op1, bool Op1IsKill,
                                       uint64_t Imm);
+    virtual unsigned FastEmitInst_i(unsigned MachineInstOpcode,
+                                    const TargetRegisterClass *RC,
+                                    uint64_t Imm);
+
     virtual unsigned FastEmitInst_extractsubreg(MVT RetVT,
                                                 unsigned Op0, bool Op0IsKill,
                                                 uint32_t Idx);
@@ -193,6 +194,7 @@ class ARMFastISel : public FastISel {
 
     // OptionalDef handling routines.
   private:
+    bool isARMNEONPred(const MachineInstr *MI);
     bool DefinesOptionalPredicate(MachineInstr *MI, bool *CPSR);
     const MachineInstrBuilder &AddOptionalDefs(const MachineInstrBuilder &MIB);
     void AddLoadStoreOperands(EVT VT, Address &Addr,
@@ -221,6 +223,21 @@ bool ARMFastISel::DefinesOptionalPredicate(MachineInstr *MI, bool *CPSR) {
   return true;
 }
 
+bool ARMFastISel::isARMNEONPred(const MachineInstr *MI) {
+  const TargetInstrDesc &TID = MI->getDesc();
+  
+  // If we're a thumb2 or not NEON function we were handled via isPredicable.
+  if ((TID.TSFlags & ARMII::DomainMask) != ARMII::DomainNEON ||
+       AFI->isThumb2Function())
+    return false;
+  
+  for (unsigned i = 0, e = TID.getNumOperands(); i != e; ++i)
+    if (TID.OpInfo[i].isPredicate())
+      return true;
+  
+  return false;
+}
+
 // If the machine is predicable go ahead and add the predicate operands, if
 // it needs default CC operands add those.
 // TODO: If we want to support thumb1 then we'll need to deal with optional
@@ -230,10 +247,12 @@ const MachineInstrBuilder &
 ARMFastISel::AddOptionalDefs(const MachineInstrBuilder &MIB) {
   MachineInstr *MI = &*MIB;
 
-  // Do we use a predicate?
-  if (TII.isPredicable(MI))
+  // Do we use a predicate? or...
+  // Are we NEON in ARM mode and have a predicate operand? If so, I know
+  // we're not predicable but add it anyways.
+  if (TII.isPredicable(MI) || isARMNEONPred(MI))
     AddDefaultPred(MIB);
-
+  
   // Do we optionally set a predicate?  Preds is size > 0 iff the predicate
   // defines CPSR. All other OptionalDefines in ARM are the CCR register.
   bool CPSR = false;
@@ -667,24 +686,29 @@ bool ARMFastISel::ARMComputeAddress(const Value *Obj, Address &Addr) {
           TmpOffset += SL->getElementOffset(Idx);
         } else {
           uint64_t S = TD.getTypeAllocSize(GTI.getIndexedType());
-          SmallVector<const Value *, 4> Worklist;
-          Worklist.push_back(Op);
-          do {
-            Op = Worklist.pop_back_val();
+          for (;;) {
             if (const ConstantInt *CI = dyn_cast<ConstantInt>(Op)) {
               // Constant-offset addressing.
               TmpOffset += CI->getSExtValue() * S;
-            } else if (isa<AddOperator>(Op) &&
-                       isa<ConstantInt>(cast<AddOperator>(Op)->getOperand(1))) {
-              // An add with a constant operand. Fold the constant.
+              break;
+            }
+            if (isa<AddOperator>(Op) &&
+                (!isa<Instruction>(Op) ||
+                 FuncInfo.MBBMap[cast<Instruction>(Op)->getParent()]
+                 == FuncInfo.MBB) &&
+                isa<ConstantInt>(cast<AddOperator>(Op)->getOperand(1))) {
+              // An add (in the same block) with a constant operand. Fold the 
+              // constant.
               ConstantInt *CI =
-                cast<ConstantInt>(cast<AddOperator>(Op)->getOperand(1));
+              cast<ConstantInt>(cast<AddOperator>(Op)->getOperand(1));
               TmpOffset += CI->getSExtValue() * S;
-              // Add the other operand back to the work list.
-              Worklist.push_back(cast<AddOperator>(Op)->getOperand(0));
-            } else
-              goto unsupported_gep;
-          } while (!Worklist.empty());
+              // Iterate on the other operand.
+              Op = cast<AddOperator>(Op)->getOperand(0);
+              continue;
+            } 
+            // Unsupported
+            goto unsupported_gep;
+          }
         }
       }
 

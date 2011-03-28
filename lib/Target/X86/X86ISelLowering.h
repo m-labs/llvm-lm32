@@ -159,16 +159,16 @@ namespace llvm {
 
       /// PSHUFB - Shuffle 16 8-bit values within a vector.
       PSHUFB,
-      
+
       /// PANDN - and with not'd value.
       PANDN,
-      
+
       /// PSIGNB/W/D - Copy integer sign.
-      PSIGNB, PSIGNW, PSIGND, 
-      
+      PSIGNB, PSIGNW, PSIGND,
+
       /// PBLENDVB - Variable blend
       PBLENDVB,
-      
+
       /// FMAX, FMIN - Floating point max and min.
       ///
       FMAX, FMIN,
@@ -212,7 +212,7 @@ namespace llvm {
       // ADD, SUB, SMUL, etc. - Arithmetic operations with FLAGS results.
       ADD, SUB, ADC, SBB, SMUL,
       INC, DEC, OR, XOR, AND,
-      
+
       UMUL, // LOW, HI, FLAGS = umul LHS, RHS
 
       // MUL_IMM - X86 specific multiply by immediate.
@@ -467,6 +467,8 @@ namespace llvm {
 
     virtual unsigned getJumpTableEncoding() const;
 
+    virtual MVT getShiftAmountTy(EVT LHSTy) const { return MVT::i8; }
+
     virtual const MCExpr *
     LowerCustomJumpTableEntry(const MachineJumpTableInfo *MJTI,
                               const MachineBasicBlock *MBB, unsigned uid,
@@ -675,9 +677,6 @@ namespace llvm {
     /// getFunctionAlignment - Return the Log2 alignment of this function.
     virtual unsigned getFunctionAlignment(const Function *F) const;
 
-    unsigned getRegPressureLimit(const TargetRegisterClass *RC,
-                                 MachineFunction &MF) const;
-
     /// getStackCookieLocation - Return true if the target stores stack
     /// protector cookies at a fixed offset in some non-standard address
     /// space, and populates the address space and offset as
@@ -843,6 +842,12 @@ namespace llvm {
                   DebugLoc dl, SelectionDAG &DAG) const;
 
     virtual bool isUsedByReturnOnly(SDNode *N) const;
+
+    virtual bool mayBeEmittedAsTailCall(CallInst *CI) const;
+
+    virtual EVT
+    getTypeForExtArgOrReturn(LLVMContext &Context, EVT VT,
+                             ISD::NodeType ExtendKind) const;
 
     virtual bool
       CanLowerReturn(CallingConv::ID CallConv, bool isVarArg,

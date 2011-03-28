@@ -588,11 +588,21 @@ public:
   }
 
   /// getCrossCopyRegClass - Returns a legal register class to copy a register
-  /// in the specified class to or from. Returns NULL if it is possible to copy
-  /// between a two registers of the specified class.
+  /// in the specified class to or from. If it is possible to copy the register
+  /// directly without using a cross register class copy, return the specified
+  /// RC. Returns NULL if it is not possible to copy between a two registers of
+  /// the specified class.
   virtual const TargetRegisterClass *
   getCrossCopyRegClass(const TargetRegisterClass *RC) const {
-    return NULL;
+    return RC;
+  }
+
+  /// getRegPressureLimit - Return the register pressure "high water mark" for
+  /// the specific register class. The scheduler is in high register pressure
+  /// mode (for the specific register class) if it goes over the limit.
+  virtual unsigned getRegPressureLimit(const TargetRegisterClass *RC,
+                                       MachineFunction &MF) const {
+    return 0;
   }
 
   /// getAllocationOrder - Returns the register allocation order for a specified
@@ -629,6 +639,13 @@ public:
   /// make use of) the register scavenger.
   virtual bool requiresRegisterScavenging(const MachineFunction &MF) const {
     return false;
+  }
+
+  /// useFPForScavengingIndex - returns true if the target wants to use
+  /// frame pointer based accesses to spill to the scavenger emergency spill
+  /// slot.
+  virtual bool useFPForScavengingIndex(const MachineFunction &MF) const {
+    return true;
   }
 
   /// requiresFrameIndexScavenging - returns true if the target requires post

@@ -206,19 +206,30 @@ def setend_op : Operand<i32> {
   let PrintMethod = "printSetendOperand";
 }
 
-def cps_opt : Operand<i32> {
-  let PrintMethod = "printCPSOptionOperand";
-}
-
 def msr_mask : Operand<i32> {
   let PrintMethod = "printMSRMaskOperand";
   let ParserMatchClass = MSRMaskOperand;
 }
 
-// A8.6.117, A8.6.118.  Different instructions are generated for #0 and #-0.
-// The neg_zero operand translates -0 to -1, -1 to -2, ..., etc.
-def neg_zero : Operand<i32> {
-  let PrintMethod = "printNegZeroOperand";
+// Shift Right Immediate - A shift right immediate is encoded differently from
+// other shift immediates. The imm6 field is encoded like so:
+//
+//    Offset    Encoding
+//     8        imm6<5:3> = '001', 8 - <imm> is encoded in imm6<2:0>
+//     16       imm6<5:4> = '01', 16 - <imm> is encoded in imm6<3:0>
+//     32       imm6<5> = '1', 32 - <imm> is encoded in imm6<4:0>
+//     64       64 - <imm> is encoded in imm6<5:0>
+def shr_imm8  : Operand<i32> {
+  let EncoderMethod = "getShiftRight8Imm";
+}
+def shr_imm16 : Operand<i32> {
+  let EncoderMethod = "getShiftRight16Imm";
+}
+def shr_imm32 : Operand<i32> {
+  let EncoderMethod = "getShiftRight32Imm";
+}
+def shr_imm64 : Operand<i32> {
+  let EncoderMethod = "getShiftRight64Imm";
 }
 
 //===----------------------------------------------------------------------===//
@@ -279,6 +290,7 @@ class PseudoInst<dag oops, dag iops, InstrItinClass itin, list<dag> pattern>
   let OutOperandList = oops;
   let InOperandList = iops;
   let Pattern = pattern;
+  let isCodeGenOnly = 1;
 }
 
 // PseudoInst that's ARM-mode only.
@@ -422,11 +434,11 @@ class AIstrex<bits<2> opcod, dag oops, dag iops, InstrItinClass itin,
       opc, asm, "", pattern> {
   bits<4> Rd;
   bits<4> Rt;
-  bits<4> Rn;
+  bits<4> addr;
   let Inst{27-23} = 0b00011;
   let Inst{22-21} = opcod;
   let Inst{20}    = 0;
-  let Inst{19-16} = Rn;
+  let Inst{19-16} = addr;
   let Inst{15-12} = Rd;
   let Inst{11-4}  = 0b11111001;
   let Inst{3-0}   = Rt;

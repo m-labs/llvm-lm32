@@ -139,10 +139,13 @@ class DwarfDebug {
   ///
   UniqueVector<const MCSection*> SectionMap;
 
-  // CurrentFnDbgScope - Top level scope for the current function.
-  //
+  /// CurrentFnDbgScope - Top level scope for the current function.
+  ///
   DbgScope *CurrentFnDbgScope;
   
+  /// CurrentFnArguments - List of Arguments (DbgValues) for current function.
+  SmallVector<DbgVariable *, 8> CurrentFnArguments;
+
   /// DbgScopeMap - Tracks the scopes in the current function.  Owns the
   /// contained DbgScope*s.
   ///
@@ -197,8 +200,6 @@ class DwarfDebug {
 
   typedef SmallVector<DbgScope *, 2> ScopeVector;
 
-  SmallPtrSet<const MachineInstr *, 8> InsnsEndScopeSet;
-
   /// InlineInfo - Keep track of inlined functions and their location.  This
   /// information is used to populate debug_inlined section.
   typedef std::pair<const MCSymbol *, DIE *> InlineInfoLabels;
@@ -217,9 +218,16 @@ class DwarfDebug {
   /// instruction.
   DenseMap<const MachineInstr *, MCSymbol *> LabelsAfterInsn;
 
-  /// insnNeedsLabel - Collection of instructions that need a label to mark
-  /// a debuggging information entity.
-  SmallPtrSet<const MachineInstr *, 8> InsnNeedsLabel;
+  /// UserVariables - Every user variable mentioned by a DBG_VALUE instruction
+  /// in order of appearance.
+  SmallVector<const MDNode*, 8> UserVariables;
+
+  /// DbgValues - For each user variable, keep a list of DBG_VALUE
+  /// instructions in order. The list can also contain normal instructions that
+  /// clobber the previous DBG_VALUE.
+  typedef DenseMap<const MDNode*, SmallVector<const MachineInstr*, 4> >
+    DbgValueHistoryMap;
+  DbgValueHistoryMap DbgValues;
 
   SmallVector<const MCSymbol *, 8> DebugRangeSymbols;
 
@@ -278,12 +286,6 @@ private:
   /// addLabel - Add a Dwarf label attribute data and value.
   ///
   void addLabel(DIE *Die, unsigned Attribute, unsigned Form,
-                const MCSymbol *Label);
-
-  /// addSectionOffset - Add a Dwarf section relative label attribute data and
-  /// value.
-  ///
-  void addSectionOffset(DIE *Die, unsigned Attribute, unsigned Form,
                 const MCSymbol *Label);
 
   /// addDelta - Add a label delta attribute data and value.
@@ -513,7 +515,7 @@ private:
   /// GetOrCreateSourceID - Look up the source id with the given directory and
   /// source file names. If none currently exists, create a new id and insert it
   /// in the SourceIds map.
-  unsigned GetOrCreateSourceID(StringRef FullName);
+  unsigned GetOrCreateSourceID(StringRef DirName, StringRef FullName);
 
   /// constructCompileUnit - Create new CompileUnit for the given 
   /// metadata node with tag DW_TAG_compile_unit.
@@ -531,7 +533,7 @@ private:
   /// recordSourceLine - Register a source line with debug info. Returns the
   /// unique label that was emitted and which provides correspondence to
   /// the source line list.
-  MCSymbol *recordSourceLine(unsigned Line, unsigned Col, const MDNode *Scope);
+  void recordSourceLine(unsigned Line, unsigned Col, const MDNode *Scope);
   
   /// recordVariableFrameIndex - Record a variable's index.
   void recordVariableFrameIndex(const DbgVariable *V, int Index);
@@ -552,6 +554,11 @@ private:
   /// and collect DbgScopes. Return true, if atleast one scope was found.
   bool extractScopeInformation();
   
+  /// addCurrentFnArgument - If Var is an current function argument that add
+  /// it in CurrentFnArguments list.
+  bool addCurrentFnArgument(const MachineFunction *MF,
+                            DbgVariable *Var, DbgScope *Scope);
+
   /// collectVariableInfo - Populate DbgScope entries with variables' info.
   void collectVariableInfo(const MachineFunction *,
                            SmallPtrSet<const MDNode *, 16> &ProcessedVars);
@@ -560,6 +567,23 @@ private:
   /// side table maintained by MMI.
   void collectVariableInfoFromMMITable(const MachineFunction * MF,
                                        SmallPtrSet<const MDNode *, 16> &P);
+
+  /// requestLabelBeforeInsn - Ensure that a label will be emitted before MI.
+  void requestLabelBeforeInsn(const MachineInstr *MI) {
+    LabelsBeforeInsn.insert(std::make_pair(MI, (MCSymbol*)0));
+  }
+
+  /// getLabelBeforeInsn - Return Label preceding the instruction.
+  const MCSymbol *getLabelBeforeInsn(const MachineInstr *MI);
+
+  /// requestLabelAfterInsn - Ensure that a label will be emitted after MI.
+  void requestLabelAfterInsn(const MachineInstr *MI) {
+    LabelsAfterInsn.insert(std::make_pair(MI, (MCSymbol*)0));
+  }
+
+  /// getLabelAfterInsn - Return Label immediately following the instruction.
+  const MCSymbol *getLabelAfterInsn(const MachineInstr *MI);
+
 public:
   //===--------------------------------------------------------------------===//
   // Main entry points.
@@ -582,12 +606,6 @@ public:
   /// endFunction - Gather and emit post-function debug information.
   ///
   void endFunction(const MachineFunction *MF);
-
-  /// getLabelBeforeInsn - Return Label preceding the instruction.
-  const MCSymbol *getLabelBeforeInsn(const MachineInstr *MI);
-
-  /// getLabelAfterInsn - Return Label immediately following the instruction.
-  const MCSymbol *getLabelAfterInsn(const MachineInstr *MI);
 
   /// beginInstruction - Process beginning of an instruction.
   void beginInstruction(const MachineInstr *MI);

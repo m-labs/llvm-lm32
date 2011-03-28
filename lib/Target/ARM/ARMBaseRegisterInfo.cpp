@@ -348,6 +348,26 @@ ARMBaseRegisterInfo::getPointerRegClass(unsigned Kind) const {
   return ARM::GPRRegisterClass;
 }
 
+unsigned
+ARMBaseRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
+                                         MachineFunction &MF) const {
+  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+
+  switch (RC->getID()) {
+  default:
+    return 0;
+  case ARM::tGPRRegClassID:
+    return TFI->hasFP(MF) ? 4 : 5;
+  case ARM::GPRRegClassID: {
+    unsigned FP = TFI->hasFP(MF) ? 1 : 0;
+    return 10 - FP - (STI.isR9Reserved() ? 1 : 0);
+  }
+  case ARM::SPRRegClassID:  // Currently not used as 'rep' register class.
+  case ARM::DPRRegClassID:
+    return 32 - 10;
+  }
+}
+
 /// getAllocationOrder - Returns the register allocation order for a specified
 /// register class in the form of a pair of TargetRegisterClass iterators.
 std::pair<TargetRegisterClass::iterator,TargetRegisterClass::iterator>
@@ -428,6 +448,10 @@ ARMBaseRegisterInfo::getAllocationOrder(const TargetRegisterClass *RC,
     ARM::R0, ARM::R2, ARM::R10,ARM::R12,ARM::LR, ARM::R4, ARM::R6, ARM::R8
   };
 
+  // We only support even/odd hints for GPR and rGPR.
+  if (RC != ARM::GPRRegisterClass && RC != ARM::rGPRRegisterClass)
+    return std::make_pair(RC->allocation_order_begin(MF),
+                          RC->allocation_order_end(MF));
 
   if (HintType == ARMRI::RegPairEven) {
     if (isPhysicalRegister(HintReg) && getRegisterPairEven(HintReg, MF) == 0)
@@ -806,7 +830,7 @@ emitLoadConstPool(MachineBasicBlock &MBB,
                   DebugLoc dl,
                   unsigned DestReg, unsigned SubIdx, int Val,
                   ARMCC::CondCodes Pred,
-                  unsigned PredReg) const {
+                  unsigned PredReg, unsigned MIFlags) const {
   MachineFunction &MF = *MBB.getParent();
   MachineConstantPool *ConstantPool = MF.getConstantPool();
   const Constant *C =
@@ -816,7 +840,8 @@ emitLoadConstPool(MachineBasicBlock &MBB,
   BuildMI(MBB, MBBI, dl, TII.get(ARM::LDRcp))
     .addReg(DestReg, getDefRegState(true), SubIdx)
     .addConstantPoolIndex(Idx)
-    .addImm(0).addImm(Pred).addReg(PredReg);
+    .addImm(0).addImm(Pred).addReg(PredReg)
+    .setMIFlags(MIFlags);
 }
 
 bool ARMBaseRegisterInfo::

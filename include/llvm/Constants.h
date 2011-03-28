@@ -57,6 +57,8 @@ protected:
 public:
   static ConstantInt *getTrue(LLVMContext &Context);
   static ConstantInt *getFalse(LLVMContext &Context);
+  static Constant *getTrue(const Type *Ty);
+  static Constant *getFalse(const Type *Ty);
   
   /// If Ty is a vector type, return a Constant with a splat of the given
   /// value. Otherwise return a ConstantInt for the given value.
@@ -425,6 +427,8 @@ public:
                        const std::vector<Constant*> &V, bool Packed);
   static Constant *get(LLVMContext &Context,
                        Constant *const *Vals, unsigned NumVals, bool Packed);
+  static Constant *get(LLVMContext &Context, bool Packed,
+                       Constant * Val, ...) END_WITH_NULL;
 
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Constant);
@@ -599,6 +603,7 @@ struct OperandTraits<BlockAddress> :
 
 DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(BlockAddress, Value)
   
+
 //===----------------------------------------------------------------------===//
 /// ConstantExpr - a constant value that is initialized with an expression using
 /// other constant values.

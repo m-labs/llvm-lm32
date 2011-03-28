@@ -274,8 +274,8 @@ public:
     if (is64Bit())
       Write32(0); // reserved3
 
-    assert(OS.tell() - Start == is64Bit() ? macho::Section64Size :
-           macho::Section32Size);
+    assert(OS.tell() - Start == (is64Bit() ? macho::Section64Size :
+           macho::Section32Size));
   }
 
   void WriteSymtabLoadCommand(uint32_t SymbolOffset, uint32_t NumSymbols,
@@ -821,12 +821,12 @@ public:
     //  1 - :upper16: for movt instructions
     // high bit of r_length:
     //  0 - arm instructions
-    //  1 - thumb instructions   
+    //  1 - thumb instructions
     // the other half of the relocated expression is in the following pair
     // relocation entry in the the low 16 bits of r_address field.
     unsigned ThumbBit = 0;
     unsigned MovtBit = 0;
-    switch (Fixup.getKind()) {
+    switch ((unsigned)Fixup.getKind()) {
     default: break;
     case ARM::fixup_arm_movt_hi16:
     case ARM::fixup_arm_movt_hi16_pcrel:
@@ -952,15 +952,10 @@ public:
       RelocType = unsigned(macho::RIT_ARM_ThumbBranch22Bit);
       Log2Size = llvm::Log2_32(2);
       return true;
-
+      
     case ARM::fixup_arm_thumb_bl:
-      RelocType = unsigned(macho::RIT_ARM_ThumbBranch32Bit);
-      Log2Size = llvm::Log2_32(4);
-      return true;
-
     case ARM::fixup_arm_thumb_blx:
       RelocType = unsigned(macho::RIT_ARM_ThumbBranch22Bit);
-      // Report as 'long', even though that is not quite accurate.
       Log2Size = llvm::Log2_32(4);
       return true;
 

@@ -20,6 +20,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -27,12 +28,23 @@ PTXTargetLowering::PTXTargetLowering(TargetMachine &TM)
   : TargetLowering(TM, new TargetLoweringObjectFileELF()) {
   // Set up the register classes.
   addRegisterClass(MVT::i1,  PTX::PredsRegisterClass);
-  addRegisterClass(MVT::i32, PTX::RRegs32RegisterClass);
+  addRegisterClass(MVT::i16, PTX::RRegu16RegisterClass);
+  addRegisterClass(MVT::i32, PTX::RRegu32RegisterClass);
+  addRegisterClass(MVT::i64, PTX::RRegu64RegisterClass);
+  addRegisterClass(MVT::f32, PTX::RRegf32RegisterClass);
+  addRegisterClass(MVT::f64, PTX::RRegf64RegisterClass);
 
   setOperationAction(ISD::EXCEPTIONADDR, MVT::i32, Expand);
 
+  setOperationAction(ISD::ConstantFP, MVT::f32, Legal);
+  setOperationAction(ISD::ConstantFP, MVT::f64, Legal);
+
   // Customize translation of memory addresses
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
+  setOperationAction(ISD::GlobalAddress, MVT::i64, Custom);
+
+  // Expand BR_CC into BRCOND
+  setOperationAction(ISD::BR_CC, MVT::Other, Expand);
 
   // Compute derived properties from the register classes
   computeRegisterProperties();
@@ -40,8 +52,10 @@ PTXTargetLowering::PTXTargetLowering(TargetMachine &TM)
 
 SDValue PTXTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
-    default:                 llvm_unreachable("Unimplemented operand");
-    case ISD::GlobalAddress: return LowerGlobalAddress(Op, DAG);
+    default:
+      llvm_unreachable("Unimplemented operand");
+    case ISD::GlobalAddress:
+      return LowerGlobalAddress(Op, DAG);
   }
 }
 
@@ -49,6 +63,8 @@ const char *PTXTargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
     default:
       llvm_unreachable("Unknown opcode");
+    case PTXISD::COPY_ADDRESS:
+      return "PTXISD::COPY_ADDRESS";
     case PTXISD::READ_PARAM:
       return "PTXISD::READ_PARAM";
     case PTXISD::EXIT:
@@ -67,7 +83,16 @@ LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const {
   EVT PtrVT = getPointerTy();
   DebugLoc dl = Op.getDebugLoc();
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
-  return DAG.getTargetGlobalAddress(GV, dl, PtrVT);
+
+  assert(PtrVT.isSimple() && "Pointer must be to primitive type.");
+
+  SDValue targetGlobal = DAG.getTargetGlobalAddress(GV, dl, PtrVT);
+  SDValue movInstr = DAG.getNode(PTXISD::COPY_ADDRESS,
+                                 dl,
+                                 PtrVT.getSimpleVT(),
+                                 targetGlobal);
+
+  return movInstr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -87,9 +112,13 @@ struct argmap_entry {
   bool operator==(MVT::SimpleValueType _VT) const { return VT == _VT; }
 } argmap[] = {
   argmap_entry(MVT::i1,  PTX::PredsRegisterClass),
-  argmap_entry(MVT::i32, PTX::RRegs32RegisterClass)
+  argmap_entry(MVT::i16, PTX::RRegu16RegisterClass),
+  argmap_entry(MVT::i32, PTX::RRegu32RegisterClass),
+  argmap_entry(MVT::i64, PTX::RRegu64RegisterClass),
+  argmap_entry(MVT::f32, PTX::RRegf32RegisterClass),
+  argmap_entry(MVT::f64, PTX::RRegf64RegisterClass)
 };
-} // end anonymous namespace
+}                               // end anonymous namespace
 
 SDValue PTXTargetLowering::
   LowerFormalArguments(SDValue Chain,
@@ -185,10 +214,25 @@ SDValue PTXTargetLowering::
   if (Outs.size() == 0)
     return DAG.getNode(PTXISD::RET, dl, MVT::Other, Chain);
 
-  assert(Outs[0].VT == MVT::i32 && "Can return only basic types");
-
   SDValue Flag;
-  unsigned reg = PTX::R0;
+  unsigned reg;
+
+  if (Outs[0].VT == MVT::i16) {
+    reg = PTX::RH0;
+  }
+  else if (Outs[0].VT == MVT::i32) {
+    reg = PTX::R0;
+  }
+  else if (Outs[0].VT == MVT::i64) {
+    reg = PTX::RD0;
+  }
+  else if (Outs[0].VT == MVT::f32) {
+    reg = PTX::F0;
+  }
+  else {
+    assert(Outs[0].VT == MVT::f64 && "Can return only basic types");
+    reg = PTX::FD0;
+  }
 
   MachineFunction &MF = DAG.getMachineFunction();
   PTXMachineFunctionInfo *MFI = MF.getInfo<PTXMachineFunctionInfo>();

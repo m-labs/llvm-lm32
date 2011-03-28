@@ -124,7 +124,6 @@ public:
   virtual void EmitCOFFSymbolStorageClass(int StorageClass);
   virtual void EmitCOFFSymbolType(int Type);
   virtual void EndCOFFSymbolDef();
-  virtual void EmitCOFFSecRel32(MCSymbol const *Symbol);
   virtual void EmitELFSize(MCSymbol *Symbol, const MCExpr *Value);
   virtual void EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                 unsigned ByteAlignment);
@@ -234,7 +233,7 @@ void PTXMCAsmStreamer::ChangeSection(const MCSection *Section) {
 void PTXMCAsmStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
   assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
-  assert(getCurrentSection() && "Cannot emit before setting section!");
+  //assert(getCurrentSection() && "Cannot emit before setting section!");
 
   OS << *Symbol << MAI.getLabelSuffix();
   EmitEOL();
@@ -277,8 +276,6 @@ void PTXMCAsmStreamer::EmitCOFFSymbolStorageClass (int StorageClass) {}
 void PTXMCAsmStreamer::EmitCOFFSymbolType (int Type) {}
 
 void PTXMCAsmStreamer::EndCOFFSymbolDef() {}
-
-void PTXMCAsmStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol) {}
 
 void PTXMCAsmStreamer::EmitELFSize(MCSymbol *Symbol, const MCExpr *Value) {}
 
@@ -426,7 +423,8 @@ void PTXMCAsmStreamer::EmitFill(uint64_t NumBytes, uint8_t FillValue,
   MCStreamer::EmitFill(NumBytes, FillValue, AddrSpace);
 }
 
-void PTXMCAsmStreamer::EmitValueToAlignment(unsigned ByteAlignment, int64_t Value,
+void PTXMCAsmStreamer::EmitValueToAlignment(unsigned ByteAlignment,
+                                            int64_t Value,
                                             unsigned ValueSize,
                                             unsigned MaxBytesToEmit) {
   // Some assemblers don't support non-power of two alignments, so we always

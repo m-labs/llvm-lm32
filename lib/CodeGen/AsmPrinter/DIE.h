@@ -70,7 +70,6 @@ namespace llvm {
 
   public:
     DIEAbbrev(unsigned T, unsigned C) : Tag(T), ChildrenFlag(C), Data() {}
-    virtual ~DIEAbbrev() {}
 
     // Accessors.
     unsigned getTag() const { return Tag; }
@@ -326,36 +325,6 @@ namespace llvm {
     // Implement isa/cast/dyncast.
     static bool classof(const DIELabel *)  { return true; }
     static bool classof(const DIEValue *L) { return L->getType() == isLabel; }
-
-#ifndef NDEBUG
-    virtual void print(raw_ostream &O);
-#endif
-  };
-
-  //===--------------------------------------------------------------------===//
-  /// DIESectionOffset - A section relative label expression DIE.
-  //
-  class DIESectionOffset : public DIEValue {
-    const MCSymbol *Label;
-  public:
-    explicit DIESectionOffset(const MCSymbol *L) : DIEValue(isSectionOffset),
-      Label(L) {}
-
-    /// EmitValue - Emit label value.
-    ///
-    virtual void EmitValue(AsmPrinter *AP, unsigned Form) const;
-
-    /// getValue - Get MCSymbol.
-    ///
-    const MCSymbol *getValue()       const { return Label; }
-
-    /// SizeOf - Determine size of label value in bytes.
-    ///
-    virtual unsigned SizeOf(AsmPrinter *AP, unsigned Form) const;
-
-    // Implement isa/cast/dyncast.
-    static bool classof(const DIELabel *)  { return true; }
-    static bool classof(const DIEValue *L) { return L->getType() == isSectionOffset; }
 
 #ifndef NDEBUG
     virtual void print(raw_ostream &O);

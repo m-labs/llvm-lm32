@@ -61,40 +61,6 @@ def t2_so_imm_neg : Operand<i32>,
   return ARM_AM::getT2SOImmVal(-((uint32_t)N->getZExtValue())) != -1;
 }], t2_so_imm_neg_XFORM>;
 
-// Break t2_so_imm's up into two pieces.  This handles immediates with up to 16
-// bits set in them.  This uses t2_so_imm2part to match and t2_so_imm2part_[12]
-// to get the first/second pieces.
-def t2_so_imm2part : Operand<i32>,
-                  PatLeaf<(imm), [{
-      return ARM_AM::isT2SOImmTwoPartVal((unsigned)N->getZExtValue());
-    }]> {
-}
-
-def t2_so_imm2part_1 : SDNodeXForm<imm, [{
-  unsigned V = ARM_AM::getT2SOImmTwoPartFirst((unsigned)N->getZExtValue());
-  return CurDAG->getTargetConstant(V, MVT::i32);
-}]>;
-
-def t2_so_imm2part_2 : SDNodeXForm<imm, [{
-  unsigned V = ARM_AM::getT2SOImmTwoPartSecond((unsigned)N->getZExtValue());
-  return CurDAG->getTargetConstant(V, MVT::i32);
-}]>;
-
-def t2_so_neg_imm2part : Operand<i32>, PatLeaf<(imm), [{
-      return ARM_AM::isT2SOImmTwoPartVal(-(int)N->getZExtValue());
-    }]> {
-}
-
-def t2_so_neg_imm2part_1 : SDNodeXForm<imm, [{
-  unsigned V = ARM_AM::getT2SOImmTwoPartFirst(-(int)N->getZExtValue());
-  return CurDAG->getTargetConstant(V, MVT::i32);
-}]>;
-
-def t2_so_neg_imm2part_2 : SDNodeXForm<imm, [{
-  unsigned V = ARM_AM::getT2SOImmTwoPartSecond(-(int)N->getZExtValue());
-  return CurDAG->getTargetConstant(V, MVT::i32);
-}]>;
-
 /// imm1_31 predicate - True if the 32-bit immediate is in the range [1,31].
 def imm1_31 : PatLeaf<(i32 imm), [{
   return (int32_t)N->getZExtValue() >= 1 && (int32_t)N->getZExtValue() < 32;
@@ -128,6 +94,12 @@ def t2addrmode_imm12 : Operand<i32>,
   let MIOperandInfo = (ops GPR:$base, i32imm:$offsimm);
   let ParserMatchClass = MemMode5AsmOperand;
 }
+
+// t2ldrlabel  := imm12
+def t2ldrlabel : Operand<i32> {
+  let EncoderMethod = "getAddrModeImm12OpValue";
+}
+
 
 // ADR instruction labels.
 def t2adrlabel : Operand<i32> {
@@ -173,6 +145,15 @@ def t2addrmode_so_reg : Operand<i32>,
   let ParserMatchClass = MemMode5AsmOperand;
 }
 
+// t2addrmode_reg := reg
+// Used by load/store exclusive instructions. Useful to enable right assembly
+// parsing and printing. Not used for any codegen matching.
+//
+def t2addrmode_reg : Operand<i32> {
+  let PrintMethod = "printAddrMode7Operand";
+  let MIOperandInfo = (ops tGPR);
+  let ParserMatchClass = MemMode7AsmOperand;
+}
 
 //===----------------------------------------------------------------------===//
 // Multiclass helpers...
@@ -911,7 +892,7 @@ multiclass T2I_ld<bit signed, bits<2> opcod, string opc,
   }
 
   // FIXME: Is the pci variant actually needed?
-  def pci : T2Ipc <(outs GPR:$Rt), (ins i32imm:$addr), iii,
+  def pci : T2Ipc <(outs GPR:$Rt), (ins t2ldrlabel:$addr), iii,
                    opc, ".w\t$Rt, $addr",
                    [(set GPR:$Rt, (opnode (ARMWrapper tconstpool:$addr)))]> {
     let isReMaterializable = 1;
@@ -2607,8 +2588,14 @@ def t2REVSH : T2I_misc<0b01, 0b11, (outs rGPR:$Rd), (ins rGPR:$Rm), IIC_iUNAr,
                        "revsh", ".w\t$Rd, $Rm",
                  [(set rGPR:$Rd,
                     (sext_inreg
-                      (or (srl (and rGPR:$Rm, 0xFF00), (i32 8)),
+                      (or (srl rGPR:$Rm, (i32 8)),
                           (shl rGPR:$Rm, (i32 8))), i16))]>;
+
+def : T2Pat<(sext_inreg (or (srl (and rGPR:$Rm, 0xFF00), (i32 8)),
+                            (shl rGPR:$Rm, (i32 8))), i16),
+            (t2REVSH rGPR:$Rm)>;
+
+def : T2Pat<(sra (bswap rGPR:$Rm), (i32 16)), (t2REVSH rGPR:$Rm)>;
 
 def t2PKHBT : T2ThreeReg<
             (outs rGPR:$Rd), (ins rGPR:$Rn, rGPR:$Rm, shift_imm:$sh),
@@ -2843,9 +2830,9 @@ class T2I_ldrex<bits<2> opcod, dag oops, dag iops, AddrMode am, SizeFlagVal sz,
   let Inst{5-4} = opcod;
   let Inst{3-0} = 0b1111;
 
-  bits<4> Rn;
+  bits<4> addr;
   bits<4> Rt;
-  let Inst{19-16} = Rn;
+  let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
 class T2I_strex<bits<2> opcod, dag oops, dag iops, AddrMode am, SizeFlagVal sz,
@@ -2859,37 +2846,37 @@ class T2I_strex<bits<2> opcod, dag oops, dag iops, AddrMode am, SizeFlagVal sz,
   let Inst{5-4} = opcod;
 
   bits<4> Rd;
-  bits<4> Rn;
+  bits<4> addr;
   bits<4> Rt;
-  let Inst{11-8}  = Rd;
-  let Inst{19-16} = Rn;
+  let Inst{3-0}  = Rd;
+  let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
 
 let mayLoad = 1 in {
-def t2LDREXB : T2I_ldrex<0b00, (outs rGPR:$Rt), (ins rGPR:$Rn), AddrModeNone,
-                         Size4Bytes, NoItinerary, "ldrexb", "\t$Rt, [$Rn]",
+def t2LDREXB : T2I_ldrex<0b00, (outs rGPR:$Rt), (ins t2addrmode_reg:$addr), AddrModeNone,
+                         Size4Bytes, NoItinerary, "ldrexb", "\t$Rt, $addr",
                          "", []>;
-def t2LDREXH : T2I_ldrex<0b01, (outs rGPR:$Rt), (ins rGPR:$Rn), AddrModeNone,
-                         Size4Bytes, NoItinerary, "ldrexh", "\t$Rt, [$Rn]",
+def t2LDREXH : T2I_ldrex<0b01, (outs rGPR:$Rt), (ins t2addrmode_reg:$addr), AddrModeNone,
+                         Size4Bytes, NoItinerary, "ldrexh", "\t$Rt, $addr",
                          "", []>;
-def t2LDREX  : Thumb2I<(outs rGPR:$Rt), (ins rGPR:$Rn), AddrModeNone,
+def t2LDREX  : Thumb2I<(outs rGPR:$Rt), (ins t2addrmode_reg:$addr), AddrModeNone,
                        Size4Bytes, NoItinerary,
-                       "ldrex", "\t$Rt, [$Rn]", "",
+                       "ldrex", "\t$Rt, $addr", "",
                       []> {
   let Inst{31-27} = 0b11101;
   let Inst{26-20} = 0b0000101;
   let Inst{11-8} = 0b1111;
   let Inst{7-0} = 0b00000000; // imm8 = 0
 
-  bits<4> Rn;
   bits<4> Rt;
-  let Inst{19-16} = Rn;
+  bits<4> addr;
+  let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
-def t2LDREXD : T2I_ldrex<0b11, (outs rGPR:$Rt, rGPR:$Rt2), (ins rGPR:$Rn),
+def t2LDREXD : T2I_ldrex<0b11, (outs rGPR:$Rt, rGPR:$Rt2), (ins t2addrmode_reg:$addr),
                          AddrModeNone, Size4Bytes, NoItinerary,
-                         "ldrexd", "\t$Rt, $Rt2, [$Rn]", "",
+                         "ldrexd", "\t$Rt, $Rt2, $addr", "",
                          [], {?, ?, ?, ?}> {
   bits<4> Rt2;
   let Inst{11-8} = Rt2;
@@ -2897,31 +2884,31 @@ def t2LDREXD : T2I_ldrex<0b11, (outs rGPR:$Rt, rGPR:$Rt2), (ins rGPR:$Rn),
 }
 
 let mayStore = 1, Constraints = "@earlyclobber $Rd" in {
-def t2STREXB : T2I_strex<0b00, (outs rGPR:$Rd), (ins rGPR:$Rt, rGPR:$Rn),
-                         AddrModeNone, Size4Bytes, NoItinerary,
-                         "strexb", "\t$Rd, $Rt, [$Rn]", "", []>;
-def t2STREXH : T2I_strex<0b01, (outs rGPR:$Rd), (ins rGPR:$Rt, rGPR:$Rn),
-                         AddrModeNone, Size4Bytes, NoItinerary,
-                         "strexh", "\t$Rd, $Rt, [$Rn]", "", []>;
-def t2STREX  : Thumb2I<(outs rGPR:$Rd), (ins rGPR:$Rt, rGPR:$Rn),
-                       AddrModeNone, Size4Bytes, NoItinerary,
-                       "strex", "\t$Rd, $Rt, [$Rn]", "",
-                      []> {
+def t2STREXB : T2I_strex<0b00, (outs rGPR:$Rd), (ins rGPR:$Rt, t2addrmode_reg:$addr),
+                  AddrModeNone, Size4Bytes, NoItinerary,
+                  "strexb", "\t$Rd, $Rt, $addr", "", []>;
+def t2STREXH : T2I_strex<0b01, (outs rGPR:$Rd), (ins rGPR:$Rt, t2addrmode_reg:$addr),
+                  AddrModeNone, Size4Bytes, NoItinerary,
+                  "strexh", "\t$Rd, $Rt, $addr", "", []>;
+def t2STREX  : Thumb2I<(outs rGPR:$Rd), (ins rGPR:$Rt, t2addrmode_reg:$addr),
+                  AddrModeNone, Size4Bytes, NoItinerary,
+                  "strex", "\t$Rd, $Rt, $addr", "",
+                  []> {
   let Inst{31-27} = 0b11101;
   let Inst{26-20} = 0b0000100;
   let Inst{7-0} = 0b00000000; // imm8 = 0
 
   bits<4> Rd;
-  bits<4> Rn;
+  bits<4> addr;
   bits<4> Rt;
   let Inst{11-8}  = Rd;
-  let Inst{19-16} = Rn;
+  let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
 def t2STREXD : T2I_strex<0b11, (outs rGPR:$Rd),
-                         (ins rGPR:$Rt, rGPR:$Rt2, rGPR:$Rn),
+                         (ins rGPR:$Rt, rGPR:$Rt2, t2addrmode_reg:$addr),
                          AddrModeNone, Size4Bytes, NoItinerary,
-                         "strexd", "\t$Rd, $Rt, $Rt2, [$Rn]", "", [],
+                         "strexd", "\t$Rd, $Rt, $Rt2, $addr", "", [],
                          {?, ?, ?, ?}> {
   bits<4> Rt2;
   let Inst{11-8} = Rt2;
@@ -3352,10 +3339,8 @@ def t2MSR : T2SpecialReg<0b111100111000 /* op31-20 */, 0b10 /* op15-14 */,
 // Move between coprocessor and ARM core register -- for disassembly only
 //
 
-class t2MovRCopro<string opc, bit direction>
-  : T2Cop<(outs), (ins p_imm:$cop, i32imm:$opc1,
-                       GPR:$Rt, c_imm:$CRn, c_imm:$CRm, i32imm:$opc2),
-          !strconcat(opc, "\t$cop, $opc1, $Rt, $CRn, $CRm, $opc2"),
+class t2MovRCopro<string opc, bit direction, dag oops, dag iops>
+  : T2Cop<oops, iops, !strconcat(opc, "\t$cop, $opc1, $Rt, $CRn, $CRm, $opc2"),
           [/* For disassembly only; pattern left blank */]> {
   let Inst{27-24} = 0b1110;
   let Inst{20} = direction;
@@ -3376,8 +3361,12 @@ class t2MovRCopro<string opc, bit direction>
   let Inst{19-16} = CRn;
 }
 
-def t2MCR2 : t2MovRCopro<"mcr2", 0 /* from ARM core register to coprocessor */>;
-def t2MRC2 : t2MovRCopro<"mrc2", 1 /* from coprocessor to ARM core register */>;
+def t2MCR2 : t2MovRCopro<"mcr2", 0 /* from ARM core register to coprocessor */,
+             (outs), (ins p_imm:$cop, i32imm:$opc1, GPR:$Rt, c_imm:$CRn,
+                          c_imm:$CRm, i32imm:$opc2)>;
+def t2MRC2 : t2MovRCopro<"mrc2", 1 /* from coprocessor to ARM core register */,
+             (outs GPR:$Rt), (ins p_imm:$cop, i32imm:$opc1, c_imm:$CRn,
+                                  c_imm:$CRm, i32imm:$opc2)>;
 
 class t2MovRRCopro<string opc, bit direction>
   : T2Cop<(outs), (ins p_imm:$cop, i32imm:$opc1, GPR:$Rt, GPR:$Rt2, c_imm:$CRm),

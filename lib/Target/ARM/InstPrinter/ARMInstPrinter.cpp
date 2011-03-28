@@ -29,6 +29,9 @@ StringRef ARMInstPrinter::getOpcodeName(unsigned Opcode) const {
   return getInstructionName(Opcode);
 }
 
+StringRef ARMInstPrinter::getRegName(unsigned RegNo) const {
+  return getRegisterName(RegNo);
+}
 
 void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
   unsigned Opcode = MI->getOpcode();
@@ -314,6 +317,12 @@ void ARMInstPrinter::printAddrMode6Operand(const MCInst *MI, unsigned OpNum,
   O << "]";
 }
 
+void ARMInstPrinter::printAddrMode7Operand(const MCInst *MI, unsigned OpNum,
+                                           raw_ostream &O) {
+  const MCOperand &MO1 = MI->getOperand(OpNum);
+  O << "[" << getRegisterName(MO1.getReg()) << "]";
+}
+
 void ARMInstPrinter::printAddrMode6OffsetOperand(const MCInst *MI,
                                                  unsigned OpNum,
                                                  raw_ostream &O) {
@@ -412,16 +421,6 @@ void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
     if (Mask & 2) O << 'x';
     if (Mask & 1) O << 'c';
   }
-}
-
-void ARMInstPrinter::printNegZeroOperand(const MCInst *MI, unsigned OpNum,
-                                         raw_ostream &O) {
-  const MCOperand &Op = MI->getOperand(OpNum);
-  O << '#';
-  if (Op.getImm() < 0)
-    O << '-' << (-Op.getImm() - 1);
-  else
-    O << Op.getImm();
 }
 
 void ARMInstPrinter::printPredicateOperand(const MCInst *MI, unsigned OpNum,

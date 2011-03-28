@@ -601,7 +601,7 @@ Instruction *InstCombiner::FoldOpIntoPhi(Instruction &I) {
 
   // Okay, we can do the transformation: create the new PHI node.
   PHINode *NewPN = PHINode::Create(I.getType(), "");
-  NewPN->reserveOperandSpace(PN->getNumOperands()/2);
+  NewPN->reserveOperandSpace(PN->getNumIncomingValues());
   InsertNewInstBefore(NewPN, *PN);
   NewPN->takeName(PN);
   
@@ -1647,6 +1647,10 @@ bool InstCombiner::runOnFunction(Function &F) {
   Builder = &TheBuilder;
   
   bool EverMadeChange = false;
+
+  // Lower dbg.declare intrinsics otherwise their value may be clobbered
+  // by instcombiner.
+  EverMadeChange = LowerDbgDeclare(F);
 
   // Iterate while there is work to do.
   unsigned Iteration = 0;

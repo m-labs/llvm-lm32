@@ -481,15 +481,6 @@ void DwarfDebug::addLabel(DIE *Die, unsigned Attribute, unsigned Form,
   Die->addValue(Attribute, Form, Value);
 }
 
-/// addSectionOffset - Add a Dwarf section relative label attribute data and
-/// value.
-///
-void DwarfDebug::addSectionOffset(DIE *Die, unsigned Attribute, unsigned Form,
-                          const MCSymbol *Label) {
-  DIEValue *Value = new (DIEValueAllocator) DIESectionOffset(Label);
-  Die->addValue(Attribute, Form, Value);
-}
-
 /// addDelta - Add a label delta attribute data and value.
 ///
 void DwarfDebug::addDelta(DIE *Die, unsigned Attribute, unsigned Form,
@@ -525,7 +516,8 @@ void DwarfDebug::addSourceLine(DIE *Die, DIVariable V) {
   unsigned Line = V.getLineNumber();
   if (Line == 0)
     return;
-  unsigned FileID = GetOrCreateSourceID(V.getContext().getFilename());
+  unsigned FileID = GetOrCreateSourceID(V.getContext().getFilename(),
+                                        V.getContext().getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -541,7 +533,8 @@ void DwarfDebug::addSourceLine(DIE *Die, DIGlobalVariable G) {
   unsigned Line = G.getLineNumber();
   if (Line == 0)
     return;
-  unsigned FileID = GetOrCreateSourceID(G.getContext().getFilename());
+  unsigned FileID = GetOrCreateSourceID(G.getContext().getFilename(),
+                                        G.getContext().getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -560,7 +553,7 @@ void DwarfDebug::addSourceLine(DIE *Die, DISubprogram SP) {
   unsigned Line = SP.getLineNumber();
   if (!SP.getContext().Verify())
     return;
-  unsigned FileID = GetOrCreateSourceID(SP.getFilename());
+  unsigned FileID = GetOrCreateSourceID(SP.getFilename(), SP.getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -576,7 +569,7 @@ void DwarfDebug::addSourceLine(DIE *Die, DIType Ty) {
   unsigned Line = Ty.getLineNumber();
   if (Line == 0 || !Ty.getContext().Verify())
     return;
-  unsigned FileID = GetOrCreateSourceID(Ty.getFilename());
+  unsigned FileID = GetOrCreateSourceID(Ty.getFilename(), Ty.getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -594,7 +587,7 @@ void DwarfDebug::addSourceLine(DIE *Die, DINameSpace NS) {
     return;
   StringRef FN = NS.getFilename();
 
-  unsigned FileID = GetOrCreateSourceID(FN);
+  unsigned FileID = GetOrCreateSourceID(FN, NS.getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -1811,6 +1804,14 @@ DIE *DwarfDebug::constructScopeDIE(DbgScope *Scope) {
     return NULL;
 
   SmallVector <DIE *, 8> Children;
+
+  // Collect arguments for current function.
+  if (Scope == CurrentFnDbgScope)
+    for (unsigned i = 0, N = CurrentFnArguments.size(); i < N; ++i)
+      if (DbgVariable *ArgDV = CurrentFnArguments[i])
+        if (DIE *Arg = constructVariableDIE(ArgDV, Scope))
+          Children.push_back(Arg);
+
   // Collect lexical scope childrens first.
   const SmallVector<DbgVariable *, 8> &Variables = Scope->getDbgVariables();
   for (unsigned i = 0, N = Variables.size(); i < N; ++i)
@@ -1860,10 +1861,21 @@ DIE *DwarfDebug::constructScopeDIE(DbgScope *Scope) {
 /// in the SourceIds map. This can update DirectoryNames and SourceFileNames
 /// maps as well.
 
-unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName){
+unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName, 
+                                         StringRef DirName) {
   // If FE did not provide a file name, then assume stdin.
   if (FileName.empty())
-    return GetOrCreateSourceID("<stdin>");
+    return GetOrCreateSourceID("<stdin>", StringRef());
+
+  // MCStream expects full path name as filename.
+  if (!DirName.empty() && !FileName.startswith("/")) {
+    std::string FullPathName(DirName.data());
+    if (!DirName.endswith("/"))
+      FullPathName += "/";
+    FullPathName += FileName.data();
+    // Here FullPathName will be copied into StringMap by GetOrCreateSourceID.
+    return GetOrCreateSourceID(StringRef(FullPathName), StringRef());
+  }
 
   StringMapEntry<unsigned> &Entry = SourceIdMap.GetOrCreateValue(FileName);
   if (Entry.getValue())
@@ -1873,7 +1885,7 @@ unsigned DwarfDebug::GetOrCreateSourceID(StringRef FileName){
   Entry.setValue(SrcId);
 
   // Print out a .file directive to specify files for .loc directives.
-  Asm->OutStreamer.EmitDwarfFileDirective(SrcId, FileName);
+  Asm->OutStreamer.EmitDwarfFileDirective(SrcId, Entry.getKey());
 
   return SrcId;
 }
@@ -1899,7 +1911,7 @@ void DwarfDebug::constructCompileUnit(const MDNode *N) {
   DICompileUnit DIUnit(N);
   StringRef FN = DIUnit.getFilename();
   StringRef Dir = DIUnit.getDirectory();
-  unsigned ID = GetOrCreateSourceID(FN);
+  unsigned ID = GetOrCreateSourceID(FN, Dir);
 
   DIE *Die = new DIE(dwarf::DW_TAG_compile_unit);
   addString(Die, dwarf::DW_AT_producer, dwarf::DW_FORM_string,
@@ -1913,8 +1925,8 @@ void DwarfDebug::constructCompileUnit(const MDNode *N) {
   // DW_AT_stmt_list is a offset of line number information for this
   // compile unit in debug_line section.
   if (Asm->MAI->doesDwarfUsesAbsoluteLabelForStmtList())
-    addSectionOffset(Die, dwarf::DW_AT_stmt_list, dwarf::DW_FORM_addr,
-                     Asm->GetTempSymbol("section_line"));
+    addLabel(Die, dwarf::DW_AT_stmt_list, dwarf::DW_FORM_addr,
+             Asm->GetTempSymbol("section_line"));
   else
     addUInt(Die, dwarf::DW_AT_stmt_list, dwarf::DW_FORM_data4, 0);
 
@@ -2318,6 +2330,30 @@ DbgVariable *DwarfDebug::findAbstractVariable(DIVariable &Var,
   return AbsDbgVariable;
 }
 
+/// addCurrentFnArgument - If Var is an current function argument that add
+/// it in CurrentFnArguments list.
+bool DwarfDebug::addCurrentFnArgument(const MachineFunction *MF,
+                                      DbgVariable *Var, DbgScope *Scope) {
+  if (Scope != CurrentFnDbgScope) 
+    return false;
+  DIVariable DV = Var->getVariable();
+  if (DV.getTag() != dwarf::DW_TAG_arg_variable)
+    return false;
+  unsigned ArgNo = DV.getArgNumber();
+  if (ArgNo == 0) 
+    return false;
+
+  size_t Size = CurrentFnArguments.size();
+  if (Size == 0)
+    CurrentFnArguments.resize(MF->getFunction()->arg_size());
+  // llvm::Function argument size is not good indicator of how many
+  // arguments does the function have at source level.
+  if (ArgNo > Size)
+    CurrentFnArguments.resize(ArgNo * 2);
+  CurrentFnArguments[ArgNo - 1] = Var;
+  return true;
+}
+
 /// collectVariableInfoFromMMITable - Collect variable information from
 /// side table maintained by MMI.
 void
@@ -2346,7 +2382,8 @@ DwarfDebug::collectVariableInfoFromMMITable(const MachineFunction * MF,
     DbgVariable *AbsDbgVariable = findAbstractVariable(DV, VP.second);
     DbgVariable *RegVar = new DbgVariable(DV);
     recordVariableFrameIndex(RegVar, VP.first);
-    Scope->addVariable(RegVar);
+    if (!addCurrentFnArgument(MF, RegVar, Scope))
+      Scope->addVariable(RegVar);
     if (AbsDbgVariable) {
       recordVariableFrameIndex(AbsDbgVariable, VP.first);
       VarToAbstractVarMap[RegVar] = AbsDbgVariable;
@@ -2358,9 +2395,9 @@ DwarfDebug::collectVariableInfoFromMMITable(const MachineFunction * MF,
 /// DBG_VALUE instruction, is in a defined reg.
 static bool isDbgValueInDefinedReg(const MachineInstr *MI) {
   assert (MI->isDebugValue() && "Invalid DBG_VALUE machine instruction!");
-  if (MI->getOperand(0).isReg() && MI->getOperand(0).getReg())
-    return true;
-  return false;
+  return MI->getNumOperands() == 3 &&
+         MI->getOperand(0).isReg() && MI->getOperand(0).getReg() &&
+         MI->getOperand(1).isImm() && MI->getOperand(1).getImm() == 0;
 }
 
 /// collectVariableInfo - Populate DbgScope entries with variables' info.
@@ -2371,41 +2408,21 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
   /// collection info from MMI table.
   collectVariableInfoFromMMITable(MF, Processed);
 
-  SmallVector<const MachineInstr *, 8> DbgValues;
-  // Collect variable information from DBG_VALUE machine instructions;
-  for (MachineFunction::const_iterator I = Asm->MF->begin(), E = Asm->MF->end();
-       I != E; ++I)
-    for (MachineBasicBlock::const_iterator II = I->begin(), IE = I->end();
-         II != IE; ++II) {
-      const MachineInstr *MInsn = II;
-      if (!MInsn->isDebugValue())
-        continue;
-      DbgValues.push_back(MInsn);
-    }
-
-  // This is a collection of DBV_VALUE instructions describing same variable.
-  SmallVector<const MachineInstr *, 4> MultipleValues;
-  for(SmallVector<const MachineInstr *, 8>::iterator I = DbgValues.begin(),
-        E = DbgValues.end(); I != E; ++I) {
-    const MachineInstr *MInsn = *I;
-    MultipleValues.clear();
-    if (isDbgValueInDefinedReg(MInsn))
-      MultipleValues.push_back(MInsn);
-    DIVariable DV(MInsn->getOperand(MInsn->getNumOperands() - 1).getMetadata());
-    if (Processed.count(DV) != 0)
+  for (SmallVectorImpl<const MDNode*>::const_iterator
+         UVI = UserVariables.begin(), UVE = UserVariables.end(); UVI != UVE;
+         ++UVI) {
+    const MDNode *Var = *UVI;
+    if (Processed.count(Var))
       continue;
 
-    const MachineInstr *PrevMI = MInsn;
-    for (SmallVector<const MachineInstr *, 8>::iterator MI = I+1,
-           ME = DbgValues.end(); MI != ME; ++MI) {
-      const MDNode *Var =
-        (*MI)->getOperand((*MI)->getNumOperands()-1).getMetadata();
-      if (Var == DV && 
-          !PrevMI->isIdenticalTo(*MI))
-        MultipleValues.push_back(*MI);
-      PrevMI = *MI;
-    }
+    // History contains relevant DBG_VALUE instructions for Var and instructions
+    // clobbering it.
+    SmallVectorImpl<const MachineInstr*> &History = DbgValues[Var];
+    if (History.empty())
+      continue;
+    const MachineInstr *MInsn = History.front();
 
+    DIVariable DV(Var);
     DbgScope *Scope = NULL;
     if (DV.getTag() == dwarf::DW_TAG_arg_variable &&
         DISubprogram(DV.getContext()).describes(MF->getFunction()))
@@ -2417,32 +2434,29 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
       continue;
 
     Processed.insert(DV);
+    assert(MInsn->isDebugValue() && "History must begin with debug value");
     DbgVariable *RegVar = new DbgVariable(DV);
-    Scope->addVariable(RegVar);
+    if (!addCurrentFnArgument(MF, RegVar, Scope))
+      Scope->addVariable(RegVar);
     if (DbgVariable *AbsVar = findAbstractVariable(DV, MInsn->getDebugLoc())) {
       DbgVariableToDbgInstMap[AbsVar] = MInsn;
       VarToAbstractVarMap[RegVar] = AbsVar;
     }
-    if (MultipleValues.size() <= 1) {
+
+    // Simple ranges that are fully coalesced.
+    if (History.size() <= 1 || (History.size() == 2 &&
+                                MInsn->isIdenticalTo(History.back()))) {
       DbgVariableToDbgInstMap[RegVar] = MInsn;
       continue;
     }
 
     // handle multiple DBG_VALUE instructions describing one variable.
-    if (DotDebugLocEntries.empty())
-      RegVar->setDotDebugLocOffset(0);
-    else
-      RegVar->setDotDebugLocOffset(DotDebugLocEntries.size());
-    const MachineInstr *Begin = NULL;
-    const MachineInstr *End = NULL;
-    for (SmallVector<const MachineInstr *, 4>::iterator
-           MVI = MultipleValues.begin(), MVE = MultipleValues.end();
-         MVI != MVE; ++MVI) {
-      if (!Begin) {
-        Begin = *MVI;
-        continue;
-      }
-      End = *MVI;
+    RegVar->setDotDebugLocOffset(DotDebugLocEntries.size());
+
+    for (SmallVectorImpl<const MachineInstr*>::const_iterator
+           HI = History.begin(), HE = History.end(); HI != HE; ++HI) {
+      const MachineInstr *Begin = *HI;
+      assert(Begin->isDebugValue() && "Invalid History entry");
       MachineLocation MLoc;
       if (Begin->getNumOperands() == 3) {
         if (Begin->getOperand(0).isReg() && Begin->getOperand(1).isImm())
@@ -2450,25 +2464,32 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
       } else
         MLoc = Asm->getDebugValueLocation(Begin);
 
-      const MCSymbol *FLabel = getLabelBeforeInsn(Begin);
-      const MCSymbol *SLabel = getLabelBeforeInsn(End);
-      if (MLoc.getReg())
-        DotDebugLocEntries.push_back(DotDebugLocEntry(FLabel, SLabel, MLoc));
+      // FIXME: emitDebugLoc only understands registers.
+      if (!MLoc.getReg())
+        continue;
 
-      Begin = End;
-      if (MVI + 1 == MVE) {
-        // If End is the last instruction then its value is valid
+      // Compute the range for a register location.
+      const MCSymbol *FLabel = getLabelBeforeInsn(Begin);
+      const MCSymbol *SLabel = 0;
+
+      if (HI + 1 == HE)
+        // If Begin is the last instruction in History then its value is valid
         // until the end of the funtion.
-        MachineLocation EMLoc;
-        if (End->getNumOperands() == 3) {
-          if (End->getOperand(0).isReg() && Begin->getOperand(1).isImm())
-          EMLoc.set(Begin->getOperand(0).getReg(), Begin->getOperand(1).getImm());
-        } else
-          EMLoc = Asm->getDebugValueLocation(End);
-        if (EMLoc.getReg()) 
-          DotDebugLocEntries.
-            push_back(DotDebugLocEntry(SLabel, FunctionEndSym, EMLoc));
+        SLabel = FunctionEndSym;
+      else {
+        const MachineInstr *End = HI[1];
+        if (End->isDebugValue())
+          SLabel = getLabelBeforeInsn(End);
+        else {
+          // End is a normal instruction clobbering the range.
+          SLabel = getLabelAfterInsn(End);
+          assert(SLabel && "Forgot label after clobber instruction");
+          ++HI;
+        }
       }
+
+      // The value is valid until the next DBG_VALUE or clobber.
+      DotDebugLocEntries.push_back(DotDebugLocEntry(FLabel, SLabel, MLoc));
     }
     DotDebugLocEntries.push_back(DotDebugLocEntry());
   }
@@ -2489,66 +2510,74 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
 
 /// getLabelBeforeInsn - Return Label preceding the instruction.
 const MCSymbol *DwarfDebug::getLabelBeforeInsn(const MachineInstr *MI) {
-  DenseMap<const MachineInstr *, MCSymbol *>::iterator I =
-    LabelsBeforeInsn.find(MI);
-  if (I == LabelsBeforeInsn.end())
-    // FunctionBeginSym always preceeds all the instruction in current function.
-    return FunctionBeginSym;
-  return I->second;
+  MCSymbol *Label = LabelsBeforeInsn.lookup(MI);
+  assert(Label && "Didn't insert label before instruction");
+  return Label;
 }
 
 /// getLabelAfterInsn - Return Label immediately following the instruction.
 const MCSymbol *DwarfDebug::getLabelAfterInsn(const MachineInstr *MI) {
-  DenseMap<const MachineInstr *, MCSymbol *>::iterator I =
-    LabelsAfterInsn.find(MI);
-  if (I == LabelsAfterInsn.end())
-    return NULL;
-  return I->second;
+  return LabelsAfterInsn.lookup(MI);
 }
 
 /// beginInstruction - Process beginning of an instruction.
 void DwarfDebug::beginInstruction(const MachineInstr *MI) {
-  if (InsnNeedsLabel.count(MI) == 0) {
-    LabelsBeforeInsn[MI] = PrevLabel;
-    return;
+  // Check if source location changes, but ignore DBG_VALUE locations.
+  if (!MI->isDebugValue()) {
+    DebugLoc DL = MI->getDebugLoc();
+    if (DL != PrevInstLoc && (!DL.isUnknown() || UnknownLocations)) {
+      PrevInstLoc = DL;
+      if (!DL.isUnknown()) {
+        const MDNode *Scope = DL.getScope(Asm->MF->getFunction()->getContext());
+        recordSourceLine(DL.getLine(), DL.getCol(), Scope);
+      } else
+        recordSourceLine(0, 0, 0);
+    }
   }
 
-  // Check location.
-  DebugLoc DL = MI->getDebugLoc();
-  if (!DL.isUnknown()) {
-    const MDNode *Scope = DL.getScope(Asm->MF->getFunction()->getContext());
-    PrevLabel = recordSourceLine(DL.getLine(), DL.getCol(), Scope);
-    PrevInstLoc = DL;
-    LabelsBeforeInsn[MI] = PrevLabel;
-    return;
-  }
+  // Insert labels where requested.
+  DenseMap<const MachineInstr*, MCSymbol*>::iterator I =
+    LabelsBeforeInsn.find(MI);
 
-  // If location is unknown then use temp label for this DBG_VALUE
-  // instruction.
-  if (MI->isDebugValue()) {
+  // No label needed.
+  if (I == LabelsBeforeInsn.end())
+    return;
+
+  // Label already assigned.
+  if (I->second)
+    return;
+
+  if (!PrevLabel) {
     PrevLabel = MMI->getContext().CreateTempSymbol();
     Asm->OutStreamer.EmitLabel(PrevLabel);
-    LabelsBeforeInsn[MI] = PrevLabel;
-    return;
   }
-
-  if (UnknownLocations) {
-    PrevLabel = recordSourceLine(0, 0, 0);
-    LabelsBeforeInsn[MI] = PrevLabel;
-    return;
-  }
-
-  assert (0 && "Instruction is not processed!");
+  I->second = PrevLabel;
 }
 
 /// endInstruction - Process end of an instruction.
 void DwarfDebug::endInstruction(const MachineInstr *MI) {
-  if (InsnsEndScopeSet.count(MI) != 0) {
-    // Emit a label if this instruction ends a scope.
-    MCSymbol *Label = MMI->getContext().CreateTempSymbol();
-    Asm->OutStreamer.EmitLabel(Label);
-    LabelsAfterInsn[MI] = Label;
+  // Don't create a new label after DBG_VALUE instructions.
+  // They don't generate code.
+  if (!MI->isDebugValue())
+    PrevLabel = 0;
+
+  DenseMap<const MachineInstr*, MCSymbol*>::iterator I =
+    LabelsAfterInsn.find(MI);
+
+  // No label needed.
+  if (I == LabelsAfterInsn.end())
+    return;
+
+  // Label already assigned.
+  if (I->second)
+    return;
+
+  // We need a label after this instruction.
+  if (!PrevLabel) {
+    PrevLabel = MMI->getContext().CreateTempSymbol();
+    Asm->OutStreamer.EmitLabel(PrevLabel);
   }
+  I->second = PrevLabel;
 }
 
 /// getOrCreateDbgScope - Create DbgScope for the scope.
@@ -2808,7 +2837,8 @@ void DwarfDebug::identifyScopeMarkers() {
            RE = Ranges.end(); RI != RE; ++RI) {
       assert(RI->first && "DbgRange does not have first instruction!");
       assert(RI->second && "DbgRange does not have second instruction!");
-      InsnsEndScopeSet.insert(RI->second);
+      requestLabelBeforeInsn(RI->first);
+      requestLabelAfterInsn(RI->second);
     }
   }
 }
@@ -2886,45 +2916,145 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
 
   recordSourceLine(Line, Col, TheScope);
 
+  assert(UserVariables.empty() && DbgValues.empty() && "Maps weren't cleaned");
+
   /// ProcessedArgs - Collection of arguments already processed.
   SmallPtrSet<const MDNode *, 8> ProcessedArgs;
 
-  DebugLoc PrevLoc;
+  const TargetRegisterInfo *TRI = Asm->TM.getRegisterInfo();
+
+  /// LiveUserVar - Map physreg numbers to the MDNode they contain.
+  std::vector<const MDNode*> LiveUserVar(TRI->getNumRegs());
+
   for (MachineFunction::const_iterator I = MF->begin(), E = MF->end();
-       I != E; ++I)
+       I != E; ++I) {
+    bool AtBlockEntry = true;
     for (MachineBasicBlock::const_iterator II = I->begin(), IE = I->end();
          II != IE; ++II) {
       const MachineInstr *MI = II;
-      DebugLoc DL = MI->getDebugLoc();
+
       if (MI->isDebugValue()) {
         assert (MI->getNumOperands() > 1 && "Invalid machine instruction!");
-        DIVariable DV(MI->getOperand(MI->getNumOperands() - 1).getMetadata());
-        if (!DV.Verify()) continue;
-        // If DBG_VALUE is for a local variable then it needs a label.
-        if (DV.getTag() != dwarf::DW_TAG_arg_variable)
-          InsnNeedsLabel.insert(MI);
-        // DBG_VALUE for inlined functions argument needs a label.
-        else if (!DISubprogram(getDISubprogram(DV.getContext())).
-                 describes(MF->getFunction()))
-          InsnNeedsLabel.insert(MI);
-        // DBG_VALUE indicating argument location change needs a label.
-        else if (!ProcessedArgs.insert(DV))
-          InsnNeedsLabel.insert(MI);
+
+        // Keep track of user variables.
+        const MDNode *Var =
+          MI->getOperand(MI->getNumOperands() - 1).getMetadata();
+
+        // Variable is in a register, we need to check for clobbers.
+        if (isDbgValueInDefinedReg(MI))
+          LiveUserVar[MI->getOperand(0).getReg()] = Var;
+
+        // Check the history of this variable.
+        SmallVectorImpl<const MachineInstr*> &History = DbgValues[Var];
+        if (History.empty()) {
+          UserVariables.push_back(Var);
+          // The first mention of a function argument gets the FunctionBeginSym
+          // label, so arguments are visible when breaking at function entry.
+          DIVariable DV(Var);
+          if (DV.Verify() && DV.getTag() == dwarf::DW_TAG_arg_variable &&
+              DISubprogram(getDISubprogram(DV.getContext()))
+                .describes(MF->getFunction()))
+            LabelsBeforeInsn[MI] = FunctionBeginSym;
+        } else {
+          // We have seen this variable before. Try to coalesce DBG_VALUEs.
+          const MachineInstr *Prev = History.back();
+          if (Prev->isDebugValue()) {
+            // Coalesce identical entries at the end of History.
+            if (History.size() >= 2 &&
+                Prev->isIdenticalTo(History[History.size() - 2]))
+              History.pop_back();
+
+            // Terminate old register assignments that don't reach MI;
+            MachineFunction::const_iterator PrevMBB = Prev->getParent();
+            if (PrevMBB != I && (!AtBlockEntry || llvm::next(PrevMBB) != I) &&
+                isDbgValueInDefinedReg(Prev)) {
+              // Previous register assignment needs to terminate at the end of
+              // its basic block.
+              MachineBasicBlock::const_iterator LastMI =
+                PrevMBB->getLastNonDebugInstr();
+              if (LastMI == PrevMBB->end())
+                // Drop DBG_VALUE for empty range.
+                History.pop_back();
+              else {
+                // Terminate after LastMI.
+                History.push_back(LastMI);
+              }
+            }
+          }
+        }
+        History.push_back(MI);
       } else {
-        // If location is unknown then instruction needs a location only if
-        // UnknownLocations flag is set.
-        if (DL.isUnknown()) {
-          if (UnknownLocations && !PrevLoc.isUnknown())
-            InsnNeedsLabel.insert(MI);
-        } else if (DL != PrevLoc)
-          // Otherwise, instruction needs a location only if it is new location.
-          InsnNeedsLabel.insert(MI);
+        // Not a DBG_VALUE instruction.
+        if (!MI->isLabel())
+          AtBlockEntry = false;
+
+        // Check if the instruction clobbers any registers with debug vars.
+        for (MachineInstr::const_mop_iterator MOI = MI->operands_begin(),
+               MOE = MI->operands_end(); MOI != MOE; ++MOI) {
+          if (!MOI->isReg() || !MOI->isDef() || !MOI->getReg())
+            continue;
+          for (const unsigned *AI = TRI->getOverlaps(MOI->getReg());
+               unsigned Reg = *AI; ++AI) {
+            const MDNode *Var = LiveUserVar[Reg];
+            if (!Var)
+              continue;
+            // Reg is now clobbered.
+            LiveUserVar[Reg] = 0;
+
+            // Was MD last defined by a DBG_VALUE referring to Reg?
+            DbgValueHistoryMap::iterator HistI = DbgValues.find(Var);
+            if (HistI == DbgValues.end())
+              continue;
+            SmallVectorImpl<const MachineInstr*> &History = HistI->second;
+            if (History.empty())
+              continue;
+            const MachineInstr *Prev = History.back();
+            // Sanity-check: Register assignments are terminated at the end of
+            // their block.
+            if (!Prev->isDebugValue() || Prev->getParent() != MI->getParent())
+              continue;
+            // Is the variable still in Reg?
+            if (!isDbgValueInDefinedReg(Prev) ||
+                Prev->getOperand(0).getReg() != Reg)
+              continue;
+            // Var is clobbered. Make sure the next instruction gets a label.
+            History.push_back(MI);
+          }
+        }
       }
-
-      if (!DL.isUnknown() || UnknownLocations)
-        PrevLoc = DL;
     }
+  }
 
+  for (DbgValueHistoryMap::iterator I = DbgValues.begin(), E = DbgValues.end();
+       I != E; ++I) {
+    SmallVectorImpl<const MachineInstr*> &History = I->second;
+    if (History.empty())
+      continue;
+
+    // Make sure the final register assignments are terminated.
+    const MachineInstr *Prev = History.back();
+    if (Prev->isDebugValue() && isDbgValueInDefinedReg(Prev)) {
+      const MachineBasicBlock *PrevMBB = Prev->getParent();
+      MachineBasicBlock::const_iterator LastMI = PrevMBB->getLastNonDebugInstr();
+      if (LastMI == PrevMBB->end())
+        // Drop DBG_VALUE for empty range.
+        History.pop_back();
+      else {
+        // Terminate after LastMI.
+        History.push_back(LastMI);
+      }
+    }
+    // Request labels for the full history.
+    for (unsigned i = 0, e = History.size(); i != e; ++i) {
+      const MachineInstr *MI = History[i];
+      if (MI->isDebugValue())
+        requestLabelBeforeInsn(MI);
+      else
+        requestLabelAfterInsn(MI);
+    }
+  }
+
+  PrevInstLoc = DebugLoc();
   PrevLabel = FunctionBeginSym;
 }
 
@@ -2982,12 +3112,13 @@ void DwarfDebug::endFunction(const MachineFunction *MF) {
 
   // Clear debug info
   CurrentFnDbgScope = NULL;
-  InsnNeedsLabel.clear();
+  CurrentFnArguments.clear();
   DbgVariableToFrameIndexMap.clear();
   VarToAbstractVarMap.clear();
   DbgVariableToDbgInstMap.clear();
   DeleteContainerSeconds(DbgScopeMap);
-  InsnsEndScopeSet.clear();
+  UserVariables.clear();
+  DbgValues.clear();
   ConcreteScopes.clear();
   DeleteContainerSeconds(AbstractScopes);
   AbstractScopesList.clear();
@@ -3038,10 +3169,9 @@ DbgScope *DwarfDebug::findDbgScope(const MachineInstr *MInsn) {
 /// recordSourceLine - Register a source line with debug info. Returns the
 /// unique label that was emitted and which provides correspondence to
 /// the source line list.
-MCSymbol *DwarfDebug::recordSourceLine(unsigned Line, unsigned Col,
-                                       const MDNode *S) {
+void DwarfDebug::recordSourceLine(unsigned Line, unsigned Col, const MDNode *S){
   StringRef Fn;
-
+  StringRef Dir;
   unsigned Src = 1;
   if (S) {
     DIDescriptor Scope(S);
@@ -3049,27 +3179,27 @@ MCSymbol *DwarfDebug::recordSourceLine(unsigned Line, unsigned Col,
     if (Scope.isCompileUnit()) {
       DICompileUnit CU(S);
       Fn = CU.getFilename();
+      Dir = CU.getDirectory();
     } else if (Scope.isFile()) {
       DIFile F(S);
       Fn = F.getFilename();
+      Dir = F.getDirectory();
     } else if (Scope.isSubprogram()) {
       DISubprogram SP(S);
       Fn = SP.getFilename();
+      Dir = SP.getDirectory();
     } else if (Scope.isLexicalBlock()) {
       DILexicalBlock DB(S);
       Fn = DB.getFilename();
+      Dir = DB.getDirectory();
     } else
       assert(0 && "Unexpected scope info");
 
-    Src = GetOrCreateSourceID(Fn);
+    Src = GetOrCreateSourceID(Fn, Dir);
   }
 
   Asm->OutStreamer.EmitDwarfLocDirective(Src, Line, Col, DWARF2_FLAG_IS_STMT,
                                          0, 0);
-
-  MCSymbol *Label = MMI->getContext().CreateTempSymbol();
-  Asm->OutStreamer.EmitLabel(Label);
-  return Label;
 }
 
 //===----------------------------------------------------------------------===//

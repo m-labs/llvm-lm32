@@ -135,7 +135,6 @@ public:
   virtual void EmitCOFFSymbolStorageClass(int StorageClass);
   virtual void EmitCOFFSymbolType(int Type);
   virtual void EndCOFFSymbolDef();
-  virtual void EmitCOFFSecRel32(MCSymbol const *Symbol);
   virtual void EmitELFSize(MCSymbol *Symbol, const MCExpr *Value);
   virtual void EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                 unsigned ByteAlignment);
@@ -192,6 +191,16 @@ public:
   virtual bool EmitCFIOffset(int64_t Register, int64_t Offset);
   virtual bool EmitCFIPersonality(const MCSymbol *Sym, unsigned Encoding);
   virtual bool EmitCFILsda(const MCSymbol *Sym, unsigned Encoding);
+
+  virtual void EmitFnStart();
+  virtual void EmitFnEnd();
+  virtual void EmitCantUnwind();
+  virtual void EmitPersonality(const MCSymbol *Personality);
+  virtual void EmitHandlerData();
+  virtual void EmitSetFP(unsigned FpReg, unsigned SpReg, int64_t Offset = 0);
+  virtual void EmitPad(int64_t Offset);
+  virtual void EmitRegSave(const SmallVectorImpl<unsigned> &RegList, bool);
+
 
   virtual void EmitInstruction(const MCInst &Inst);
 
@@ -382,11 +391,6 @@ void MCAsmStreamer::EmitCOFFSymbolType (int Type) {
 
 void MCAsmStreamer::EndCOFFSymbolDef() {
   OS << "\t.endef";
-  EmitEOL();
-}
-
-void MCAsmStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol) {
-  OS << "\t.secrel32\t" << *Symbol << '\n';
   EmitEOL();
 }
 
@@ -840,13 +844,13 @@ void MCAsmStreamer::AddEncodingComment(const MCInst &Inst) {
       OS << "0b";
       for (unsigned j = 8; j--;) {
         unsigned Bit = (Code[i] >> j) & 1;
-        
+
         unsigned FixupBit;
         if (getContext().getTargetAsmInfo().isLittleEndian())
           FixupBit = i * 8 + j;
         else
           FixupBit = i * 8 + (7-j);
-        
+
         if (uint8_t MapEntry = FixupMap[FixupBit]) {
           assert(Bit == 0 && "Encoder wrote into fixed up bit!");
           OS << char('A' + MapEntry - 1);
@@ -863,6 +867,61 @@ void MCAsmStreamer::AddEncodingComment(const MCInst &Inst) {
     OS << "  fixup " << char('A' + i) << " - " << "offset: " << F.getOffset()
        << ", value: " << *F.getValue() << ", kind: " << Info.Name << "\n";
   }
+}
+
+void MCAsmStreamer::EmitFnStart() {
+  OS << "\t.fnstart";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitFnEnd() {
+  OS << "\t.fnend";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitCantUnwind() {
+  OS << "\t.cantunwind";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitHandlerData() {
+  OS << "\t.handlerdata";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitPersonality(const MCSymbol *Personality) {
+  OS << "\t.personality " << Personality->getName();
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitSetFP(unsigned FpReg, unsigned SpReg, int64_t Offset) {
+  OS << "\t.setfp\t" << InstPrinter->getRegName(FpReg)
+     << ", "        << InstPrinter->getRegName(SpReg);
+  if (Offset)
+    OS << ", #" << Offset;
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitPad(int64_t Offset) {
+  OS << "\t.pad\t#" << Offset;
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitRegSave(const SmallVectorImpl<unsigned> &RegList,
+                                bool isVector) {
+  assert(RegList.size() && "RegList should not be empty");
+  if (isVector)
+    OS << "\t.vsave\t{";
+  else
+    OS << "\t.save\t{";
+
+  OS << InstPrinter->getRegName(RegList[0]);
+
+  for (unsigned i = 1, e = RegList.size(); i != e; ++i)
+    OS << ", " << InstPrinter->getRegName(RegList[i]);
+
+  OS << "}";
+  EmitEOL();
 }
 
 void MCAsmStreamer::EmitInstruction(const MCInst &Inst) {

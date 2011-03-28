@@ -542,7 +542,570 @@ void AsmWriterEmitter::EmitGetInstructionName(raw_ostream &O) {
   << "}\n\n#endif\n";
 }
 
+namespace {
 
+/// SubtargetFeatureInfo - Helper class for storing information on a subtarget
+/// feature which participates in instruction matching.
+struct SubtargetFeatureInfo {
+  /// \brief The predicate record for this feature.
+  const Record *TheDef;
+
+  /// \brief An unique index assigned to represent this feature.
+  unsigned Index;
+
+  SubtargetFeatureInfo(const Record *D, unsigned Idx) : TheDef(D), Index(Idx) {}
+
+  /// \brief The name of the enumerated constant identifying this feature.
+  std::string getEnumName() const {
+    return "Feature_" + TheDef->getName();
+  }
+};
+
+struct AsmWriterInfo {
+  /// Map of Predicate records to their subtarget information.
+  std::map<const Record*, SubtargetFeatureInfo*> SubtargetFeatures;
+
+  /// getSubtargetFeature - Lookup or create the subtarget feature info for the
+  /// given operand.
+  SubtargetFeatureInfo *getSubtargetFeature(const Record *Def) const {
+    assert(Def->isSubClassOf("Predicate") && "Invalid predicate type!");
+    std::map<const Record*, SubtargetFeatureInfo*>::const_iterator I =
+      SubtargetFeatures.find(Def);
+    return I == SubtargetFeatures.end() ? 0 : I->second;
+  }
+
+  void addReqFeatures(const std::vector<Record*> &Features) {
+    for (std::vector<Record*>::const_iterator
+           I = Features.begin(), E = Features.end(); I != E; ++I) {
+      const Record *Pred = *I;
+
+      // Ignore predicates that are not intended for the assembler.
+      if (!Pred->getValueAsBit("AssemblerMatcherPredicate"))
+        continue;
+
+      if (Pred->getName().empty())
+        throw TGError(Pred->getLoc(), "Predicate has no name!");
+
+      // Don't add the predicate again.
+      if (getSubtargetFeature(Pred))
+        continue;
+
+      unsigned FeatureNo = SubtargetFeatures.size();
+      SubtargetFeatures[Pred] = new SubtargetFeatureInfo(Pred, FeatureNo);
+      assert(FeatureNo < 32 && "Too many subtarget features!");
+    }
+  }
+
+  const SubtargetFeatureInfo *getFeatureInfo(const Record *R) {
+    return SubtargetFeatures[R];
+  }
+};
+
+// IAPrinter - Holds information about an InstAlias. Two InstAliases match if
+// they both have the same conditionals. In which case, we cannot print out the
+// alias for that pattern.
+class IAPrinter {
+  AsmWriterInfo &AWI;
+  std::vector<std::string> Conds;
+  std::map<StringRef, unsigned> OpMap;
+  std::string Result;
+  std::string AsmString;
+  std::vector<Record*> ReqFeatures;
+public:
+  IAPrinter(AsmWriterInfo &Info, std::string R, std::string AS)
+    : AWI(Info), Result(R), AsmString(AS) {}
+
+  void addCond(const std::string &C) { Conds.push_back(C); }
+  void addReqFeatures(const std::vector<Record*> &Features) {
+    AWI.addReqFeatures(Features);
+    ReqFeatures = Features;
+  }
+
+  void addOperand(StringRef Op, unsigned Idx) { OpMap[Op] = Idx; }
+  unsigned getOpIndex(StringRef Op) { return OpMap[Op]; }
+  bool isOpMapped(StringRef Op) { return OpMap.find(Op) != OpMap.end(); }
+
+  void print(raw_ostream &O) {
+    unsigned Indent = 8;
+
+    if (!Conds.empty())
+      O << "if (";
+
+    for (std::vector<std::string>::iterator
+           I = Conds.begin(), E = Conds.end(); I != E; ++I) {
+      if (I != Conds.begin()) {
+        O << " &&\n";
+        O.indent(Indent);
+      }
+
+      O << *I;
+    }
+
+    if (!ReqFeatures.empty()) {
+      if (Conds.begin() != Conds.end())
+        O << " &&\n";
+      else
+        O << "if (";
+
+      std::string Req;
+      raw_string_ostream ReqO(Req);
+
+      for (std::vector<Record*>::iterator
+             I = ReqFeatures.begin(), E = ReqFeatures.end(); I != E; ++I) {
+        if (I != ReqFeatures.begin()) ReqO << " | ";
+        ReqO << AWI.getFeatureInfo(*I)->getEnumName();
+      }
+
+      if (Conds.begin() != Conds.end()) O.indent(Indent);
+      O << "(AvailableFeatures & (" << ReqO.str() << ")) == ("
+        << ReqO.str() << ')';
+    }
+
+    if (!Conds.empty() || !ReqFeatures.empty()) {
+      O << ") {\n";
+      Indent = 6;
+    } else {
+      Indent = 4;
+    }
+
+    O.indent(Indent) << "// " << Result << "\n";
+    O.indent(Indent) << "AsmString = \"" << AsmString << "\";\n";
+
+    for (std::map<StringRef, unsigned>::iterator
+           I = OpMap.begin(), E = OpMap.end(); I != E; ++I)
+      O.indent(Indent) << "OpMap[\"" << I->first << "\"] = "
+                       << I->second << ";\n";
+
+    if (!Conds.empty() || !ReqFeatures.empty())
+      O.indent(4) << '}';
+  }
+
+  bool operator==(const IAPrinter &RHS) {
+    if (Conds.size() != RHS.Conds.size())
+      return false;
+
+    unsigned Idx = 0;
+    for (std::vector<std::string>::iterator
+           I = Conds.begin(), E = Conds.end(); I != E; ++I)
+      if (*I != RHS.Conds[Idx++])
+        return false;
+
+    return true;
+  }
+
+  bool operator()(const IAPrinter &RHS) {
+    if (Conds.size() < RHS.Conds.size())
+      return true;
+
+    unsigned Idx = 0;
+    for (std::vector<std::string>::iterator
+           I = Conds.begin(), E = Conds.end(); I != E; ++I)
+      if (*I != RHS.Conds[Idx++])
+        return *I < RHS.Conds[Idx++];
+
+    return false;
+  }
+};
+
+} // end anonymous namespace
+
+/// EmitSubtargetFeatureFlagEnumeration - Emit the subtarget feature flag
+/// definitions.
+static void EmitSubtargetFeatureFlagEnumeration(AsmWriterInfo &Info,
+                                                raw_ostream &O) {
+  O << "namespace {\n\n";
+  O << "// Flags for subtarget features that participate in "
+    << "alias instruction matching.\n";
+  O << "enum SubtargetFeatureFlag {\n";
+
+  for (std::map<const Record*, SubtargetFeatureInfo*>::const_iterator
+         I = Info.SubtargetFeatures.begin(),
+         E = Info.SubtargetFeatures.end(); I != E; ++I) {
+    SubtargetFeatureInfo &SFI = *I->second;
+    O << "  " << SFI.getEnumName() << " = (1 << " << SFI.Index << "),\n";
+  }
+
+  O << "  Feature_None = 0\n";
+  O << "};\n\n";
+  O << "} // end anonymous namespace\n";
+}
+
+/// EmitComputeAvailableFeatures - Emit the function to compute the list of
+/// available features given a subtarget.
+static void EmitComputeAvailableFeatures(AsmWriterInfo &Info,
+                                         Record *AsmWriter,
+                                         CodeGenTarget &Target,
+                                         raw_ostream &O) {
+  std::string ClassName = AsmWriter->getValueAsString("AsmWriterClassName");
+
+  O << "unsigned " << Target.getName() << ClassName << "::\n"
+    << "ComputeAvailableFeatures(const " << Target.getName()
+    << "Subtarget *Subtarget) const {\n";
+  O << "  unsigned Features = 0;\n";
+
+  for (std::map<const Record*, SubtargetFeatureInfo*>::const_iterator
+         I = Info.SubtargetFeatures.begin(),
+         E = Info.SubtargetFeatures.end(); I != E; ++I) {
+    SubtargetFeatureInfo &SFI = *I->second;
+    O << "  if (" << SFI.TheDef->getValueAsString("CondString")
+      << ")\n";
+    O << "    Features |= " << SFI.getEnumName() << ";\n";
+  }
+
+  O << "  return Features;\n";
+  O << "}\n\n";
+}
+
+void AsmWriterEmitter::EmitRegIsInRegClass(raw_ostream &O) {
+  CodeGenTarget Target(Records);
+
+  // Enumerate the register classes.
+  const std::vector<CodeGenRegisterClass> &RegisterClasses =
+    Target.getRegisterClasses();
+
+  O << "namespace { // Register classes\n";
+  O << "  enum RegClass {\n";
+
+  // Emit the register enum value for each RegisterClass.
+  for (unsigned I = 0, E = RegisterClasses.size(); I != E; ++I) {
+    if (I != 0) O << ",\n";
+    O << "    RC_" << RegisterClasses[I].TheDef->getName();
+  }
+
+  O << "\n  };\n";
+  O << "} // end anonymous namespace\n\n";
+
+  // Emit a function that returns 'true' if a regsiter is part of a particular
+  // register class. I.e., RAX is part of GR64 on X86.
+  O << "static bool regIsInRegisterClass"
+    << "(unsigned RegClass, unsigned Reg) {\n";
+
+  // Emit the switch that checks if a register belongs to a particular register
+  // class.
+  O << "  switch (RegClass) {\n";
+  O << "  default: break;\n";
+
+  for (unsigned I = 0, E = RegisterClasses.size(); I != E; ++I) {
+    const CodeGenRegisterClass &RC = RegisterClasses[I];
+
+    // Give the register class a legal C name if it's anonymous.
+    std::string Name = RC.TheDef->getName();
+    O << "  case RC_" << Name << ":\n";
+  
+    // Emit the register list now.
+    unsigned IE = RC.Elements.size();
+    if (IE == 1) {
+      O << "    if (Reg == " << getQualifiedName(RC.Elements[0]) << ")\n";
+      O << "      return true;\n";
+    } else {
+      O << "    switch (Reg) {\n";
+      O << "    default: break;\n";
+
+      for (unsigned II = 0; II != IE; ++II) {
+        Record *Reg = RC.Elements[II];
+        O << "    case " << getQualifiedName(Reg) << ":\n";
+      }
+
+      O << "      return true;\n";
+      O << "    }\n";
+    }
+
+    O << "    break;\n";
+  }
+
+  O << "  }\n\n";
+  O << "  return false;\n";
+  O << "}\n\n";
+}
+
+void AsmWriterEmitter::EmitPrintAliasInstruction(raw_ostream &O) {
+  CodeGenTarget Target(Records);
+  Record *AsmWriter = Target.getAsmWriter();
+
+  O << "\n#ifdef PRINT_ALIAS_INSTR\n";
+  O << "#undef PRINT_ALIAS_INSTR\n\n";
+
+  EmitRegIsInRegClass(O);
+
+  // Emit the method that prints the alias instruction.
+  std::string ClassName = AsmWriter->getValueAsString("AsmWriterClassName");
+
+  bool isMC = AsmWriter->getValueAsBit("isMCAsmWriter");
+  const char *MachineInstrClassName = isMC ? "MCInst" : "MachineInstr";
+
+  std::vector<Record*> AllInstAliases =
+    Records.getAllDerivedDefinitions("InstAlias");
+
+  // Create a map from the qualified name to a list of potential matches.
+  std::map<std::string, std::vector<CodeGenInstAlias*> > AliasMap;
+  for (std::vector<Record*>::iterator
+         I = AllInstAliases.begin(), E = AllInstAliases.end(); I != E; ++I) {
+    CodeGenInstAlias *Alias = new CodeGenInstAlias(*I, Target);
+    const Record *R = *I;
+    const DagInit *DI = R->getValueAsDag("ResultInst");
+    const DefInit *Op = dynamic_cast<const DefInit*>(DI->getOperator());
+    AliasMap[getQualifiedName(Op->getDef())].push_back(Alias);
+  }
+
+  // A map of which conditions need to be met for each instruction operand
+  // before it can be matched to the mnemonic.
+  std::map<std::string, std::vector<IAPrinter*> > IAPrinterMap;
+  AsmWriterInfo AWI;
+
+  for (std::map<std::string, std::vector<CodeGenInstAlias*> >::iterator
+         I = AliasMap.begin(), E = AliasMap.end(); I != E; ++I) {
+    std::vector<CodeGenInstAlias*> &Aliases = I->second;
+
+    for (std::vector<CodeGenInstAlias*>::iterator
+           II = Aliases.begin(), IE = Aliases.end(); II != IE; ++II) {
+      const CodeGenInstAlias *CGA = *II;
+      IAPrinter *IAP = new IAPrinter(AWI, CGA->Result->getAsString(),
+                                     CGA->AsmString);
+
+      IAP->addReqFeatures(CGA->TheDef->getValueAsListOfDefs("Predicates"));
+
+      unsigned LastOpNo = CGA->ResultInstOperandIndex.size();
+
+      std::string Cond;
+      Cond = std::string("MI->getNumOperands() == ") + llvm::utostr(LastOpNo);
+      IAP->addCond(Cond);
+
+      std::map<StringRef, unsigned> OpMap;
+      bool CantHandle = false;
+
+      for (unsigned i = 0, e = LastOpNo; i != e; ++i) {
+        const CodeGenInstAlias::ResultOperand &RO = CGA->ResultOperands[i];
+
+        switch (RO.Kind) {
+        default: assert(0 && "unexpected InstAlias operand kind");
+        case CodeGenInstAlias::ResultOperand::K_Record: {
+          const Record *Rec = RO.getRecord();
+          StringRef ROName = RO.getName();
+
+          if (Rec->isSubClassOf("RegisterClass")) {
+            Cond = std::string("MI->getOperand(")+llvm::utostr(i)+").isReg()";
+            IAP->addCond(Cond);
+
+            if (!IAP->isOpMapped(ROName)) {
+              IAP->addOperand(ROName, i);
+              Cond = std::string("regIsInRegisterClass(RC_") +
+                CGA->ResultOperands[i].getRecord()->getName() +
+                ", MI->getOperand(" + llvm::utostr(i) + ").getReg())";
+              IAP->addCond(Cond);
+            } else {
+              Cond = std::string("MI->getOperand(") +
+                llvm::utostr(i) + ").getReg() == MI->getOperand(" +
+                llvm::utostr(IAP->getOpIndex(ROName)) + ").getReg()";
+              IAP->addCond(Cond);
+            }
+          } else {
+            assert(Rec->isSubClassOf("Operand") && "Unexpected operand!");
+            // FIXME: We need to handle these situations.
+            delete IAP;
+            IAP = 0;
+            CantHandle = true;
+            break;
+          }
+
+          break;
+        }
+        case CodeGenInstAlias::ResultOperand::K_Imm:
+          Cond = std::string("MI->getOperand(") +
+            llvm::utostr(i) + ").getImm() == " +
+            llvm::utostr(CGA->ResultOperands[i].getImm());
+          IAP->addCond(Cond);
+          break;
+        case CodeGenInstAlias::ResultOperand::K_Reg:
+          Cond = std::string("MI->getOperand(") +
+            llvm::utostr(i) + ").getReg() == " + Target.getName() +
+            "::" + CGA->ResultOperands[i].getRegister()->getName();
+          IAP->addCond(Cond);
+          break;
+        }
+
+        if (!IAP) break;
+      }
+
+      if (CantHandle) continue;
+      IAPrinterMap[I->first].push_back(IAP);
+
+#if 0
+      O.indent(4) << "// " << I->first << '\n';
+      O.indent(4);
+      IAP->print(O);
+#endif
+    }
+  }
+
+  O << "#if 0\n";
+  EmitSubtargetFeatureFlagEnumeration(AWI, O);
+  EmitComputeAvailableFeatures(AWI, AsmWriter, Target, O);
+  O << "#endif\n\n";
+
+  O << "bool " << Target.getName() << ClassName
+    << "::printAliasInstr(const " << MachineInstrClassName
+    << " *MI, raw_ostream &OS) {\n";
+
+  if (AliasMap.empty() || !isMC) {
+    // FIXME: Support MachineInstr InstAliases?
+    O << "  return true;\n";
+    O << "}\n\n";
+    O << "#endif // PRINT_ALIAS_INSTR\n";
+    return;
+  }
+
+  O << "  StringRef AsmString;\n";
+  O << "  std::map<StringRef, unsigned> OpMap;\n";
+  O << "  switch (MI->getOpcode()) {\n";
+  O << "  default: return true;\n";
+
+  for (std::map<std::string, std::vector<CodeGenInstAlias*> >::iterator
+         I = AliasMap.begin(), E = AliasMap.end(); I != E; ++I) {
+    std::vector<CodeGenInstAlias*> &Aliases = I->second;
+
+    std::map<std::string, unsigned> CondCount;
+    std::map<std::string, std::string> BodyMap;
+
+    std::string AsmString = "";
+
+    for (std::vector<CodeGenInstAlias*>::iterator
+           II = Aliases.begin(), IE = Aliases.end(); II != IE; ++II) {
+      const CodeGenInstAlias *CGA = *II;
+      AsmString = CGA->AsmString;
+      unsigned Indent = 8;
+      unsigned LastOpNo = CGA->ResultInstOperandIndex.size();
+
+      std::string Cond;
+      raw_string_ostream CondO(Cond);
+
+      CondO << "if (MI->getNumOperands() == " << LastOpNo;
+
+      std::map<StringRef, unsigned> OpMap;
+      bool CantHandle = false;
+
+      for (unsigned i = 0, e = LastOpNo; i != e; ++i) {
+        const CodeGenInstAlias::ResultOperand &RO = CGA->ResultOperands[i];
+
+        switch (RO.Kind) {
+        default: assert(0 && "unexpected InstAlias operand kind");
+        case CodeGenInstAlias::ResultOperand::K_Record: {
+          const Record *Rec = RO.getRecord();
+          StringRef ROName = RO.getName();
+
+          if (Rec->isSubClassOf("RegisterClass")) {
+            CondO << " &&\n";
+            CondO.indent(Indent) << "MI->getOperand(" << i << ").isReg() &&\n";
+            if (OpMap.find(ROName) == OpMap.end()) {
+              OpMap[ROName] = i;
+              CondO.indent(Indent)
+                << "regIsInRegisterClass(RC_"
+                << CGA->ResultOperands[i].getRecord()->getName()
+                << ", MI->getOperand(" << i << ").getReg())";
+            } else {
+              CondO.indent(Indent)
+                << "MI->getOperand(" << i
+                << ").getReg() == MI->getOperand("
+                << OpMap[ROName] << ").getReg()";
+            }
+          } else {
+            assert(Rec->isSubClassOf("Operand") && "Unexpected operand!");
+            // FIXME: We need to handle these situations.
+            CantHandle = true;
+            break;
+          }
+
+          break;
+        }
+        case CodeGenInstAlias::ResultOperand::K_Imm:
+          CondO << " &&\n";
+          CondO.indent(Indent) << "MI->getOperand(" << i << ").getImm() == ";
+          CondO << CGA->ResultOperands[i].getImm();
+          break;
+        case CodeGenInstAlias::ResultOperand::K_Reg:
+          CondO << " &&\n";
+          CondO.indent(Indent) << "MI->getOperand(" << i << ").getReg() == ";
+          CondO << Target.getName() << "::"
+                << CGA->ResultOperands[i].getRegister()->getName();
+          break;
+        }
+
+        if (CantHandle) break;
+      }
+
+      if (CantHandle) continue;
+
+      CondO << ")";
+
+      std::string Body;
+      raw_string_ostream BodyO(Body);
+
+      BodyO << "      // " << CGA->Result->getAsString() << "\n";
+      BodyO << "      AsmString = \"" << AsmString << "\";\n";
+
+      for (std::map<StringRef, unsigned>::iterator
+             III = OpMap.begin(), IIE = OpMap.end(); III != IIE; ++III)
+        BodyO << "      OpMap[\"" << III->first << "\"] = "
+              << III->second << ";\n";
+
+      ++CondCount[CondO.str()];
+      BodyMap[CondO.str()] = BodyO.str();
+    }
+
+    std::string Code;
+    raw_string_ostream CodeO(Code);
+
+    bool EmitElse = false;
+    for (std::map<std::string, unsigned>::iterator
+           II = CondCount.begin(), IE = CondCount.end(); II != IE; ++II) {
+      if (II->second != 1) continue;
+      CodeO << "    ";
+      if (EmitElse) CodeO << "} else ";
+      CodeO << II->first << " {\n";
+      CodeO << BodyMap[II->first];
+      EmitElse = true;
+    }
+
+    if (CodeO.str().empty()) continue;
+
+    O << "  case " << I->first << ":\n";
+    O << CodeO.str();
+    O << "    }\n";
+    O << "    break;\n";
+  }
+
+  O << "  }\n\n";
+
+  // Code that prints the alias, replacing the operands with the ones from the
+  // MCInst.
+  O << "  if (AsmString.empty()) return true;\n";
+  O << "  std::pair<StringRef, StringRef> ASM = AsmString.split(' ');\n";
+  O << "  OS << '\\t' << ASM.first;\n";
+
+  O << "  if (!ASM.second.empty()) {\n";
+  O << "    OS << '\\t';\n";
+  O << "    for (StringRef::iterator\n";
+  O << "         I = ASM.second.begin(), E = ASM.second.end(); I != E; ) {\n";
+  O << "      if (*I == '$') {\n";
+  O << "        StringRef::iterator Start = ++I;\n";
+  O << "        while (I != E &&\n";
+  O << "               ((*I >= 'a' && *I <= 'z') ||\n";
+  O << "                (*I >= 'A' && *I <= 'Z') ||\n";
+  O << "                (*I >= '0' && *I <= '9') ||\n";
+  O << "                *I == '_'))\n";
+  O << "          ++I;\n";
+  O << "        StringRef Name(Start, I - Start);\n";
+  O << "        printOperand(MI, OpMap[Name], OS);\n";
+  O << "      } else {\n";
+  O << "        OS << *I++;\n";
+  O << "      }\n";
+  O << "    }\n";
+  O << "  }\n\n";
+  
+  O << "  return false;\n";
+  O << "}\n\n";
+
+  O << "#endif // PRINT_ALIAS_INSTR\n";
+}
 
 void AsmWriterEmitter::run(raw_ostream &O) {
   EmitSourceFileHeader("Assembly Writer Source Fragment", O);
@@ -550,5 +1113,6 @@ void AsmWriterEmitter::run(raw_ostream &O) {
   EmitPrintInstruction(O);
   EmitGetRegisterName(O);
   EmitGetInstructionName(O);
+  EmitPrintAliasInstruction(O);
 }
 

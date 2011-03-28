@@ -1338,9 +1338,12 @@ void AssemblyWriter::printModule(const Module *M) {
       CurPos = NewLine+1;
       NewLine = Asm.find_first_of('\n', CurPos);
     }
-    Out << "module asm \"";
-    PrintEscapedString(std::string(Asm.begin()+CurPos, Asm.end()), Out);
-    Out << "\"\n";
+    std::string rest(Asm.begin()+CurPos, Asm.end());
+    if (!rest.empty()) {
+      Out << "module asm \"";
+      PrintEscapedString(rest, Out);
+      Out << "\"\n";
+    }
   }
 
   // Loop over the dependent libraries and emit them.
@@ -1581,8 +1584,8 @@ void AssemblyWriter::printFunction(const Function *F) {
   case CallingConv::ARM_AAPCS:    Out << "arm_aapcscc "; break;
   case CallingConv::ARM_AAPCS_VFP:Out << "arm_aapcs_vfpcc "; break;
   case CallingConv::MSP430_INTR:  Out << "msp430_intrcc "; break;
-  case CallingConv::PTX_Kernel:   Out << "ptx_kernel"; break;
-  case CallingConv::PTX_Device:   Out << "ptx_device"; break;
+  case CallingConv::PTX_Kernel:   Out << "ptx_kernel "; break;
+  case CallingConv::PTX_Device:   Out << "ptx_device "; break;
   default: Out << "cc" << F->getCallingConv() << " "; break;
   }
 
