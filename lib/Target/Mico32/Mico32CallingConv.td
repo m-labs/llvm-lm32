@@ -48,6 +48,6 @@ def CC_Mico32 : CallingConv<[
 // be "Defs" in the call instruction in Mico32InstrInfo.td.
 def RetCC_Mico32 : CallingConv<[
   // i32 and f32 are returned in registers R1, R2.
-  CCIfType<[i32, f32], CCAssignToReg<[R1, R2]>>,
+  CCIfType<[i32, f32], CCAssignToReg<[R1, R2]>>
 ]>;
 

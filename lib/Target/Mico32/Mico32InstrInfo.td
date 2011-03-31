@@ -13,13 +13,23 @@
 include "Mico32InstrFormats.td"
 
 //===----------------------------------------------------------------------===//
-// MBlaze type profiles
+// Mico32 type profiles
 //===----------------------------------------------------------------------===//
+
+def SDT_Mico32CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>]>;
+def SDT_Mico32CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 
 
 //===----------------------------------------------------------------------===//
-// MBlaze specific nodes
+// Mico32 specific nodes
 //===----------------------------------------------------------------------===//
+
+def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_Mico32CallSeqStart,
+                           [SDNPHasChain, SDNPOutGlue]>;
+
+def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_Mico32CallSeqEnd,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
 
 
 //===----------------------------------------------------------------------===//
@@ -47,7 +57,6 @@ def Mico32MemAsmOperand : AsmOperandClass {
 def brtarget    : Operand<OtherVT>;
 def calltarget  : Operand<i32>;
 def simm16      : Operand<i32>;
-def uimm16      : Operand<i32>;
 def uimm5       : Operand<i32>;
 
 // Unsigned Operand
@@ -187,12 +196,26 @@ class ArithRR<bits<6> op, string instr_asm, SDNode OpNode,
                  !strconcat(instr_asm, "   $dst, $b, $c"),
                  [(set GPR:$dst, (OpNode GPR:$b, GPR:$c))], itin>;
 
+// Fragmant version of RR instruction
+class ArithFRR<bits<6> op, string instr_asm, PatFrag OpNode,
+               InstrItinClass itin> :
+              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
+                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  [(set GPR:$dst, (OpNode GPR:$b, GPR:$c))], itin>;
+
 // RR instruction with not in pattern.
 class ArithNRR<bits<6> op, string instr_asm, SDNode OpNode,
               InstrItinClass itin> :
              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
+
+// Fragment version of RR instruction with not in pattern.
+class ArithFNRR<bits<6> op, string instr_asm, PatFrag OpNode,
+               InstrItinClass itin> :
+              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
+                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
 
 // RI instruction with 16bit zero extended immediate.
 class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
@@ -201,13 +224,28 @@ class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
                   !strconcat(instr_asm, "   $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
 
+// Fragment version of RI instruction with 16bit zero extended immediate.
+class ArithFRIz<bits<6> op, string instr_asm, PatFrag OpNode,
+                InstrItinClass itin> :
+               TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
+                   !strconcat(instr_asm, "   $dst, $b, $c"),
+                   [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
+
 // ArithRIz with not in pattern.
-class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode, list<dag> pattern,
+class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
                    !strconcat(instr_asm, "   $dst, $b, $c"),
                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
                    itin>;
+
+// Fragment version of ArithRIz with not in pattern.
+class ArithFNRIz<bits<6> op, string instr_asm, PatFrag OpNode,
+                 InstrItinClass itin> :
+                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
+                    !strconcat(instr_asm, "   $dst, $b, $c"),
+                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
+                    itin>;
 
 // RI instruction with 16bit sign extended immediate.
 class ArithRIs<bits<6> op, string instr_asm, SDNode OpNode,
@@ -215,6 +253,13 @@ class ArithRIs<bits<6> op, string instr_asm, SDNode OpNode,
               TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
                   !strconcat(instr_asm, "   $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, immSExt16:$c))], itin>;
+
+// Fragment version of RI instruction with 16bit sign extended immediate.
+class ArithFRIs<bits<6> op, string instr_asm, PatFrag OpNode,
+                InstrItinClass itin> :
+               TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
+                   !strconcat(instr_asm, "   $dst, $b, $c"),
+                   [(set GPR:$dst, (OpNode GPR:$b, immSExt16:$c))], itin>;
 
 // ArithRIs instruction with not in pattern.
 class ArithNRIs<bits<6> op, string instr_asm, SDNode OpNode,
@@ -228,7 +273,7 @@ class ShiftI<bits<6> op, string instr_asm, SDNode OpNode,
                 InstrItinClass itin> :
             TRIS<op, (outs GPR:$dst), (ins GPR:$b, uimm5:$c),
                  !strconcat(instr_asm, "   $dst, $b, $c"),
-                 [(set GPR:$dst, (OpNode GPR:$b, immZExt5:$c))], init>;
+                 [(set GPR:$dst, (OpNode GPR:$b, immZExt5:$c))], itin>;
 
 
 //===----------------------------------------------------------------------===//
@@ -248,62 +293,63 @@ class StoreM<bits<6> op, string instr_asm, PatFrag OpNode> :
 //===----------------------------------------------------------------------===//
 // Branch Instruction Formats
 //===----------------------------------------------------------------------===//
-class Branch<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-             TA<op, flags, (outs), (ins GPR:$target),
-                !strconcat(instr_asm, "   $target"),
-                [], IIBranch> {
-  let rd = 0x0;
-  let ra = br;
-  let Form = FCCR;
-}
-
-class BranchI<bits<6> op, bits<5> br, string instr_asm> :
-              TB<op, (outs), (ins brtarget:$target),
-                 !strconcat(instr_asm, "   $target"),
-                 [], IIBranch> {
-  let rd = 0;
-  let ra = br;
-  let Form = FCCI;
-}
-
-//===----------------------------------------------------------------------===//
-// Branch and Link Instruction Formats
-//===----------------------------------------------------------------------===//
-class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
-                 !strconcat(instr_asm, "   $link, $target"),
-                 [], IIBranch> {
-  let ra = br;
-  let Form = FRCR;
-}
-
-class BranchLI<bits<6> op, bits<5> br, string instr_asm> :
-               TB<op, (outs), (ins GPR:$link, calltarget:$target, variable_ops),
-                  !strconcat(instr_asm, "   $link, $target"),
-                  [], IIBranch> {
-  let ra = br;
-  let Form = FRCI;
-}
-
-//===----------------------------------------------------------------------===//
-// Conditional Branch Instruction Formats
-//===----------------------------------------------------------------------===//
-class BranchC<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-              TA<op, flags, (outs),
-                 (ins GPR:$a, GPR:$b),
-                 !strconcat(instr_asm, "   $a, $b"),
-                 [], IIBranch> {
-  let rd = br;
-  let Form = FCRR;
-}
-
-class BranchCI<bits<6> op, bits<5> br, string instr_asm> :
-               TB<op, (outs), (ins GPR:$a, brtarget:$offset),
-                  !strconcat(instr_asm, "   $a, $offset"),
-                  [], IIBranch> {
-  let rd = br;
-  let Form = FCRI;
-}
+//class Branch<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
+//             TA<op, flags, (outs), (ins GPR:$target),
+//                !strconcat(instr_asm, "   $target"),
+//                [], IIBranch> {
+//  let rd = 0x0;
+//  let ra = br;
+//  let Form = FCCR;
+//}
+//
+//class BranchI<bits<6> op, bits<5> br, string instr_asm> :
+//              TB<op, (outs), (ins brtarget:$target),
+//                 !strconcat(instr_asm, "   $target"),
+//                 [], IIBranch> {
+//  let rd = 0;
+//  let ra = br;
+//  let Form = FCCI;
+//}
+//
+////===----------------------------------------------------------------------===//
+//// Branch and Link Instruction Formats
+////===----------------------------------------------------------------------===//
+//class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
+//              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
+//                 !strconcat(instr_asm, "   $link, $target"),
+//                 [], IIBranch> {
+//  let ra = br;
+//  let Form = FRCR;
+//}
+//
+//class BranchLI<bits<6> op, bits<5> br, string instr_asm> :
+//               TB<op, (outs), (ins GPR:$link, calltarget:$target, variable_ops),
+//                  !strconcat(instr_asm, "   $link, $target"),
+//                  [], IIBranch> {
+//  let ra = br;
+//  let Form = FRCI;
+//}
+//
+////===----------------------------------------------------------------------===//
+//// Conditional Branch Instruction Formats
+////===----------------------------------------------------------------------===//
+//class BranchC<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
+//              TA<op, flags, (outs),
+//                 (ins GPR:$a, GPR:$b),
+//                 !strconcat(instr_asm, "   $a, $b"),
+//                 [], IIBranch> {
+//  let rd = br;
+//  let Form = FCRR;
+//}
+//
+//class BranchCI<bits<6> op, bits<5> br, string instr_asm> :
+//               TB<op, (outs), (ins GPR:$a, brtarget:$offset),
+//                  !strconcat(instr_asm, "   $a, $offset"),
+//                  [], IIBranch> {
+//  let rd = br;
+//  let Form = FCRI;
+//}
+//
 
 //===----------------------------------------------------------------------===//
 // Mico32 arithmetic instructions
@@ -338,7 +384,7 @@ let Predicates=[HasBarrel] in {
 let Predicates=[HasDiv] in {
 // FIXME: check the scheduling on this.
   def DIVU   :  ArithRR<0x23, "divu  ", udiv, IIDiv>; 
-  def MODU   :  ArithRR<0x31, "modu  ", remu, IIDiv>;
+  def MODU   :  ArithRR<0x31, "modu  ", urem, IIDiv>;
 }
 
 let Predicates=[HasFP] in {
@@ -389,19 +435,19 @@ def SW      :  StoreM<0x16, "sw      ", store>;
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
 //===----------------------------------------------------------------------===//
-def CMPEI   : ArithRIs<0x19, "cmpei   ", seteq, IICmp>;
-def CMPGI   : ArithRIs<0x1a, "cmpgi   ", setgt, IICmp>;
-def CMPGEI  : ArithRIs<0x1b, "cmpgei  ", setge, IICmp>;
-def CMPGEUI : ArithRIz<0x1c, "cmpgeui ", setuge, IICmp>;
-def CMPGUI  : ArithRIz<0x1d, "cmpgui  ", setugt, IICmp>;
-def CMPNEI  : ArithNRIz<0x1f, "cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
+def CMPEI   : ArithFRIs<0x19, "cmpei   ", seteq, IICmp>;
+def CMPGI   : ArithFRIs<0x1a, "cmpgi   ", setgt, IICmp>;
+def CMPGEI  : ArithFRIs<0x1b, "cmpgei  ", setge, IICmp>;
+def CMPGEUI : ArithFRIz<0x1c, "cmpgeui ", setuge, IICmp>;
+def CMPGUI  : ArithFRIz<0x1d, "cmpgui  ", setugt, IICmp>;
+def CMPNEI  : ArithFNRIz<0x1f, "cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
 
-def CMPE    : ArithRR<0x39, "cmpe    ", seteq, IICmp>;
-def CMPG    : ArithRR<0x3a, "cmpg    ", setgt, IICmp>;
-def CMPGE   : ArithRR<0x3b, "cmpge   ", setge, IICmp>;
-def CMPGEU  : ArithRR<0x3c, "cmpgeu  ", setuge, IICmp>;
-def CMPGU   : ArithRR<0x3d, "cmpgu   ", setugt, IICmp>;
-def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IICmp>;  // (not (seteq ...))
+def CMPE    : ArithFRR<0x39, "cmpe    ", seteq, IICmp>;
+def CMPG    : ArithFRR<0x3a, "cmpg    ", setgt, IICmp>;
+def CMPGE   : ArithFRR<0x3b, "cmpge   ", setge, IICmp>;
+def CMPGEU  : ArithFRR<0x3c, "cmpgeu  ", setuge, IICmp>;
+def CMPGU   : ArithFRR<0x3d, "cmpgu   ", setugt, IICmp>;
+def CMPNE   : ArithFNRR<0x1f, "cmpne   ", seteq, IICmp>;  // (not (seteq ...))
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions
@@ -411,13 +457,13 @@ def CMPNE   : ArithNRR<0x1f, "cmpne   ", seteq, IICmp>;  // (not (seteq ...))
 // Mico32 misc instructions
 //===----------------------------------------------------------------------===//
 
-def SEXTH : SX<0x37, (outs GPR:$dst), (ins GPR:$b),
-               "sexth   $dst, $b", 
-               [(set GPR:$dst, (sext_inreg GPR:$b, i16))], IIAlu>;
+def SEXTH : TSX<0x37, (outs GPR:$dst), (ins GPR:$b),
+                "sexth   $dst, $b", 
+                [(set GPR:$dst, (sext_inreg GPR:$b, i16))], IIAlu>;
 
-def SEXTB : SX<0x2c, (outs GPR:$dst), (ins GPR:$b),
-               "sextb   $dst, $b", 
-               [(set GPR:$dst, (sext_inreg GPR:$b, i8))], IIAlu>;
+def SEXTB : TSX<0x2c, (outs GPR:$dst), (ins GPR:$b),
+                "sextb   $dst, $b", 
+                [(set GPR:$dst, (sext_inreg GPR:$b, i8))], IIAlu>;
 
 def SCALL : TSC<0x2b, 0x07, (outs), (ins), "scall   ", [], IICall>;
 def BREAK : TSC<0x2b, 0x02, (outs), (ins), "break   ", [], IICall>;

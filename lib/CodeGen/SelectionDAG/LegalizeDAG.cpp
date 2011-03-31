@@ -800,6 +800,7 @@ SDValue SelectionDAGLegalize::LegalizeOp(SDValue Op) {
   SDNode *Node = Op.getNode();
   DebugLoc dl = Node->getDebugLoc();
 
+#ifndef NDEBUG
   for (unsigned i = 0, e = Node->getNumValues(); i != e; ++i)
     assert(getTypeAction(Node->getValueType(i)) == Legal &&
            "Unexpected illegal type!");
@@ -808,6 +809,24 @@ SDValue SelectionDAGLegalize::LegalizeOp(SDValue Op) {
     assert((isTypeLegal(Node->getOperand(i).getValueType()) ||
             Node->getOperand(i).getOpcode() == ISD::TargetConstant) &&
            "Unexpected illegal type!");
+#else
+  for (unsigned i = 0, e = Node->getNumValues(); i != e; ++i)
+    assert(getTypeAction(Node->getValueType(i)) == Legal &&
+           "Unexpected illegal type!");
+
+  for (unsigned i = 0, e = Node->getNumOperands(); i != e; ++i)
+  {
+    if (!(isTypeLegal(Node->getOperand(i).getValueType()) ||
+            Node->getOperand(i).getOpcode() == ISD::TargetConstant)) {
+      DAG.setGraphColor(Node, "yellow");
+      dbgs() << "problematic node: " << Node << "\n";
+      DAG.viewGraph();
+      dbgs() << "illegal operand number:" << i << "\n";
+      dbgs() << "(isTypeLegal(Node->getOperand(i).getValueType()) is: " << (isTypeLegal(Node->getOperand(i).getValueType())) << "\n";
+      dbgs() << "(Node->getOperand(i).getOpcode() == ISD::TargetConstant) is: " << (Node->getOperand(i).getOpcode() == ISD::TargetConstant) << "\n"; 
+    }
+  }
+#endif
 
   // Note that LegalizeOp may be reentered even from single-use nodes, which
   // means that we always must cache transformed nodes.

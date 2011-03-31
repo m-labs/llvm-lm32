@@ -14,6 +14,10 @@
 //===----------------------------------------------------------------------===//
 
 include "llvm/Target/Target.td"
+include "Mico32RegisterInfo.td"
+include "Mico32Schedule.td"
+include "Mico32CallingConv.td"
+include "Mico32InstrInfo.td"
 
 //===----------------------------------------------------------------------===//
 // Subtarget Features. 
@@ -34,10 +38,6 @@ def : Processor< "mico32", Mico32Itineraries, []>;
 // Register File, Calling Convention, and Instruction Descriptions 
 //===----------------------------------------------------------------------===//
 
-include "Mico32RegisterInfo.td"
-include "Mico32Schedule.td"
-include "Mico32CallingConv.td"
-include "Mico32InstrInfo.td"
 
 def Mico32InstrInfo : InstrInfo {
 } 

@@ -14,3 +14,32 @@ To update while in mico32 branch:
 
 
 Currently the port only supports the standard Mico32.  For LM32 Baker variant look at ARM Thumb modes for examples of how to implement.  Specifically search for IsThumb1Only and see how ARM handles the instructions.
+
+INSTALLATION
+
+Install llvm-gcc and ensure it works.  See the LLVM Getting Started manual for directions:
+http://llvm.org/docs/GettingStarted.html#quickstart
+
+The general project layout will be:
+ $TOPDIR
+    - llvm
+    - build
+    - install
+
+Check out the Mico32 LLVM port from the GIT repository: 
+??
+
+Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below. 
+-------------------
+#!/bin/sh
+#rm -rf $TOPDIR/install
+rm -rf $TOPDIR/build
+mkdir $TOPDIR/build
+
+(cd $TOPDIR/build ; ../llvm/configure  --with-llvmgccdir=/Users/jpbonn/Documents/llvm/llvm-gcc-4.2-2.7-x86_64-apple-darwin10/bin/x86_64-apple-darwin10-llvm-gcc --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
+
+(cd $TOPDIR/build ; make install)
+
+(cd $TOPDIR/build ; make check )
+-------------------
+

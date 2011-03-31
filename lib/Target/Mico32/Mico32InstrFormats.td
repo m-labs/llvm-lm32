@@ -91,7 +91,7 @@ class Mico32Inst<bits<6> op, Format form, dag outs, dag ins, string asmstr,
 
 // Used for ADJCALLSTACKDOWN etc.
 class Mico32Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
-      Mico32Inst<0x0, FPseudo, outs, ins, asmstr, pattern, IIPseudo>;
+      Mico32Inst<0x0, FPseudo, outs, ins, asmstr, pattern, NoItinerary>;
 
 //===----------------------------------------------------------------------===//
 // Type RR instruction class in Mico32 : <|opcode|ra|rb|rd|0|>
@@ -99,7 +99,7 @@ class Mico32Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
 
 class TRR<bits<6> op, dag outs, dag ins, string asmstr,
           list<dag> pattern, InstrItinClass itin> :
-          Mico32Inst<op,FRRR,outs, ins, asmstr, pattern, itin>
+          Mico32Inst<op,FRR,outs, ins, asmstr, pattern, itin>
 {
   bits<5> rd;
   bits<5> ra;
@@ -117,7 +117,7 @@ class TRR<bits<6> op, dag outs, dag ins, string asmstr,
 
 class TRI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
-          Mico32Inst<op, FRRI, outs, ins, asmstr, pattern, itin>
+          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin>
 {
   bits<5>  rd;
   bits<5>  ra;
@@ -134,7 +134,7 @@ class TRI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 
 class TRIS<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
            InstrItinClass itin> :
-           Mico32Inst<op, FRRI, outs, ins, asmstr, pattern, itin>
+           Mico32Inst<op, FRIS, outs, ins, asmstr, pattern, itin>
 {
   bits<5>  rd;
   bits<5>  ra;
@@ -152,7 +152,7 @@ class TRIS<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TSX<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
             InstrItinClass itin> :
-            Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+            Mico32Inst<op, FSX, outs, ins, asmstr, pattern, itin> {
   bits<5> rd;
   bits<5> ra;
 
@@ -167,7 +167,7 @@ class TSX<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TRCSR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
               InstrItinClass itin> :
-              Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+              Mico32Inst<op, FRCSR, outs, ins, asmstr, pattern, itin> {
   bits<5> rd;
   bits<5> csr;
 
@@ -182,7 +182,7 @@ class TRCSR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TCR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
-          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+          Mico32Inst<op, FCR, outs, ins, asmstr, pattern, itin> {
   bits<5> csr;
   bits<5> ra;
 
@@ -196,7 +196,7 @@ class TCR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TBR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
           InstrItinClass itin> :
-          Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+          Mico32Inst<op, FBR, outs, ins, asmstr, pattern, itin> {
   bits<5> ra;
 
   let Inst{21-25} = ra;
@@ -208,7 +208,7 @@ class TBR<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
          InstrItinClass itin> :
-         Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+         Mico32Inst<op, FI, outs, ins, asmstr, pattern, itin> {
   bits<26> imm26;
 
   let Inst{0-25} = imm26;
@@ -219,7 +219,7 @@ class TI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
 //===----------------------------------------------------------------------===//
 class TSC<bits<6> op, bits<5> subop, dag outs, dag ins, string asmstr,
           list<dag> pattern, InstrItinClass itin> :
-         Mico32Inst<op, FRI, outs, ins, asmstr, pattern, itin> {
+         Mico32Inst<op, FSC, outs, ins, asmstr, pattern, itin> {
 
   let Inst{5-25} = 0;
   let Inst{0-4} = subop;

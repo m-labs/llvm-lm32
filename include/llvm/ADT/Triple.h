@@ -50,6 +50,7 @@ public:
     arm,     // ARM; arm, armv.*, xscale
     bfin,    // Blackfin: bfin
     cellspu, // CellSPU: spu, cellspu
+    mico32,  // Mico32: mico32
     mips,    // MIPS: mips, mipsallegrex
     mipsel,  // MIPSEL: mipsel, mipsallegrexel, psp
     msp430,  // MSP430: msp430

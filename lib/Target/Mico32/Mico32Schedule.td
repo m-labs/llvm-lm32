@@ -30,7 +30,7 @@ def IIMul       : InstrItinClass;  // 3 : 1
 // Mico32 Generic instruction itineraries.
 //===----------------------------------------------------------------------===//
 // FIXME: This is only a first pass to get things compiling.
-def Mico32GenericItineraries : ProcessorItineraries<
+def Mico32Itineraries : ProcessorItineraries<
   [ALU], [], [
   InstrItinData<IIAlu              , [InstrStage<1,  [ALU]>]>,
   InstrItinData<IIStore            , [InstrStage<1,  [ALU]>]>,
