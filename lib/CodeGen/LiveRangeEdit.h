@@ -25,6 +25,7 @@ namespace llvm {
 
 class AliasAnalysis;
 class LiveIntervals;
+class MachineLoopInfo;
 class MachineRegisterInfo;
 class VirtRegMap;
 
@@ -41,6 +42,10 @@ public:
 
     /// Called before shrinking the live range of a virtual register.
     virtual void LRE_WillShrinkVirtReg(unsigned) {}
+
+    /// Called after cloning a virtual register.
+    /// This is used for new registers representing connected components of Old.
+    virtual void LRE_DidCloneVirtReg(unsigned New, unsigned Old) {}
 
     virtual ~Delegate() {}
   };
@@ -125,6 +130,11 @@ public:
   bool anyRematerializable(LiveIntervals&, const TargetInstrInfo&,
                            AliasAnalysis*);
 
+  /// checkRematerializable - Manually add VNI to the list of rematerializable
+  /// values if DefMI may be rematerializable.
+  void checkRematerializable(VNInfo *VNI, const MachineInstr *DefMI,
+                             const TargetInstrInfo&, AliasAnalysis*);
+
   /// Remat - Information needed to rematerialize at a specific location.
   struct Remat {
     VNInfo *ParentVNI;      // parent_'s value at the remat location.
@@ -174,6 +184,10 @@ public:
                          LiveIntervals&, VirtRegMap&,
                          const TargetInstrInfo&);
 
+  /// calculateRegClassAndHint - Recompute register class and hint for each new
+  /// register.
+  void calculateRegClassAndHint(MachineFunction&, LiveIntervals&,
+                                const MachineLoopInfo&);
 };
 
 }

@@ -1123,7 +1123,7 @@ static bool HasDualReg(unsigned Opcode) {
   case ARM::LDRD: case ARM::LDRD_PRE: case ARM::LDRD_POST:
   case ARM::STRD: case ARM::STRD_PRE: case ARM::STRD_POST:
     return true;
-  }  
+  }
 }
 
 static bool DisassembleLdStMiscFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
@@ -1610,7 +1610,7 @@ static bool DisassembleVFPBinaryFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
 // A8.6.295 vcvt (floating-point <-> integer)
 // Int to FP: VSITOD, VSITOS, VUITOD, VUITOS
 // FP to Int: VTOSI[Z|R]D, VTOSI[Z|R]S, VTOUI[Z|R]D, VTOUI[Z|R]S
-// 
+//
 // A8.6.297 vcvt (floating-point and fixed-point)
 // Dd|Sd Dd|Sd(TIED_TO) #fbits(= 16|32 - UInt(imm4:i))
 static bool DisassembleVFPConv1Frm(MCInst &MI, unsigned Opcode, uint32_t insn,
@@ -1832,9 +1832,9 @@ static bool DisassembleVFPLdStMulFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
 
   OpIdx += 3;
 
-  bool isSPVFP = (Opcode == ARM::VLDMSIA     || Opcode == ARM::VLDMSDB     ||
+  bool isSPVFP = (Opcode == ARM::VLDMSIA     ||
                   Opcode == ARM::VLDMSIA_UPD || Opcode == ARM::VLDMSDB_UPD ||
-                  Opcode == ARM::VSTMSIA     || Opcode == ARM::VSTMSDB     ||
+                  Opcode == ARM::VSTMSIA     ||
                   Opcode == ARM::VSTMSIA_UPD || Opcode == ARM::VSTMSDB_UPD);
   unsigned RegClassID = isSPVFP ? ARM::SPRRegClassID : ARM::DPRRegClassID;
 
@@ -1848,7 +1848,7 @@ static bool DisassembleVFPLdStMulFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
   // Apply some sanity checks before proceeding.
   if (Regs == 0 || (RegD + Regs) > 32 || (!isSPVFP && Regs > 16))
     return false;
-  
+
   for (unsigned i = 0; i < Regs; ++i) {
     MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, RegClassID,
                                                        RegD + i)));
@@ -2286,15 +2286,15 @@ static bool DisassembleNLdSt(MCInst &MI, unsigned Opcode, uint32_t insn,
     // n == 2 && type == 0b1001 -> DblSpaced = true
     if (Name.startswith("VST2") || Name.startswith("VLD2"))
       DblSpaced = slice(insn, 11, 8) == 9;
-    
+
     // n == 3 && type == 0b0101 -> DblSpaced = true
     if (Name.startswith("VST3") || Name.startswith("VLD3"))
       DblSpaced = slice(insn, 11, 8) == 5;
-    
+
     // n == 4 && type == 0b0001 -> DblSpaced = true
     if (Name.startswith("VST4") || Name.startswith("VLD4"))
       DblSpaced = slice(insn, 11, 8) == 1;
-    
+
   }
   return DisassembleNLdSt0(MI, Opcode, insn, NumOps, NumOpsAdded,
                            slice(insn, 21, 21) == 0, DblSpaced, B);
@@ -2391,7 +2391,7 @@ enum N2VFlag {
 //
 // Vector Move Long:
 //   Qd Dm
-// 
+//
 // Vector Move Narrow:
 //   Dd Qm
 //
@@ -2533,7 +2533,7 @@ static bool DisassembleNVectorShift(MCInst &MI, unsigned Opcode, uint32_t insn,
   assert(OpInfo[OpIdx].RegClass < 0 && "Imm operand expected");
 
   // Add the imm operand.
-  
+
   // VSHLL has maximum shift count as the imm, inferred from its size.
   unsigned Imm;
   switch (Opcode) {
@@ -2646,7 +2646,7 @@ static bool DisassembleNVdVnVmOptImm(MCInst &MI, unsigned Opcode, uint32_t insn,
   // N3RegFrm.
   if (Opcode == ARM::VMOVDneon || Opcode == ARM::VMOVQ)
     return true;
-  
+
   // Dm = Inst{5:3-0} => NEON Rm
   // or
   // Dm is restricted to D0-D7 if size is 16, D0-D15 otherwise
@@ -2893,8 +2893,8 @@ static bool DisassemblePreLoadFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
     unsigned short NumOps, unsigned &NumOpsAdded, BO B) {
 
   // Preload Data/Instruction requires either 2 or 3 operands.
-  // PLDi, PLDWi, PLIi:                addrmode_imm12
-  // PLDr[a|m], PLDWr[a|m], PLIr[a|m]: ldst_so_reg
+  // PLDi12, PLDWi12, PLIi12: addrmode_imm12
+  // PLDrs, PLDWrs, PLIrs:    ldst_so_reg
 
   MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
                                                      decodeRn(insn))));
@@ -2903,10 +2903,19 @@ static bool DisassemblePreLoadFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
       || Opcode == ARM::PLIi12) {
     unsigned Imm12 = slice(insn, 11, 0);
     bool Negative = getUBit(insn) == 0;
+
+    // A8.6.118 PLD (literal) PLDWi12 with Rn=PC is transformed to PLDi12.
+    if (Opcode == ARM::PLDWi12 && slice(insn, 19, 16) == 0xF) {
+      DEBUG(errs() << "Rn == '1111': PLDWi12 morphed to PLDi12\n");
+      MI.setOpcode(ARM::PLDi12);
+    }
+    
     // -0 is represented specially. All other values are as normal.
+    int Offset = Negative ? -1 * Imm12 : Imm12;
     if (Imm12 == 0 && Negative)
-      Imm12 = INT32_MIN;
-    MI.addOperand(MCOperand::CreateImm(Imm12));
+      Offset = INT32_MIN;
+
+    MI.addOperand(MCOperand::CreateImm(Offset));
     NumOpsAdded = 2;
   } else {
     MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
@@ -3174,7 +3183,7 @@ bool ARMBasicMCBuilder::DoPredicateOperands(MCInst& MI, unsigned Opcode,
 
   return false;
 }
-  
+
 /// TryPredicateAndSBitModifier - TryPredicateAndSBitModifier tries to process
 /// the possible Predicate and SBitModifier, to build the remaining MCOperand
 /// constituents.
