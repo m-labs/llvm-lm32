@@ -602,9 +602,7 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
     // Check Live Variables.
     if (MI->isDebugValue()) {
       // Liveness checks are not valid for debug values.
-    } else if (MO->isUndef()) {
-      // An <undef> doesn't refer to any register, so just skip it.
-    } else if (MO->isUse()) {
+    } else if (MO->isUse() && !MO->isUndef()) {
       regsLiveInButUnused.erase(Reg);
 
       bool isKill = false;
@@ -612,13 +610,9 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
       if (MI->isRegTiedToDefOperand(MONum, &defIdx)) {
         // A two-addr use counts as a kill if use and def are the same.
         unsigned DefReg = MI->getOperand(defIdx).getReg();
-        if (Reg == DefReg) {
+        if (Reg == DefReg)
           isKill = true;
-          // And in that case an explicit kill flag is not allowed.
-          if (MO->isKill())
-            report("Illegal kill flag on two-address instruction operand",
-                   MO, MONum);
-        } else if (TargetRegisterInfo::isPhysicalRegister(Reg)) {
+        else if (TargetRegisterInfo::isPhysicalRegister(Reg)) {
           report("Two-address instruction operands must be identical",
                  MO, MONum);
         }
@@ -675,8 +669,7 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
             MInfo.vregsLiveIn.insert(std::make_pair(Reg, MI));
         }
       }
-    } else {
-      assert(MO->isDef());
+    } else if (MO->isDef()) {
       // Register defined.
       // TODO: verify that earlyclobber ops are not used.
       if (MO->isDead())
