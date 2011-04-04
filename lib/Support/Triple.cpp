@@ -65,6 +65,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case ppc64:
   case ppc:     return "ppc";
 
+  case mico32:  return "mico32";
+
   case mblaze:  return "mblaze";
 
   case sparcv9:
