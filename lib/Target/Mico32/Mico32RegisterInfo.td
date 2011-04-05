@@ -115,8 +115,8 @@ def GPR : RegisterClass<"Mico32", [i32], 32,
     iterator allocation_order_end(const MachineFunction &MF) const;
   }];
   let MethodBodies = [{
-    GPRCClass::iterator
-    GPRCClass::allocation_order_end(const MachineFunction &MF) const {
+    GPRClass::iterator
+    GPRClass::allocation_order_end(const MachineFunction &MF) const {
       // The last three registers on the list above are reserved
       return end()-7;
     }
