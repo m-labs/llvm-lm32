@@ -82,8 +82,16 @@ const char *ARMUtils::OpcodeName(unsigned Opcode) {
 // FIXME: Auto-gened?
 static unsigned
 getRegisterEnum(BO B, unsigned RegClassID, unsigned RawRegister) {
-  // For this purpose, we can treat rGPR as if it were GPR.
-  if (RegClassID == ARM::rGPRRegClassID) RegClassID = ARM::GPRRegClassID;
+  if (RegClassID == ARM::rGPRRegClassID) {
+    // Check for The register numbers 13 and 15 that are not permitted for many
+    // Thumb register specifiers.
+    if (RawRegister == 13 || RawRegister == 15) {
+      B->SetErr(-1);
+      return 0;
+    }
+    // For this purpose, we can treat rGPR as if it were GPR.
+    RegClassID = ARM::GPRRegClassID;
+  }
 
   // See also decodeNEONRd(), decodeNEONRn(), decodeNEONRm().
   unsigned RegNum =
@@ -673,10 +681,17 @@ static bool DisassembleCoprocessor(MCInst &MI, unsigned Opcode, uint32_t insn,
   // CDP/CDP2 has no GPR operand; the opc1 operand is also wider (Inst{23-20}).
   bool NoGPR = (Opcode == ARM::CDP || Opcode == ARM::CDP2);
   bool LdStCop = LdStCopOpcode(Opcode);
+  bool RtOut = (Opcode == ARM::MRC || Opcode == ARM::MRC2);
 
   OpIdx = 0;
 
+  if (RtOut) {
+    MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
+                                                       decodeRd(insn))));
+    ++OpIdx;
+  }
   MI.addOperand(MCOperand::CreateImm(GetCoprocessor(insn)));
+  ++OpIdx;
 
   if (LdStCop) {
     // Unindex if P:W = 0b00 --> _OPTION variant
@@ -686,6 +701,7 @@ static bool DisassembleCoprocessor(MCInst &MI, unsigned Opcode, uint32_t insn,
 
     MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
                                                        decodeRn(insn))));
+    OpIdx += 2;
 
     if (PW) {
       MI.addOperand(MCOperand::CreateReg(0));
@@ -696,19 +712,23 @@ static bool DisassembleCoprocessor(MCInst &MI, unsigned Opcode, uint32_t insn,
       unsigned Offset = ARM_AM::getAM2Opc(AddrOpcode, slice(insn, 7, 0) << 2,
                                           ARM_AM::no_shift, IndexMode);
       MI.addOperand(MCOperand::CreateImm(Offset));
-      OpIdx = 5;
+      OpIdx += 2;
     } else {
       MI.addOperand(MCOperand::CreateImm(slice(insn, 7, 0)));
-      OpIdx = 4;
+      ++OpIdx;
     }
   } else {
     MI.addOperand(MCOperand::CreateImm(OneCopOpc ? GetCopOpc(insn)
                                                  : GetCopOpc1(insn, NoGPR)));
+    ++OpIdx;
 
-    MI.addOperand(NoGPR ? MCOperand::CreateImm(decodeRd(insn))
-                        : MCOperand::CreateReg(
-                            getRegisterEnum(B, ARM::GPRRegClassID,
-                                            decodeRd(insn))));
+    if (!RtOut) {
+      MI.addOperand(NoGPR ? MCOperand::CreateImm(decodeRd(insn))
+                          : MCOperand::CreateReg(
+                                getRegisterEnum(B, ARM::GPRRegClassID,
+                                                decodeRd(insn))));
+      ++OpIdx;
+    }
 
     MI.addOperand(OneCopOpc ? MCOperand::CreateReg(
                                 getRegisterEnum(B, ARM::GPRRegClassID,
@@ -717,7 +737,7 @@ static bool DisassembleCoprocessor(MCInst &MI, unsigned Opcode, uint32_t insn,
 
     MI.addOperand(MCOperand::CreateImm(decodeRm(insn)));
 
-    OpIdx = 5;
+    OpIdx += 2;
 
     if (!OneCopOpc) {
       MI.addOperand(MCOperand::CreateImm(GetCopOpc2(insn)));
@@ -1048,6 +1068,10 @@ static bool DisassembleDPSoRegFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
   MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
                                                      decodeRm(insn))));
   if (Rs) {
+    // If Inst{7} != 0, we should reject this insn as an invalid encoding.
+    if (slice(insn, 7, 7))
+      return false;
+
     // Register-controlled shifts: [Rm, Rs, shift].
     MI.addOperand(MCOperand::CreateReg(getRegisterEnum(B, ARM::GPRRegClassID,
                                                        decodeRs(insn))));
