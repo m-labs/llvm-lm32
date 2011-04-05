@@ -61,8 +61,6 @@ current one.  To see the release notes for a specific release, please see the
 
 </div>
 
-<!-- NOTE: last release for llvm-gcc --> 
-
 <!--
 Almost dead code.
   lib/Transforms/IPO/MergeFunctions.cpp => consider for 3.0.
@@ -73,7 +71,6 @@ Almost dead code.
   combiner-aa?
   strong phi elim
   loop dependence analysis
-  TBAA
   CorrelatedValuePropagation
  -->
  
@@ -111,7 +108,18 @@ integrating with other development tools. Clang is considered a
 production-quality compiler for C, Objective-C, C++ and Objective-C++ on x86
 (32- and 64-bit), and for darwin-arm targets.</p>
 
-<p>In the LLVM 2.9 time-frame, the Clang team has made many improvements:</p>
+<p>In the LLVM 2.9 time-frame, the Clang team has made many improvements in C,
+C++ and Objective-C support.  C++ support is now generally rock solid, has
+been exercised on a broad variety of code, and has several new C++'0x features
+implemented (such as rvalue references and variadic templates).  LLVM 2.9 has
+also brought in a large range of bug fixes and minor features (e.g. __label__
+support), and is much more compatible with the Linux Kernel.</p>  
+  
+<p>If Clang rejects your code that is built with another compiler, please take a
+look at the <a href="http://clang.llvm.org/compatibility.html">language
+compatibility</a> guide to make sure the issue isn't intentional or a known
+issue.
+</p>
 
 <ul>
 </ul>
@@ -119,68 +127,34 @@ production-quality compiler for C, Objective-C, C++ and Objective-C++ on x86
 
 <!--=========================================================================-->
 <div class="doc_subsection">
-<a name="clangsa">Clang Static Analyzer</a>
+<a name="dragonegg">DragonEgg: GCC front-ends, LLVM back-end</a>
 </div>
 
 <div class="doc_text">
-
-<p>The <a href="http://clang-analyzer.llvm.org/">Clang Static Analyzer</a>
-   project is an effort to use static source code analysis techniques to
-   automatically find bugs in C and Objective-C programs (and hopefully <a
-   href="http://clang-analyzer.llvm.org/dev_cxx.html">C++ in the
-   future</a>!).  The tool is very good at finding bugs that occur on specific
-   paths through code, such as on error conditions.</p>
-
-<p>The LLVM 2.9 release... 
-</p>
-
-</div>
-
-<!--=========================================================================-->
-<div class="doc_subsection">
-<a name="dragonegg">DragonEgg: llvm-gcc ported to gcc-4.5</a>
-</div>
-
-<div class="doc_text">
-NOTE: This should be written to be self-contained without referencing llvm-gcc.
-
 <p>
-<a href="http://dragonegg.llvm.org/">DragonEgg</a> is a port of llvm-gcc to
-gcc-4.5.  Unlike llvm-gcc, dragonegg in theory does not require any gcc-4.5
-modifications whatsoever (currently one small patch is needed) thanks to the
-new <a href="http://gcc.gnu.org/wiki/plugins">gcc plugin architecture</a>.
-DragonEgg is a gcc plugin that makes gcc-4.5 use the LLVM optimizers and code
-generators instead of gcc's, just like with llvm-gcc.
-</p>
-
-<p>
-DragonEgg is still a work in progress, but it is able to compile a lot of code,
-for example all of gcc, LLVM and clang.  Currently Ada, C, C++ and Fortran work
-well, while all other languages either don't work at all or only work poorly.
-For the moment only the x86-32 and x86-64 targets are supported, and only on
-linux and darwin (darwin may need additional gcc patches).
+<a href="http://dragonegg.llvm.org/">DragonEgg</a> is a
+<a href="http://gcc.gnu.org/wiki/plugins">gcc plugin</a> that replaces GCC's
+optimizers and code generators with LLVM's.
+Currently it requires a patched version of gcc-4.5.
+The plugin can target the x86-32 and x86-64 processor families and has been
+used successfully on the Darwin, FreeBSD and Linux platforms.
+The Ada, C, C++ and Fortran languages work well.
+The plugin is capable of compiling plenty of Obj-C, Obj-C++ and Java but it is
+not known whether the compiled code actually works or not!
 </p>
 
 <p>
 The 2.9 release has the following notable changes:
 <ul>
+<li>The plugin is much more stable when compiling Fortran.</li>
+<li>Inline asm where an asm output is tied to an input of a different size is
+now supported in many more cases.</li>
+<li>Basic support for the __float128 type was added.  It is now possible to
+generate LLVM IR from programs using __float128 but code generation does not
+work yet.</li>
+<li>Compiling Java programs no longer systematically crashes the plugin.</li>
 </ul>
 
-</div>
-
-<!--=========================================================================-->
-<div class="doc_subsection">
-<a name="vmkit">VMKit: JVM Virtual Machine Implementation</a>
-</div>
-
-<div class="doc_text">
-<p>
-The <a href="http://vmkit.llvm.org/">VMKit project</a> is an implementation of
-a Java Virtual Machine (Java VM or JVM) that uses LLVM for static and
-just-in-time compilation.
-
-UPDATE.
-</p>
 </div>
 
 <!--=========================================================================-->
@@ -203,7 +177,9 @@ libgcc routines).</p>
 All of the code in the compiler-rt project is available under the standard LLVM
 License, a "BSD-style" license.  
 
-NEW: MIT License as well.
+compiler_rt is now dual licensed under MIT and UIUC license
+  
+Several minor changes for better ARM support.
 
 New in LLVM 2.9,  UPDATE</p>
 
@@ -224,8 +200,9 @@ LLVM disassembler and the LLVM JIT.</p>
 
 <p>
 LLDB is in early development and not included as part of the LLVM 2.9 release,
-UPDATE!
 
+  
+  
 <!--
 but is mature enough to support basic debugging scenarios on Mac OS X in C,
 Objective-C and C++.  We'd really like help extending and expanding LLDB to 
@@ -249,6 +226,8 @@ delivering great performance.</p>
 <p>
 As of the LLVM 2.9 release, UPDATE!
 
+libc++ is now dual licensed under MIT and UIUC license
+  
 <!--libc++ is virtually feature complete, but would
 benefit from more testing and better integration with Clang++.  It is also
 looking forward to the C++ committee finalizing the C++'0x standard.-->
@@ -259,6 +238,7 @@ looking forward to the C++ committee finalizing the C++'0x standard.-->
 
 
 <!--=========================================================================-->
+<!--
 <div class="doc_subsection">
 <a name="klee">KLEE: A Symbolic Execution Virtual Machine</a>
 </div>
@@ -273,8 +253,7 @@ be used to verify some algorithms.
 </p>
 
 <p>UPDATE!</p>
-
-</div>
+</div>-->
 
 
 <!-- *********************************************************************** -->
@@ -318,7 +297,127 @@ in this section.
 <p>LLVM 2.9 includes several major new capabilities:</p>
 
 <ul>
+<li><pre>
+  last release for llvm-gcc
+TBAA: On by default in clang.  Disable it with -fno-strict-aliasing.
+  Could be more aggressive for structs.
+  
+Triple::normalize is new, llvm triples are always stored in normalized form internally.
+
+Triple x86_64--mingw64 is obsoleted. Use x86_64--mingw32 instead.
+
+MC Assembler: X86 now generates much better diagnostics for common errors,
+    is much faster at matching instructions, is much more bug-compatible with
+    the GAS assembler, and is now generally useful for a broad range of X86
+    assembly.
+  
+New Nvidia PTX backend, not generally useful in 2.9 though.
+
+Much better debug info generated, particularly in optimized code situations.
+
+ARM Fast ISel
+
+ELF MC support: on by default in clang.  There are still known missing features
+  for human written assembly.
+
+X86: Reimplemented all of MMX to introduce a new LLVM IR x86_mmx type.  Now
+  random types like &lt;2 x i32&gt; are not iseld to mmx without emms.
+
+Some basic <a href="CodeGenerator.html#mc">internals documentation</a> for MC. 
+  
+MC Assembler support for .file and .loc.
+  
+  
+inline asm multiple alternative constraint support.
+  
+LoopIdiom: memset/memcpy formation
+  
+  
+X86 support for FS/GS relative loads and stores using address space 256/257 are
+  reliable now.
+  
+ARM: New code placement pass.
+  
+  
+PointerTracking has been removed from mainline, moved to ClamAV.
+  
+EarlyCSE pass.
+
+- DIBuilder provides simpler interface for front ends like Clang to encode debug info in LLVM IR.
+  - This interface hides implementation details (e.g. DIDerivedType, existence of compile unit etc..) that any front end should not know about.
+  For example,
+  Ty = DebugFactory.CreateDerivedType(DW_TAG_volatile_type,
+  findRegion(TYPE_CONTEXT(type)),
+  StringRef(),
+  getOrCreateFile(main_input_filename),
+  0 /*line no*/,
+  NodeSizeInBits(type),
+  NodeAlignInBits(type),
+  0 /*offset */,
+  0 /* flags */,
+  MainTy);
+  can be replaced by
+  DbgTy = DBuilder.createQualifiedType(DW_TAG_volatile_type, MainTy); 
+  
+PPC: Switched to MCInstPrinter, and MCCodeEmitter.  Ready to implement support
+  for directly writing out mach-o object files, but noone seems interested.
+
+ARM: Improved code generation for Cortex-A8 and Cortex-A9 CPUs.
+  
+Scheduler now models operand latency and pipeline forwarding.
+  
+error_code + libsystem + PathV2 changes
+
+new macho-dump tool
+
+Major regalloc rewrite, not on by default for 2.9 and not advised to use it.
+ * New basic register allocator that can be used as a safe fallback when
+   debugging. Enable with -regalloc=basic.
+ * New infrastructure for live range splitting. SplitKit can break a live
+   interval into smaller pieces while preserving SSA form, and SpillPlacement
+   can help find the best split points. This is a work in progress so the API
+   is changing quickly.
+ * The inline spiller has learned to clean up after live range splitting. It
+   can hoist spills out of loops, and it can eliminate redundant spills.
+   Rematerialization works with live range splitting.
+ * New greedy register allocator using live range splitting. This will be the
+   default register allocator in the next LLVM release, but it is not turned on
+   by default in 2.9.
+
+ARM: __builtin_prefetch turns into prefetch instructions.
+  
+MC assembler support for 3dNow! and 3DNowA instructions.
+  
+tblgen support for assembler aliases: <a 
+  href="CodeGenerator.html#na_instparsing">MnemonicAlias and InstAlias</a>
+  
+LoopIndexSplit pass was removed, unmaintained.
+  
+include/llvm/System merged into include/llvm/Support.
+ 
+Win32 PE-COFF support in the MC assembler has made a lot of progress in the 2.9
+  timeframe, but is still not generally useful.  Please see 
+  "http://llvm.org/bugs/showdependencytree.cgi?id=9100&amp;hide_resolved=1" for open bugs?
+
+New <a href="WritingAnLLVMPass.html#RegionPass">RegionPass</a> infrastructure
+  for region-based optimizations.
+  
+MicroBlaze: major updates for aggressive delay slot filler, MC-based assembly
+   printing, assembly instruction parsing, ELF .o file emission, and MC
+   instruction disassembler.
+  
+Countless ARM microoptimizations.
+
+Speedups to various mid-level passes:
+  GVN is much faster on functions with deep dominator trees / lots of BBs.
+  DomTree and DominatorFrontier are much faster to compute.
+  
+  
+new 'hotpatch' attribute: LangRef.html#fnattrs
+</pre></li>
 </ul>
+  
+Still todo: [101129-110228]
 
 </div>
 
@@ -389,8 +488,7 @@ href="http://blog.llvm.org/2010/04/intro-to-llvm-mc-project.html">Intro to the
 LLVM MC Project Blog Post</a>.
 </p>
 
-</div>	
-
+</div>
 
 <!--=========================================================================-->
 <div class="doc_subsection">
@@ -419,6 +517,7 @@ FastISel for ARM.
 </p>
 
 <ul>
+  <li>Several bugs have been fixed for Windows x64 code generator.</li>
 </ul>
 
 </div>
@@ -527,13 +626,23 @@ href="http://lists.cs.uiuc.edu/mailman/listinfo/llvmdev">LLVMdev list</a>.</p>
     all <a href="http://llvm.org/PR879">inline assembly that uses the X86
     floating point stack</a>.  It supports the 'f' and 't' constraints, but not
     'u'.</li>
-  <li>Win64 code generation wasn't widely tested. Everything should work, but we
-    expect small issues to happen. Also, llvm-gcc cannot build the mingw64
-    runtime currently due to lack of support for the 'u' inline assembly
-    constraint and for X87 floating point inline assembly.</li>
   <li>The X86-64 backend does not yet support the LLVM IR instruction
       <tt>va_arg</tt>. Currently, front-ends support variadic
       argument constructs on X86-64 by lowering them manually.</li>
+  <li>Windows x64 (aka Win64) code generator has a few issues.
+    <ul>
+      <li>llvm-gcc cannot build the mingw-w64 runtime currently
+       due to lack of support for the 'u' inline assembly
+       constraint and for X87 floating point inline assembly.</li>
+      <li>On mingw-w64, you will see unresolved symbol <tt>__chkstk</tt>
+       due to <a href="http://llvm.org/bugs/show_bug.cgi?id=8919">Bug 8919</a>.
+       It is fixed in <a href="http://lists.cs.uiuc.edu/pipermail/llvm-commits/Week-of-Mon-20110321/118499.html">r128206</a>.</li>
+      <li>Miss-aligned MOVDQA might crash your program. It is due to
+       <a href="http://llvm.org/bugs/show_bug.cgi?id=9483">Bug 9483</a>,
+       lack of handling aligned internal globals.</li>
+      </ul>
+  </li>
+
 </ul>
 
 </div>

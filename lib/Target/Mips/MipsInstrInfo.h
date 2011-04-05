@@ -70,24 +70,12 @@ namespace Mips {
     FCOND_NLT,
     FCOND_GE,
     FCOND_NLE,
-    FCOND_GT,
-
-    // Only integer conditions
-    COND_E,
-    COND_GZ,
-    COND_GEZ,
-    COND_LZ,
-    COND_LEZ,
-    COND_NE,
-    COND_INVALID
+    FCOND_GT
   };
 
-  // Turn condition code into conditional branch opcode.
-  unsigned GetCondBranchFromCond(CondCode CC);
-
-  /// GetOppositeBranchCondition - Return the inverse of the specified cond,
-  /// e.g. turning COND_E to COND_NE.
-  CondCode GetOppositeBranchCondition(Mips::CondCode CC);
+  /// GetOppositeBranchOpc - Return the inverse of the specified
+  /// opcode, e.g. turning BEQ to BNE.
+  unsigned GetOppositeBranchOpc(unsigned Opc);
 
   /// MipsCCToString - Map each FP condition code to its string
   inline static const char *MipsFCCToString(Mips::CondCode CC)
@@ -155,10 +143,10 @@ namespace MipsII {
     /// for the relocatable object file being produced.
     MO_GPREL,
 
-    /// MO_ABS_HILO - Represents the hi or low part of an absolute symbol
+    /// MO_ABS_HI/LO - Represents the hi or low part of an absolute symbol
     /// address.
-    MO_ABS_HILO
-
+    MO_ABS_HI,
+    MO_ABS_LO
   };
 }
 
@@ -196,6 +184,12 @@ public:
                              SmallVectorImpl<MachineOperand> &Cond,
                              bool AllowModify) const;
   virtual unsigned RemoveBranch(MachineBasicBlock &MBB) const;
+
+private:
+  void BuildCondBr(MachineBasicBlock &MBB, MachineBasicBlock *TBB, DebugLoc DL,
+                   const SmallVectorImpl<MachineOperand>& Cond) const;
+
+public:
   virtual unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                                 MachineBasicBlock *FBB,
                                 const SmallVectorImpl<MachineOperand> &Cond,

@@ -4403,7 +4403,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
   }
   case Intrinsic::eh_sjlj_dispatch_setup: {
     DAG.setRoot(DAG.getNode(ISD::EH_SJLJ_DISPATCHSETUP, dl, MVT::Other,
-                            getRoot(), getValue(I.getArgOperand(0))));
+                            getRoot()));
     return 0;
   }
 
@@ -4927,15 +4927,21 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
              DAG.getNode(ISD::MERGE_VALUES, getCurDebugLoc(),
                          DAG.getVTList(&RetTys[0], RetTys.size()),
                          &ReturnValues[0], ReturnValues.size()));
-
   }
 
-  // As a special case, a null chain means that a tail call has been emitted and
-  // the DAG root is already updated.
-  if (Result.second.getNode())
-    DAG.setRoot(Result.second);
-  else
+  // Assign order to nodes here. If the call does not produce a result, it won't
+  // be mapped to a SDNode and visit() will not assign it an order number.
+  if (!Result.second.getNode()) {
+    // As a special case, a null chain means that a tail call has been emitted and
+    // the DAG root is already updated.
     HasTailCall = true;
+    ++SDNodeOrder;
+    AssignOrderingToNode(DAG.getRoot().getNode());
+  } else {
+    DAG.setRoot(Result.second);
+    ++SDNodeOrder;
+    AssignOrderingToNode(Result.second.getNode());
+  }
 
   if (LandingPad) {
     // Insert a label at the end of the invoke call to mark the try range.  This

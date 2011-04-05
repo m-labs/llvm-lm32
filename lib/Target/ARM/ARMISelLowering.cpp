@@ -72,6 +72,11 @@ ARMInterworking("arm-interworking", cl::Hidden,
   cl::desc("Enable / disable ARM interworking (for debugging only)"),
   cl::init(true));
 
+static cl::opt<bool>
+UseDivMod("arm-divmod-libcall", cl::Hidden,
+  cl::desc("Use __{u}divmod libcalls for div / rem pairs"),
+  cl::init(false));
+
 void ARMTargetLowering::addTypeForNEON(EVT VT, EVT PromotedLdStVT,
                                        EVT PromotedBitwiseVT) {
   if (VT != PromotedLdStVT) {
@@ -391,6 +396,11 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setLibcallCallingConv(RTLIB::UDIV_I8, CallingConv::ARM_AAPCS);
     setLibcallCallingConv(RTLIB::UDIV_I16, CallingConv::ARM_AAPCS);
     setLibcallCallingConv(RTLIB::UDIV_I32, CallingConv::ARM_AAPCS);
+  }
+
+  if (UseDivMod) {
+    setLibcallName(RTLIB::SDIVREM_I32, "__divmodsi4");
+    setLibcallName(RTLIB::UDIVREM_I32, "__udivmodsi4");
   }
 
   if (Subtarget->isThumb1Only())
@@ -2103,7 +2113,7 @@ ARMTargetLowering::LowerEH_SJLJ_DISPATCHSETUP(SDValue Op, SelectionDAG &DAG)
   const {
   DebugLoc dl = Op.getDebugLoc();
   return DAG.getNode(ARMISD::EH_SJLJ_DISPATCHSETUP, dl, MVT::Other,
-                     Op.getOperand(0), Op.getOperand(1));
+                     Op.getOperand(0));
 }
 
 SDValue
@@ -5224,6 +5234,42 @@ static SDValue PerformSUBCombine(SDNode *N,
   return SDValue();
 }
 
+/// PerformVMULCombine
+/// Distribute (A + B) * C to (A * C) + (B * C) to take advantage of the
+/// special multiplier accumulator forwarding.
+///   vmul d3, d0, d2
+///   vmla d3, d1, d2
+/// is faster than
+///   vadd d3, d0, d1
+///   vmul d3, d3, d2
+static SDValue PerformVMULCombine(SDNode *N,
+                                  TargetLowering::DAGCombinerInfo &DCI,
+                                  const ARMSubtarget *Subtarget) {
+  if (!Subtarget->hasVMLxForwarding())
+    return SDValue();
+
+  SelectionDAG &DAG = DCI.DAG;
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  unsigned Opcode = N0.getOpcode();
+  if (Opcode != ISD::ADD && Opcode != ISD::SUB &&
+      Opcode != ISD::FADD && Opcode != ISD::FSUB) {
+    Opcode = N0.getOpcode();
+    if (Opcode != ISD::ADD && Opcode != ISD::SUB &&
+        Opcode != ISD::FADD && Opcode != ISD::FSUB)
+      return SDValue();
+    std::swap(N0, N1);
+  }
+
+  EVT VT = N->getValueType(0);
+  DebugLoc DL = N->getDebugLoc();
+  SDValue N00 = N0->getOperand(0);
+  SDValue N01 = N0->getOperand(1);
+  return DAG.getNode(Opcode, DL, VT,
+                     DAG.getNode(ISD::MUL, DL, VT, N00, N1),
+                     DAG.getNode(ISD::MUL, DL, VT, N01, N1));
+}
+
 static SDValue PerformMULCombine(SDNode *N,
                                  TargetLowering::DAGCombinerInfo &DCI,
                                  const ARMSubtarget *Subtarget) {
@@ -5236,6 +5282,8 @@ static SDValue PerformMULCombine(SDNode *N,
     return SDValue();
 
   EVT VT = N->getValueType(0);
+  if (VT.is64BitVector() || VT.is128BitVector())
+    return PerformVMULCombine(N, DCI, Subtarget);
   if (VT != MVT::i32)
     return SDValue();
 
@@ -5513,6 +5561,37 @@ static SDValue PerformVMOVRRDCombine(SDNode *N,
   SDValue InDouble = N->getOperand(0);
   if (InDouble.getOpcode() == ARMISD::VMOVDRR)
     return DCI.CombineTo(N, InDouble.getOperand(0), InDouble.getOperand(1));
+
+  // vmovrrd(load f64) -> (load i32), (load i32)
+  SDNode *InNode = InDouble.getNode();
+  if (ISD::isNormalLoad(InNode) && InNode->hasOneUse() &&
+      InNode->getValueType(0) == MVT::f64 &&
+      InNode->getOperand(1).getOpcode() == ISD::FrameIndex &&
+      !cast<LoadSDNode>(InNode)->isVolatile()) {
+    // TODO: Should this be done for non-FrameIndex operands?
+    LoadSDNode *LD = cast<LoadSDNode>(InNode);
+
+    SelectionDAG &DAG = DCI.DAG;
+    DebugLoc DL = LD->getDebugLoc();
+    SDValue BasePtr = LD->getBasePtr();
+    SDValue NewLD1 = DAG.getLoad(MVT::i32, DL, LD->getChain(), BasePtr,
+                                 LD->getPointerInfo(), LD->isVolatile(),
+                                 LD->isNonTemporal(), LD->getAlignment());
+
+    SDValue OffsetPtr = DAG.getNode(ISD::ADD, DL, MVT::i32, BasePtr,
+                                    DAG.getConstant(4, MVT::i32));
+    SDValue NewLD2 = DAG.getLoad(MVT::i32, DL, NewLD1.getValue(1), OffsetPtr,
+                                 LD->getPointerInfo(), LD->isVolatile(),
+                                 LD->isNonTemporal(),
+                                 std::min(4U, LD->getAlignment() / 2));
+
+    DAG.ReplaceAllUsesOfValueWith(SDValue(LD, 1), NewLD2.getValue(1));
+    SDValue Result = DCI.CombineTo(N, NewLD1, NewLD2);
+    DCI.RemoveFromWorklist(LD);
+    DAG.DeleteNode(LD);
+    return Result;
+  }
+
   return SDValue();
 }
 

@@ -50,16 +50,8 @@ public:
   const MachineLoopInfo &Loops;
   const TargetInstrInfo &TII;
 
-  // Instructions using the the current register.
-  typedef SmallPtrSet<const MachineInstr*, 16> InstrPtrSet;
-  InstrPtrSet UsingInstrs;
-
   // Sorted slot indexes of using instructions.
   SmallVector<SlotIndex, 8> UseSlots;
-
-  // The number of instructions using CurLI in each basic block.
-  typedef DenseMap<const MachineBasicBlock*, unsigned> BlockCountMap;
-  BlockCountMap UsingBlocks;
 
   /// Additional information about basic blocks where the current variable is
   /// live. Such a block will look like one of these templates:
@@ -73,22 +65,14 @@ public:
   ///
   struct BlockInfo {
     MachineBasicBlock *MBB;
-    SlotIndex Start;      ///< Beginining of block.
-    SlotIndex Stop;       ///< End of block.
     SlotIndex FirstUse;   ///< First instr using current reg.
     SlotIndex LastUse;    ///< Last instr using current reg.
     SlotIndex Kill;       ///< Interval end point inside block.
     SlotIndex Def;        ///< Interval start point inside block.
-    /// Last possible point for splitting live ranges.
-    SlotIndex LastSplitPoint;
     bool Uses;            ///< Current reg has uses or defs in block.
     bool LiveThrough;     ///< Live in whole block (Templ 5. or 6. above).
     bool LiveIn;          ///< Current reg is live in.
     bool LiveOut;         ///< Current reg is live out.
-
-    // Per-interference pattern scratch data.
-    bool OverlapEntry;    ///< Interference overlaps entering interval.
-    bool OverlapExit;     ///< Interference overlaps exiting interval.
   };
 
   /// Basic blocks where var is live. This array is parallel to
@@ -99,15 +83,19 @@ private:
   // Current live interval.
   const LiveInterval *CurLI;
 
+  /// LastSplitPoint - Last legal split point in each basic block in the current
+  /// function. The first entry is the first terminator, the second entry is the
+  /// last valid split point for a variable that is live in to a landing pad
+  /// successor.
+  SmallVector<std::pair<SlotIndex, SlotIndex>, 8> LastSplitPoint;
+
+  SlotIndex computeLastSplitPoint(unsigned Num);
+
   // Sumarize statistics by counting instructions using CurLI.
   void analyzeUses();
 
   /// calcLiveBlockInfo - Compute per-block information about CurLI.
   bool calcLiveBlockInfo();
-
-  /// canAnalyzeBranch - Return true if MBB ends in a branch that can be
-  /// analyzed.
-  bool canAnalyzeBranch(const MachineBasicBlock *MBB);
 
 public:
   SplitAnalysis(const VirtRegMap &vrm, const LiveIntervals &lis,
@@ -124,9 +112,14 @@ public:
   /// getParent - Return the last analyzed interval.
   const LiveInterval &getParent() const { return *CurLI; }
 
-  /// hasUses - Return true if MBB has any uses of CurLI.
-  bool hasUses(const MachineBasicBlock *MBB) const {
-    return UsingBlocks.lookup(MBB);
+  /// getLastSplitPoint - Return that base index of the last valid split point
+  /// in the basic block numbered Num.
+  SlotIndex getLastSplitPoint(unsigned Num) {
+    // Inline the common simple case.
+    if (LastSplitPoint[Num].first.isValid() &&
+        !LastSplitPoint[Num].second.isValid())
+      return LastSplitPoint[Num].first;
+    return computeLastSplitPoint(Num);
   }
 
   /// isOriginalEndpoint - Return true if the original live range was killed or
@@ -137,9 +130,6 @@ public:
   bool isOriginalEndpoint(SlotIndex Idx) const;
 
   typedef SmallPtrSet<const MachineBasicBlock*, 16> BlockPtrSet;
-
-  // Print a set of blocks with use counts.
-  void print(const BlockPtrSet&, raw_ostream&) const;
 
   /// getMultiUseBlocks - Add basic blocks to Blocks that may benefit from
   /// having CurLI split to a new live interval. Return true if Blocks can be
