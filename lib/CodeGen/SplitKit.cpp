@@ -48,7 +48,8 @@ SplitAnalysis::SplitAnalysis(const VirtRegMap &vrm,
 
 void SplitAnalysis::clear() {
   UseSlots.clear();
-  LiveBlocks.clear();
+  UseBlocks.clear();
+  ThroughBlocks.clear();
   CurLI = 0;
 }
 
@@ -81,7 +82,7 @@ SlotIndex SplitAnalysis::computeLastSplitPoint(unsigned Num) {
 
   // If CurLI is live into a landing pad successor, move the last split point
   // back to the call that may throw.
-  if (LPad && LSP.second.isValid() && !LIS.isLiveInToMBB(*CurLI, LPad))
+  if (LPad && LSP.second.isValid() && LIS.isLiveInToMBB(*CurLI, LPad))
     return LSP.second;
   else
     return LSP.first;
@@ -121,15 +122,17 @@ void SplitAnalysis::analyzeUses() {
     DEBUG(dbgs() << "*** Fixing inconsistent live interval! ***\n");
     const_cast<LiveIntervals&>(LIS)
       .shrinkToUses(const_cast<LiveInterval*>(CurLI));
-    LiveBlocks.clear();
+    UseBlocks.clear();
+    ThroughBlocks.clear();
     bool fixed = calcLiveBlockInfo();
     (void)fixed;
     assert(fixed && "Couldn't fix broken live interval");
   }
 
   DEBUG(dbgs() << "Analyze counted "
-               << UseSlots.size() << " instrs, "
-               << LiveBlocks.size() << " spanned.\n");
+               << UseSlots.size() << " instrs in "
+               << UseBlocks.size() << " blocks, through "
+               << ThroughBlocks.size() << " blocks.\n");
 }
 
 /// calcLiveBlockInfo - Fill the LiveBlocks array with information about blocks
@@ -159,8 +162,8 @@ bool SplitAnalysis::calcLiveBlockInfo() {
       BI.Def = LVI->start;
 
     // Find the first and last uses in the block.
-    BI.Uses = UseI != UseE && *UseI < Stop;
-    if (BI.Uses) {
+    bool Uses = UseI != UseE && *UseI < Stop;
+    if (Uses) {
       BI.FirstUse = *UseI;
       assert(BI.FirstUse >= Start);
       do ++UseI;
@@ -188,11 +191,14 @@ bool SplitAnalysis::calcLiveBlockInfo() {
 
     // Don't set LiveThrough when the block has a gap.
     BI.LiveThrough = !hasGap && BI.LiveIn && BI.LiveOut;
-    LiveBlocks.push_back(BI);
+    if (Uses)
+      UseBlocks.push_back(BI);
+    else
+      ThroughBlocks.push_back(BI.MBB->getNumber());
 
     // FIXME: This should never happen. The live range stops or starts without a
     // corresponding use. An earlier pass did something wrong.
-    if (!BI.LiveThrough && !BI.Uses)
+    if (!BI.LiveThrough && !Uses)
       return false;
 
     // LVI is now at LVE or LVI->end >= Stop.
@@ -673,7 +679,8 @@ void SplitEditor::overlapIntv(SlotIndex Start, SlotIndex End) {
          "Range cannot span basic blocks");
 
   // The complement interval will be extended as needed by extendRange().
-  markComplexMapped(0, ParentVNI);
+  if (ParentVNI)
+    markComplexMapped(0, ParentVNI);
   DEBUG(dbgs() << "    overlapIntv [" << Start << ';' << End << "):");
   RegAssign.insert(Start, End, OpenIdx);
   DEBUG(dump());
@@ -906,12 +913,12 @@ void SplitEditor::finish() {
 /// may be an advantage to split CurLI for the duration of the block.
 bool SplitAnalysis::getMultiUseBlocks(BlockPtrSet &Blocks) {
   // If CurLI is local to one block, there is no point to splitting it.
-  if (LiveBlocks.size() <= 1)
+  if (UseBlocks.size() <= 1)
     return false;
   // Add blocks with multiple uses.
-  for (unsigned i = 0, e = LiveBlocks.size(); i != e; ++i) {
-    const BlockInfo &BI = LiveBlocks[i];
-    if (!BI.Uses || BI.FirstUse == BI.LastUse)
+  for (unsigned i = 0, e = UseBlocks.size(); i != e; ++i) {
+    const BlockInfo &BI = UseBlocks[i];
+    if (BI.FirstUse == BI.LastUse)
       continue;
     Blocks.insert(BI.MBB);
   }
@@ -922,10 +929,10 @@ bool SplitAnalysis::getMultiUseBlocks(BlockPtrSet &Blocks) {
 /// basic block in Blocks.
 void SplitEditor::splitSingleBlocks(const SplitAnalysis::BlockPtrSet &Blocks) {
   DEBUG(dbgs() << "  splitSingleBlocks for " << Blocks.size() << " blocks.\n");
-
-  for (unsigned i = 0, e = SA.LiveBlocks.size(); i != e; ++i) {
-    const SplitAnalysis::BlockInfo &BI = SA.LiveBlocks[i];
-    if (!BI.Uses || !Blocks.count(BI.MBB))
+  ArrayRef<SplitAnalysis::BlockInfo> UseBlocks = SA.getUseBlocks();
+  for (unsigned i = 0; i != UseBlocks.size(); ++i) {
+    const SplitAnalysis::BlockInfo &BI = UseBlocks[i];
+    if (!Blocks.count(BI.MBB))
       continue;
 
     openIntv();
