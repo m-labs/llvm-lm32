@@ -43,3 +43,13 @@ mkdir $TOPDIR/build
 (cd $TOPDIR/build ; make check )
 -------------------
 
+
+Notes
+
+Calling conventions
+from GCC lm32.c
+Return values are returned in a register for all non-aggregate types (long double uses two registers for return value). Aggregate types 32bits or less are returned in a register.
+handled
+
+lm32.c:lm32_function_arg()
+vararg parameters are passed on the stack.

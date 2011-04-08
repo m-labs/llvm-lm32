@@ -24,8 +24,16 @@ include "Mico32InstrInfo.td"
 //===----------------------------------------------------------------------===//
 //FIXME: added for the (currently) undocumented DIV/MOD instructions
 def FeatureSDIV : 
-  SubtargetFeature<"sdiv", "IsSDIVenabled", "true",
-                   "enable div and mod instructions - currently does nothing">;
+  SubtargetFeature<"sdiv", "IsSDIVenabled", "false",
+                   "enable undocumented div 0x27 and mod 0x35 instructions - currently does nothing">;
+
+def FeatureDIV : 
+  SubtargetFeature<"div", "IsDIVenabled", "true",
+                   "enable divu and modu instructions.">;
+
+def FeatureMUL : 
+  SubtargetFeature<"mul", "IsMULenabled", "true",
+                   "enable mul and muli instructions.">;
 
 
 //===----------------------------------------------------------------------===//
