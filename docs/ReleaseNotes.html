@@ -228,7 +228,37 @@ Like compiler_rt, libc++ is now <a href="DeveloperPolicy.html#license">dual
 </div>
 
 
+<!--=========================================================================-->
+<h2>
+<a name="LLBrowse">LLBrowse: IR Browser</a>
+</h2>
 
+<div class="doc_text">
+<p>
+<a href="http://llvm.org/svn/llvm-project/llbrowse/trunk/doc/LLBrowse.html">
+  LLBrowse</a> is an interactive viewer for LLVM modules. It can load any LLVM
+  module and displays its contents as an expandable tree view, facilitating an
+  easy way to inspect types, functions, global variables, or metadata nodes. It
+  is fully cross-platform, being based on the popular wxWidgets GUI toolkit.
+</p>
+</div>
+
+<!--=========================================================================-->
+<h2>
+<a name="vmkit">VMKit</a>
+</h2>
+
+<div class="doc_text">
+<p>The <a href="http://vmkit.llvm.org/">VMKit project</a> is an implementation
+  of a Java Virtual Machine (Java VM or JVM) that uses LLVM for static and
+  just-in-time compilation. As of LLVM 2.9, VMKit now supports generational
+  garbage collectors. The garbage collectors are provided by the MMTk framework,
+  and VMKit can be configured to use one of the numerous implemented collectors
+  of MMTk.
+</p>
+</div>
+  
+  
 <!--=========================================================================-->
 <!--
 <h2>
@@ -386,7 +416,21 @@ and parallelism.</p>
 </div>
 
 
+<!--=========================================================================-->
+<div class="doc_subsection">
+<a name="FAUST">FAUST Real-Time Audio Signal Processing Language</a>
+</div>
 
+<div class="doc_text">
+<p>
+<a href="http://faust.grame.fr">FAUST</a> is a compiled language for real-time
+audio signal processing. The name FAUST stands for Functional AUdio STream. Its
+programming model combines two approaches: functional programming and block
+diagram composition. In addition with the C, C++, JAVA output formats, the
+Faust compiler can now generate LLVM bitcode, and works with LLVM 2.7-2.9.</p>
+
+</div>
+  
 <!-- *********************************************************************** -->
 <h1>
   <a name="whatsnew">What's New in LLVM 2.9?</a>
@@ -484,7 +528,7 @@ release includes a few major enhancements and additions to the optimizers:</p>
   simplify expressions, perform simple dead store elimination, and perform
   common subexpression elimination.  It does a good job at catching some of the
   trivial redundancies that exist in unoptimized code, making later passes more
-  effective.<,/li>
+  effective.</li>
 
 <li>A new -loop-instsimplify pass is used to clean up loop bodies in the loop
   optimizer.</li>
@@ -704,7 +748,11 @@ it run faster:</p>
 <li>PowerPC: The backend has been largely MC'ized and is ready to support
   directly writing out mach-o object files.  No one seems interested in finishing
   this final step though.</li>
-  
+
+<li>Mips: Improved o32 ABI support, including better varags handling.
+More instructions supported in codegen: madd, msub, rotr, rotrv and clo.
+It also now supports lowering block addresses.</li>
+
 </ul>
 </div>
 

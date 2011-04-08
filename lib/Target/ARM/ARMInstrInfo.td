@@ -940,16 +940,13 @@ let usesCustomInserter = 1 in {
 multiclass AI1_adde_sube_s_irs<PatFrag opnode, bit Commutable = 0> {
   def Sri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm),
                 Size4Bytes, IIC_iALUi,
-               [(set GPR:$Rd, (opnode GPR:$Rn, so_imm:$imm))]>,
-               Requires<[IsARM]>;
+               [(set GPR:$Rd, (opnode GPR:$Rn, so_imm:$imm))]>;
   def Srr : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
                 Size4Bytes, IIC_iALUr,
-               [(set GPR:$Rd, (opnode GPR:$Rn, GPR:$Rm))]>,
-               Requires<[IsARM]>;
+               [(set GPR:$Rd, (opnode GPR:$Rn, GPR:$Rm))]>;
   def Srs : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_reg:$shift),
                 Size4Bytes, IIC_iALUsr,
-               [(set GPR:$Rd, (opnode GPR:$Rn, so_reg:$shift))]>,
-               Requires<[IsARM]>;
+               [(set GPR:$Rd, (opnode GPR:$Rn, so_reg:$shift))]>;
 }
 }
 }
@@ -1632,7 +1629,7 @@ def LDRSB : AI3ld<0b1101, 1, (outs GPR:$Rt), (ins addrmode3:$addr), LdMiscFrm,
                    IIC_iLoad_bh_r, "ldrsb", "\t$Rt, $addr",
                    [(set GPR:$Rt, (sextloadi8 addrmode3:$addr))]>;
 
-let mayLoad = 1, neverHasSideEffects = 1 in {
+let mayLoad = 1, neverHasSideEffects = 1, hasExtraDefRegAllocReq = 1 in {
 // Load doubleword
 def LDRD : AI3ld<0b1101, 0, (outs GPR:$Rd, GPR:$dst2),
                  (ins addrmode3:$addr), LdMiscFrm,
@@ -1707,6 +1704,7 @@ let mayLoad = 1, neverHasSideEffects = 1 in {
 defm LDRH  : AI3_ldridx<0b1011, 1, "ldrh", IIC_iLoad_bh_ru>;
 defm LDRSH : AI3_ldridx<0b1111, 1, "ldrsh", IIC_iLoad_bh_ru>;
 defm LDRSB : AI3_ldridx<0b1101, 1, "ldrsb", IIC_iLoad_bh_ru>;
+let hasExtraDefRegAllocReq = 1 in {
 def LDRD_PRE : AI3ldstidx<0b1101, 0, 1, 1, (outs GPR:$Rt, GPR:$Rt2, GPR:$Rn_wb),
                           (ins addrmode3:$addr), IndexModePre,
                           LdMiscFrm, IIC_iLoad_d_ru,
@@ -1732,6 +1730,7 @@ def LDRD_POST: AI3ldstidx<0b1101, 0, 1, 0, (outs GPR:$Rt, GPR:$Rt2, GPR:$Rn_wb),
   let Inst{11-8}  = offset{7-4};    // imm7_4/zero
   let Inst{3-0}   = offset{3-0};    // imm3_0/Rm
 }
+} // hasExtraDefRegAllocReq = 1
 } // mayLoad = 1, neverHasSideEffects = 1
 
 // LDRT, LDRBT, LDRSBT, LDRHT, LDRSHT are for disassembly only.
@@ -1839,6 +1838,7 @@ def STRH_POST: AI3stridx<0b1011, 0, 0, (outs GPR:$Rn_wb),
                                         GPR:$Rn, am3offset:$offset))]>;
 
 // For disassembly only
+let mayStore = 1, neverHasSideEffects = 1, hasExtraSrcRegAllocReq = 1 in {
 def STRD_PRE : AI3stdpr<(outs GPR:$base_wb),
                      (ins GPR:$src1, GPR:$src2, GPR:$base, am3offset:$offset),
                      StMiscFrm, IIC_iStore_d_ru,
@@ -1851,6 +1851,7 @@ def STRD_POST: AI3stdpo<(outs GPR:$base_wb),
                      StMiscFrm, IIC_iStore_d_ru,
                      "strd", "\t$src1, $src2, [$base], $offset",
                      "$base = $base_wb", []>;
+} // mayStore = 1, neverHasSideEffects = 1, hasExtraSrcRegAllocReq = 1
 
 // STRT, STRBT, and STRHT are for disassembly only.
 
@@ -2298,17 +2299,14 @@ def RSCrs : AsI1<0b0111, (outs GPR:$Rd), (ins GPR:$Rn, so_reg:$shift),
 }
 }
 
-// FIXME: Allow these to be predicated.
 // NOTE: CPSR def omitted because it will be handled by the custom inserter.
 let usesCustomInserter = 1, Uses = [CPSR] in {
 def RSCSri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm),
                   Size4Bytes, IIC_iALUi,
-                  [(set GPR:$Rd, (sube_dead_carry so_imm:$imm, GPR:$Rn))]>,
-                  Requires<[IsARM]>;
+                  [(set GPR:$Rd, (sube_dead_carry so_imm:$imm, GPR:$Rn))]>;
 def RSCSrs : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_reg:$shift),
                   Size4Bytes, IIC_iALUsr,
-                  [(set GPR:$Rd, (sube_dead_carry so_reg:$shift, GPR:$Rn))]>,
-                  Requires<[IsARM]>;
+                  [(set GPR:$Rd, (sube_dead_carry so_reg:$shift, GPR:$Rn))]>;
 }
 
 // (sub X, imm) gets canonicalized to (add X, -imm).  Match this form.
