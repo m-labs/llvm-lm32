@@ -708,7 +708,8 @@ DW_TAG_inheritance      = 28
    <a href="#format_composite_type">composite type</a>.  The low value defines
    the lower bounds typically zero for C/C++.  The high value is the upper
    bounds.  Values are 64 bit.  High - low + 1 is the size of the array.  If low
-   > high the array will be unbounded.</p>
+   > high the array bounds are not included in generated debugging information.
+</p>
 
 </div>
 
@@ -803,7 +804,7 @@ DW_TAG_return_variable = 258
 </pre>
 
 <p>This intrinsic provides information about a local element (ex. variable.) The
-   first argument is metadata holding alloca for the variable.</tt>. The
+   first argument is metadata holding alloca for the variable. The
    second argument is metadata containing description of the variable. </p>
 </div>
 
@@ -1791,7 +1792,7 @@ enum Trees {
   src="http://www.w3.org/Icons/valid-html401-blue" alt="Valid HTML 4.01"></a>
 
   <a href="mailto:sabre@nondot.org">Chris Lattner</a><br>
-  <a href="http://llvm.org">LLVM Compiler Infrastructure</a><br>
+  <a href="http://llvm.org/">LLVM Compiler Infrastructure</a><br>
   Last modified: $Date$
 </address>
 
