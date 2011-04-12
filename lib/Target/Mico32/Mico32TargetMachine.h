@@ -14,14 +14,14 @@
 #ifndef MICO32TARGETMACHINE_H
 #define MICO32TARGETMACHINE_H
 
-#include "Mico32.h"
-#include "Mico32ELFWriterInfo.h"
+#include "Mico32Subtarget.h"
 #include "Mico32InstrInfo.h"
 #include "Mico32ISelLowering.h"
-#include "Mico32FrameLowering.h"
-//#include "Mico32JITInfo.h"
 #include "Mico32SelectionDAGInfo.h"
-#include "Mico32Subtarget.h"
+//#include "Mico32IntrinsicInfo.h"
+#include "Mico32FrameLowering.h"
+//#include "Mico32ELFWriterInfo.h"
+
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetData.h"
@@ -31,8 +31,6 @@
 namespace llvm {
   class formatted_raw_ostream;
   
-  class Module;
-  
   class Mico32TargetMachine : public LLVMTargetMachine {
     Mico32Subtarget        Subtarget;
     const TargetData       DataLayout;       // Calculates type size & alignment
@@ -40,7 +38,7 @@ namespace llvm {
     Mico32FrameLowering    FrameLowering;
     Mico32TargetLowering   TLInfo;
     Mico32SelectionDAGInfo TSInfo;
-    Mico32ELFWriterInfo    ELFWriterInfo;
+    //Mico32ELFWriterInfo    ELFWriterInfo;
     
   public:
     Mico32TargetMachine(const Target &T, const std::string &TT,
@@ -70,9 +68,9 @@ namespace llvm {
       return &TSInfo;
     }
   
-    virtual const Mico32ELFWriterInfo *getELFWriterInfo() const {
-      return &ELFWriterInfo;
-    }
+//    virtual const Mico32ELFWriterInfo *getELFWriterInfo() const {
+//      return &ELFWriterInfo;
+//    }
   
     virtual const TargetData *getTargetData() const {
       return &DataLayout;

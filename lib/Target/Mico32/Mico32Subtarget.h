@@ -20,24 +20,29 @@
 #include <string>
 
 namespace llvm {
-class Module;
 
 class Mico32Subtarget : public TargetSubtarget {
 protected:
+  // Is the barrel shifter present? 
+  bool HasBarrel;
+
   // Are (undocumented) signed division 0x27 /modulo 0x35 instructions enabled.
-  bool IsSDIVenabled;
+  bool HasSDIV;
 
   // Are unsigned division/modulo instructions enabled.
-  bool IsDIVenabled;
+  bool HasDIV;
 
   // Are multiply instructions enabled.
-  bool IsMULenabled;
+  bool HasMUL;
 
   // Selected instruction itineraries (one entry per itinerary class.)
   // Used by Mico32GenSubtarget.inc.
   InstrItineraryData InstrItins;
 
 public:
+
+  /// This constructor initializes the data members to match that
+  /// of the specified triple.
   Mico32Subtarget(const std::string &TT, const std::string &FS);
   
   /// ParseSubtargetFeatures - Parses features string setting specified 
@@ -45,9 +50,10 @@ public:
   std::string ParseSubtargetFeatures(const std::string &FS,
                                      const std::string &CPU);
 
-  bool isSDIVenabled()  const { return IsSDIVenabled; };
-  bool isDIVenabled()   const { return IsDIVenabled; };
-  bool isMULenabled()   const { return IsMULenabled; };
+  bool hasBarrel()  const { return HasBarrel; };
+  bool hasSDIV()    const { return HasSDIV; };
+  bool hasDIV()     const { return HasDIV; };
+  bool hasMUL()     const { return HasMUL; };
 
 };
 

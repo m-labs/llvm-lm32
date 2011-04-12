@@ -1,4 +1,4 @@
-//===- Mico32InstrInfo.td - MBlaze Instruction defs --------*- tablegen -*-===//
+//===- Mico32InstrInfo.td - Mico32 Instruction defs --------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -36,12 +36,10 @@ def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_Mico32CallSeqEnd,
 // Mico32 Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
 def HasBarrel    : Predicate<"Subtarget.hasBarrel()">;
-def NoBarrel     : Predicate<"!Subtarget.hasBarrel()">;
-def HasDiv       : Predicate<"Subtarget.hasDiv()">;
-def HasMul       : Predicate<"Subtarget.hasMul()">;
-def HasSignX     : Predicate<"Subtarget.hasSignX()">;
-def HasUserIns   : Predicate<"Subtarget.hasUserIns()">;
-def HasFP        : Predicate<"Subtarget.hasFP()">;
+//def NoBarrel     : Predicate<"!Subtarget.hasBarrel()">;
+def HasDIV       : Predicate<"Subtarget.hasDIV()">;
+def HasSDIV      : Predicate<"Subtarget.hasSDIV()">;
+def HasMUL       : Predicate<"Subtarget.hasMUL()">;
 
 //===----------------------------------------------------------------------===//
 // Mico32 Operand, Complex Patterns and Transformations Definitions.
@@ -368,7 +366,7 @@ let isAsCheapAsAMove = 1 in {
   def SUB    :  ArithRR<0x32, "sub     ", sub,  IIAlu>;
 }
 
-let isCommutable = 1, Predicates=[HasMul] in {
+let isCommutable = 1, Predicates=[HasMUL] in {
   def MUL    : ArithRR<0x22, "mul     ", mul,   IIMul>;
 }
 
@@ -381,18 +379,18 @@ let Predicates=[HasBarrel] in {
   def SLI    :  ShiftI<0x0f, "sli     ", shl, IIShift>;
 }
 
-let Predicates=[HasDiv] in {
+let Predicates=[HasDIV] in {
 // FIXME: check the scheduling on this.
   def DIVU   :  ArithRR<0x23, "divu  ", udiv, IIDiv>; 
   def MODU   :  ArithRR<0x31, "modu  ", urem, IIDiv>;
 }
 
-let Predicates=[HasFP] in {
+let Predicates=[HasSDIV] in {
 //  The chip currently does not implement div or mod
 // FIXME: check the scheduling on this.
 //  def DIV   :  ArithRR<0x27, "div   ", sdiv, IFIXTHIS>;
 // FIXME: check that mod does handle negative numbers the same as frem.
-//  def MOD   :  ArithRR<0x35, "mod   ", frem, IFIXTHIS>;
+//  def MOD   :  ArithRR<0x35, "mod   ", srem, IFIXTHIS>;
 }
 
 
@@ -411,7 +409,7 @@ let isAsCheapAsAMove = 1 in {
   def ADDI    :  ArithRIs<0x0d, "addi    ", add, IIAlu>;
 }
 
-let Predicates=[HasMul] in {
+let Predicates=[HasMUL] in {
   def MULI    :  ArithRIs<0x02, "muli    ", mul, IIMul>;
 }
 

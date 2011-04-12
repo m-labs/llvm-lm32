@@ -20,9 +20,9 @@
 namespace llvm {
   class Target;
 
-  class Mico32MCAsmInfo : public MCAsmInfo {
+  class Mico32ELFMCAsmInfo : public MCAsmInfo {
   public:
-    explicit Mico32MCAsmInfo();
+    explicit Mico32ELFMCAsmInfo(const Target &T, const StringRef &TT);
   };
 
 } // namespace llvm

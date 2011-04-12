@@ -14,50 +14,53 @@
 //===----------------------------------------------------------------------===//
 
 include "llvm/Target/Target.td"
+
+//===----------------------------------------------------------------------===//
+// Register File, Calling Conv, Instruction Descriptions
+//===----------------------------------------------------------------------===//
+
 include "Mico32RegisterInfo.td"
 include "Mico32Schedule.td"
-include "Mico32CallingConv.td"
 include "Mico32InstrInfo.td"
+include "Mico32CallingConv.td"
+
+def Mico32InstrInfo : InstrInfo;
 
 //===----------------------------------------------------------------------===//
 // Subtarget Features. 
 //===----------------------------------------------------------------------===//
 //FIXME: added for the (currently) undocumented DIV/MOD instructions
 def FeatureSDIV : 
-  SubtargetFeature<"sdiv", "IsSDIVenabled", "false",
+  SubtargetFeature<"sdiv", "HasSDIV", "false",
                    "enable undocumented div 0x27 and mod 0x35 instructions - currently does nothing">;
 
 def FeatureDIV : 
-  SubtargetFeature<"div", "IsDIVenabled", "true",
+  SubtargetFeature<"div", "HasDIV", "true",
                    "enable divu and modu instructions.">;
 
 def FeatureMUL : 
-  SubtargetFeature<"mul", "IsMULenabled", "true",
+  SubtargetFeature<"mul", "HasMUL", "true",
                    "enable mul and muli instructions.">;
 
+def FeatureBarrel : 
+  SubtargetFeature<"barrel", "HasBarrel", "true",
+                   "Enable barrel shifter instructions">;
 
 //===----------------------------------------------------------------------===//
 // Mico32 supported processors.
 //===----------------------------------------------------------------------===//
+
 def : Processor< "mico32", Mico32Itineraries, []>;
 
-
-//===----------------------------------------------------------------------===//
-// Register File, Calling Convention, and Instruction Descriptions 
-//===----------------------------------------------------------------------===//
-
-
-def Mico32InstrInfo : InstrInfo {
-} 
 
 //===----------------------------------------------------------------------===//
 // Use an MC assembly printer
 //===----------------------------------------------------------------------===//
 
-def Mico32AsmWriter : AsmWriter {
-  string AsmWriterClassName  = "InstPrinter";
-  bit isMCAsmWriter = 1;
-}
+//def Mico32AsmWriter : AsmWriter {
+//  string AsmWriterClassName  = "InstPrinter";
+//  bit isMCAsmWriter = 1;
+//}
 
 //===----------------------------------------------------------------------===//
 // Target Declaration
@@ -65,6 +68,6 @@ def Mico32AsmWriter : AsmWriter {
 
 def Mico32 : Target {
   let InstructionSet = Mico32InstrInfo;
-  let AssemblyWriters = [Mico32AsmWriter];
+//  let AssemblyWriters = [Mico32AsmWriter];
 }
 

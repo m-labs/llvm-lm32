@@ -20,7 +20,10 @@ using namespace llvm;
 
 Mico32Subtarget::Mico32Subtarget(const std::string &TT, const std::string &FS) 
 {
-  IsSDIVenabled = false;
+  HasSDIV = false;
+  HasDIV = true;
+  HasMUL = true;
+  HasBarrel = true;
   std::string CPU = "mico32";
 
   // Parse features string.

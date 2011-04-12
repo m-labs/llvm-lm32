@@ -85,12 +85,12 @@ public:
   virtual void insertNoop(MachineBasicBlock &MBB,
                           MachineBasicBlock::iterator MI) const;
 
+#endif
   /// getGlobalBaseReg - Return a virtual register initialized with the
   /// the global base register value. Output instructions required to
   /// initialize the register in the function entry block, if necessary.
   ///
   unsigned getGlobalBaseReg(MachineFunction *MF) const;
-#endif
 };
 
 }

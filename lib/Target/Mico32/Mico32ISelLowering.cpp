@@ -93,13 +93,13 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, Expand);
 
   // Check if unsigned div/mod are enabled.
-  if (!Subtarget->isDIVenabled()) {
+  if (!Subtarget->hasDIV()) {
     setOperationAction(ISD::UDIV, MVT::i32, Expand);
     setOperationAction(ISD::UREM,    MVT::i32, Expand);
   }
 
   // Check if signed div/mod are enabled.
-  if (!Subtarget->isSDIVenabled()) {
+  if (!Subtarget->hasSDIV()) {
     setOperationAction(ISD::SDIV, MVT::i32, Expand);
     setOperationAction(ISD::SREM,    MVT::i32, Expand);
   }
@@ -109,7 +109,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::SDIVREM, MVT::i32, Expand);
 
   // If the processor doesn't support multiply then expand it
-  if (!Subtarget->isMULenabled()) {
+  if (!Subtarget->hasMUL()) {
     setOperationAction(ISD::MUL, MVT::i32, Expand);
   }
 

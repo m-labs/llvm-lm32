@@ -22,14 +22,14 @@ namespace llvm {
   class FunctionPass;
   class MachineCodeEmitter;
   class MCCodeEmitter;
-  class TargetAsmBackend;
+  //class TargetAsmBackend;
   class formatted_raw_ostream;
 
   MCCodeEmitter *createMico32MCCodeEmitter(const Target &,
                                            TargetMachine &TM,
                                            MCContext &Ctx);
 
-  TargetAsmBackend *createMico32AsmBackend(const Target &, const std::string &);
+  //TargetAsmBackend *createMico32AsmBackend(const Target &, const std::string &);
 
   FunctionPass *createMico32ISelDag(Mico32TargetMachine &TM);
 

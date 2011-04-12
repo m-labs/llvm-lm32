@@ -21,6 +21,7 @@
 using namespace llvm;
 
 
+#if 0
 static MCAsmInfo *createMCAsmInfo(const Target &T, StringRef TT) {
   Triple TheTriple(TT);
   switch (TheTriple.getOS()) {
@@ -51,24 +52,32 @@ static MCStreamer *createMCStreamer(const Target &T, const std::string &TT,
                              NoExecStack);
   }
 }
+#endif
 
 extern "C" void LLVMInitializeMico32Target() {
   // Register the target.
   RegisterTargetMachine<Mico32TargetMachine> X(TheMico32Target);
 
+  RegisterAsmInfo<Mico32ELFMCAsmInfo> A(TheMico32Target);
+
+
+#if 0
   // Register the target asm info.
   RegisterAsmInfoFn A(TheMico32Target, createMCAsmInfo);
-
+ 
   // Register the MC code emitter
   TargetRegistry::RegisterCodeEmitter(TheMico32Target,
                                       llvm::createMico32MCCodeEmitter);
+#endif
 
+#if 0
   // Register the asm backend
   TargetRegistry::RegisterAsmBackend(TheMico32Target,
                                      createMico32AsmBackend);
 
   // Register the object streamer
   TargetRegistry::RegisterObjectStreamer(TheMico32Target, createMCStreamer);
+#endif
 
 
 }
@@ -94,7 +103,8 @@ Mico32TargetMachine::Mico32TargetMachine(const Target &T,
     DataLayout("E-p:32:32:32-i8:8:8-i16:16:16"),
     InstrInfo(*this), 
     FrameLowering(Subtarget),
-    TLInfo(*this), TSInfo(*this), ELFWriterInfo(*this)
+    TLInfo(*this), TSInfo(*this)
+    //, ELFWriterInfo(*this)
 {
   if (getRelocationModel() == Reloc::Default)
     setRelocationModel(Reloc::Static);
