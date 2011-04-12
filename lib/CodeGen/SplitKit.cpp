@@ -557,7 +557,7 @@ VNInfo *SplitEditor::defFromParent(unsigned RegIdx,
 }
 
 /// Create a new virtual register and live interval.
-void SplitEditor::openIntv() {
+unsigned SplitEditor::openIntv() {
   assert(!OpenIdx && "Previous LI not closed before openIntv");
 
   // Create the complement as index 0.
@@ -567,6 +567,13 @@ void SplitEditor::openIntv() {
   // Create the open interval.
   OpenIdx = Edit->size();
   Edit->create(LIS, VRM);
+  return OpenIdx;
+}
+
+void SplitEditor::selectIntv(unsigned Idx) {
+  assert(Idx != 0 && "Cannot select the complement interval");
+  assert(Idx < Edit->size() && "Can only select previously opened interval");
+  OpenIdx = Idx;
 }
 
 SlotIndex SplitEditor::enterIntvBefore(SlotIndex Idx) {
@@ -928,6 +935,22 @@ bool SplitAnalysis::getMultiUseBlocks(BlockPtrSet &Blocks) {
   return !Blocks.empty();
 }
 
+void SplitEditor::splitSingleBlock(const SplitAnalysis::BlockInfo &BI) {
+  openIntv();
+  SlotIndex LastSplitPoint = SA.getLastSplitPoint(BI.MBB->getNumber());
+  SlotIndex SegStart = enterIntvBefore(std::min(BI.FirstUse,
+    LastSplitPoint));
+  if (!BI.LiveOut || BI.LastUse < LastSplitPoint) {
+    useIntv(SegStart, leaveIntvAfter(BI.LastUse));
+  } else {
+      // The last use is after the last valid split point.
+    SlotIndex SegStop = leaveIntvBefore(LastSplitPoint);
+    useIntv(SegStart, SegStop);
+    overlapIntv(SegStop, BI.LastUse);
+  }
+  closeIntv();
+}
+
 /// splitSingleBlocks - Split CurLI into a separate live interval inside each
 /// basic block in Blocks.
 void SplitEditor::splitSingleBlocks(const SplitAnalysis::BlockPtrSet &Blocks) {
@@ -935,22 +958,8 @@ void SplitEditor::splitSingleBlocks(const SplitAnalysis::BlockPtrSet &Blocks) {
   ArrayRef<SplitAnalysis::BlockInfo> UseBlocks = SA.getUseBlocks();
   for (unsigned i = 0; i != UseBlocks.size(); ++i) {
     const SplitAnalysis::BlockInfo &BI = UseBlocks[i];
-    if (!Blocks.count(BI.MBB))
-      continue;
-
-    openIntv();
-    SlotIndex LastSplitPoint = SA.getLastSplitPoint(BI.MBB->getNumber());
-    SlotIndex SegStart = enterIntvBefore(std::min(BI.FirstUse,
-                                                  LastSplitPoint));
-    if (!BI.LiveOut || BI.LastUse < LastSplitPoint) {
-      useIntv(SegStart, leaveIntvAfter(BI.LastUse));
-    } else {
-      // The last use is after the last valid split point.
-      SlotIndex SegStop = leaveIntvBefore(LastSplitPoint);
-      useIntv(SegStart, SegStop);
-      overlapIntv(SegStop, BI.LastUse);
-    }
-    closeIntv();
+    if (Blocks.count(BI.MBB))
+      splitSingleBlock(BI);
   }
   finish();
 }

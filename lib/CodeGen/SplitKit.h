@@ -144,6 +144,9 @@ public:
   /// isThroughBlock - Return true if CurLI is live through MBB without uses.
   bool isThroughBlock(unsigned MBB) const { return ThroughBlocks.test(MBB); }
 
+  /// getThroughBlocks - Return the set of through blocks.
+  const BitVector &getThroughBlocks() const { return ThroughBlocks; }
+
   typedef SmallPtrSet<const MachineBasicBlock*, 16> BlockPtrSet;
 
   /// getMultiUseBlocks - Add basic blocks to Blocks that may benefit from
@@ -283,7 +286,15 @@ public:
   void reset(LiveRangeEdit&);
 
   /// Create a new virtual register and live interval.
-  void openIntv();
+  /// Return the interval index, starting from 1. Interval index 0 is the
+  /// implicit complement interval.
+  unsigned openIntv();
+
+  /// currentIntv - Return the current interval index.
+  unsigned currentIntv() const { return OpenIdx; }
+
+  /// selectIntv - Select a previously opened interval index.
+  void selectIntv(unsigned Idx);
 
   /// enterIntvBefore - Enter the open interval before the instruction at Idx.
   /// If the parent interval is not live before Idx, a COPY is not inserted.
@@ -338,6 +349,11 @@ public:
   void dump() const;
 
   // ===--- High level methods ---===
+
+  /// splitSingleBlock - Split CurLI into a separate live interval around the
+  /// uses in a single block. This is intended to be used as part of a larger
+  /// split, and doesn't call finish().
+  void splitSingleBlock(const SplitAnalysis::BlockInfo &BI);
 
   /// splitSingleBlocks - Split CurLI into a separate live interval inside each
   /// basic block in Blocks.

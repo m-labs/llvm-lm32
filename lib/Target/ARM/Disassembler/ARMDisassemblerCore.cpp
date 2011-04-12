@@ -17,6 +17,7 @@
 
 #include "ARMDisassemblerCore.h"
 #include "ARMAddressingModes.h"
+#include "ARMMCExpr.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1066,7 +1067,8 @@ static bool DisassembleDPFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
     // We have an imm16 = imm4:imm12 (imm4=Inst{19:16}, imm12 = Inst{11:0}).
     assert(getIBit(insn) == 1 && "I_Bit != '1' reg/imm form");
     unsigned Imm16 = slice(insn, 19, 16) << 12 | slice(insn, 11, 0);
-    MI.addOperand(MCOperand::CreateImm(Imm16));
+    if (!B->tryAddingSymbolicOperand(Imm16, 4, MI))
+      MI.addOperand(MCOperand::CreateImm(Imm16));
     ++OpIdx;
   } else {
     // We have a reg/imm form.
@@ -1173,6 +1175,71 @@ static bool DisassembleDPSoRegFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
   return true;
 }
 
+static bool BadRegsLdStFrm(unsigned Opcode, uint32_t insn, bool Store, bool WBack,
+                           bool Imm) {
+  const StringRef Name = ARMInsts[Opcode].Name;
+  unsigned Rt = decodeRd(insn);
+  unsigned Rn = decodeRn(insn);
+  unsigned Rm = decodeRm(insn);
+  unsigned P  = getPBit(insn);
+  unsigned W  = getWBit(insn);
+
+  if (Store) {
+    // Only STR (immediate, register) allows PC as the source.
+    if (Name.startswith("STRB") && Rt == 15) {
+      DEBUG(errs() << "if t == 15 then UNPREDICTABLE\n");
+      return true;
+    }
+    if (WBack && (Rn == 15 || Rn == Rt)) {
+      DEBUG(errs() << "if wback && (n == 15 || n == t) then UNPREDICTABLE\n");
+      return true;
+    }
+    if (!Imm && Rm == 15) {
+      DEBUG(errs() << "if m == 15 then UNPREDICTABLE\n");
+      return true;
+    }
+  } else {
+    // Only LDR (immediate, register) allows PC as the destination.
+    if (Name.startswith("LDRB") && Rt == 15) {
+      DEBUG(errs() << "if t == 15 then UNPREDICTABLE\n");
+      return true;
+    }
+    if (Imm) {
+      // Immediate
+      if (Rn == 15) {
+        // The literal form must be in offset mode; it's an encoding error
+        // otherwise.
+        if (!(P == 1 && W == 0)) {
+          DEBUG(errs() << "Ld literal form with !(P == 1 && W == 0)\n");
+          return true;
+        }
+        // LDRB (literal) does not allow PC as the destination.
+        if (Opcode != ARM::LDRi12 && Rt == 15) {
+          DEBUG(errs() << "if t == 15 then UNPREDICTABLE\n");
+          return true;
+        }
+      } else {
+        // Write back while Rn == Rt does not make sense.
+        if (WBack && (Rn == Rt)) {
+          DEBUG(errs() << "if wback && n == t then UNPREDICTABLE\n");
+          return true;
+        }
+      }
+    } else {
+      // Register
+      if (Rm == 15) {
+        DEBUG(errs() << "if m == 15 then UNPREDICTABLE\n");
+        return true;
+      }
+      if (WBack && (Rn == 15 || Rn == Rt)) {
+        DEBUG(errs() << "if wback && (n == 15 || n == t) then UNPREDICTABLE\n");
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 static bool DisassembleLdStFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
     unsigned short NumOps, unsigned &NumOpsAdded, bool isStore, BO B) {
 
@@ -1233,6 +1300,9 @@ static bool DisassembleLdStFrm(MCInst &MI, unsigned Opcode, uint32_t insn,
   // For immediate form, it is followed by +/- imm12.
   // See also ARMAddressingModes.h (Addressing Mode #2).
   if (OpIdx + 1 >= NumOps)
+    return false;
+
+  if (BadRegsLdStFrm(Opcode, insn, isStore, isPrePost, getIBit(insn)==0))
     return false;
 
   ARM_AM::AddrOpc AddrOpcode = getUBit(insn) ? ARM_AM::add : ARM_AM::sub;
@@ -3627,4 +3697,81 @@ ARMBasicMCBuilder *llvm::CreateMCBuilder(unsigned Opcode, ARMFormat Format) {
 
   return new ARMBasicMCBuilder(Opcode, Format,
                                ARMInsts[Opcode].getNumOperands());
+}
+
+/// tryAddingSymbolicOperand - tryAddingSymbolicOperand trys to add a symbolic
+/// operand in place of the immediate Value in the MCInst.  The immediate
+/// Value has had any PC adjustment made by the caller.  If the getOpInfo()
+/// function was set as part of the setupBuilderForSymbolicDisassembly() call
+/// then that function is called to get any symbolic information at the
+/// builder's Address for this instrution.  If that returns non-zero then the
+/// symbolic information it returns is used to create an MCExpr and that is
+/// added as an operand to the MCInst.  This function returns true if it adds
+/// an operand to the MCInst and false otherwise.
+bool ARMBasicMCBuilder::tryAddingSymbolicOperand(uint64_t Value,
+                                                 uint64_t InstSize,
+                                                 MCInst &MI) {
+  if (!GetOpInfo)
+    return false;
+
+  struct LLVMOpInfo1 SymbolicOp;
+  SymbolicOp.Value = Value;
+  if (!GetOpInfo(DisInfo, Address, 0 /* Offset */, InstSize, 1, &SymbolicOp))
+    return false;
+
+  const MCExpr *Add = NULL;
+  if (SymbolicOp.AddSymbol.Present) {
+    if (SymbolicOp.AddSymbol.Name) {
+      StringRef Name(SymbolicOp.AddSymbol.Name);
+      MCSymbol *Sym = Ctx->GetOrCreateSymbol(Name);
+      Add = MCSymbolRefExpr::Create(Sym, *Ctx);
+    } else {
+      Add = MCConstantExpr::Create(SymbolicOp.AddSymbol.Value, *Ctx);
+    }
+  }
+
+  const MCExpr *Sub = NULL;
+  if (SymbolicOp.SubtractSymbol.Present) {
+    if (SymbolicOp.SubtractSymbol.Name) {
+      StringRef Name(SymbolicOp.SubtractSymbol.Name);
+      MCSymbol *Sym = Ctx->GetOrCreateSymbol(Name);
+      Sub = MCSymbolRefExpr::Create(Sym, *Ctx);
+    } else {
+      Sub = MCConstantExpr::Create(SymbolicOp.SubtractSymbol.Value, *Ctx);
+    }
+  }
+
+  const MCExpr *Off = NULL;
+  if (SymbolicOp.Value != 0)
+    Off = MCConstantExpr::Create(SymbolicOp.Value, *Ctx);
+
+  const MCExpr *Expr;
+  if (Sub) {
+    const MCExpr *LHS;
+    if (Add)
+      LHS = MCBinaryExpr::CreateSub(Add, Sub, *Ctx);
+    else
+      LHS = MCUnaryExpr::CreateMinus(Sub, *Ctx);
+    if (Off != 0)
+      Expr = MCBinaryExpr::CreateAdd(LHS, Off, *Ctx);
+    else
+      Expr = LHS;
+  } else if (Add) {
+    if (Off != 0)
+      Expr = MCBinaryExpr::CreateAdd(Add, Off, *Ctx);
+    else
+      Expr = Add;
+  } else
+    Expr = Off;
+
+  if (SymbolicOp.VariantKind == LLVMDisassembler_VariantKind_ARM_HI16)
+    MI.addOperand(MCOperand::CreateExpr(ARMMCExpr::CreateUpper16(Expr, *Ctx)));
+  else if (SymbolicOp.VariantKind == LLVMDisassembler_VariantKind_ARM_LO16)
+    MI.addOperand(MCOperand::CreateExpr(ARMMCExpr::CreateLower16(Expr, *Ctx)));
+  else if (SymbolicOp.VariantKind == LLVMDisassembler_VariantKind_None)
+    MI.addOperand(MCOperand::CreateExpr(Expr));
+  else 
+    assert("bad SymbolicOp.VariantKind");
+
+  return true;
 }

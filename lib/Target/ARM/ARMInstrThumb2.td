@@ -845,6 +845,7 @@ multiclass T2I_ld<bit signed, bits<2> opcod, string opc,
     let Inst{15-12} = Rt;
 
     bits<17> addr;
+    let addr{12}    = 1;           // add = TRUE
     let Inst{19-16} = addr{16-13}; // Rn
     let Inst{23}    = addr{12};    // U
     let Inst{11-0}  = addr{11-0};  // imm
@@ -925,6 +926,7 @@ multiclass T2I_st<bits<2> opcod, string opc,
     let Inst{15-12} = Rt;
 
     bits<17> addr;
+    let addr{12}    = 1;           // add = TRUE
     let Inst{19-16} = addr{16-13}; // Rn
     let Inst{23}    = addr{12};    // U
     let Inst{11-0}  = addr{11-0};  // imm
@@ -1421,42 +1423,48 @@ def t2STRDi8 : T2Ii8s4<1, 0, 0, (outs),
 def t2STR_PRE  : T2Iidxldst<0, 0b10, 0, 1, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePre, IIC_iStore_iu,
-                         "str", "\t$Rt, [$Rn, $addr]!", "$Rn = $base_wb",
+                         "str", "\t$Rt, [$Rn, $addr]!",
+                         "$Rn = $base_wb,@earlyclobber $base_wb",
              [(set GPR:$base_wb,
                    (pre_store GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
 def t2STR_POST : T2Iidxldst<0, 0b10, 0, 0, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_iu,
-                          "str", "\t$Rt, [$Rn], $addr", "$Rn = $base_wb",
+                          "str", "\t$Rt, [$Rn], $addr",
+                          "$Rn = $base_wb,@earlyclobber $base_wb",
              [(set GPR:$base_wb,
                   (post_store GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
 def t2STRH_PRE  : T2Iidxldst<0, 0b01, 0, 1, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePre, IIC_iStore_iu,
-                        "strh", "\t$Rt, [$Rn, $addr]!", "$Rn = $base_wb",
+                        "strh", "\t$Rt, [$Rn, $addr]!",
+                        "$Rn = $base_wb,@earlyclobber $base_wb",
         [(set GPR:$base_wb,
               (pre_truncsti16 GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
 def t2STRH_POST : T2Iidxldst<0, 0b01, 0, 0, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_bh_iu,
-                         "strh", "\t$Rt, [$Rn], $addr", "$Rn = $base_wb",
+                         "strh", "\t$Rt, [$Rn], $addr",
+                         "$Rn = $base_wb,@earlyclobber $base_wb",
        [(set GPR:$base_wb,
              (post_truncsti16 GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
 def t2STRB_PRE  : T2Iidxldst<0, 0b00, 0, 1, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePre, IIC_iStore_bh_iu,
-                        "strb", "\t$Rt, [$Rn, $addr]!", "$Rn = $base_wb",
+                        "strb", "\t$Rt, [$Rn, $addr]!",
+                        "$Rn = $base_wb,@earlyclobber $base_wb",
          [(set GPR:$base_wb,
                (pre_truncsti8 GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
 def t2STRB_POST : T2Iidxldst<0, 0b00, 0, 0, (outs GPR:$base_wb),
                             (ins GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_bh_iu,
-                         "strb", "\t$Rt, [$Rn], $addr", "$Rn = $base_wb",
+                         "strb", "\t$Rt, [$Rn], $addr",
+                         "$Rn = $base_wb,@earlyclobber $base_wb",
         [(set GPR:$base_wb,
               (post_truncsti8 GPR:$Rt, GPR:$Rn, t2am_imm8_offset:$addr))]>;
 
@@ -1522,6 +1530,7 @@ multiclass T2Ipl<bits<1> write, bits<1> instr, string opc> {
     let Inst{15-12} = 0b1111;
 
     bits<17> addr;
+    let addr{12}    = 1;           // add = TRUE
     let Inst{19-16} = addr{16-13}; // Rn
     let Inst{23}    = addr{12};    // U
     let Inst{11-0}  = addr{11-0};  // imm12
@@ -3225,19 +3234,20 @@ class T2RFE<bits<12> op31_20, dag oops, dag iops, InstrItinClass itin,
 
   bits<4> Rn;
   let Inst{19-16} = Rn;
+  let Inst{15-0} = 0xc000;
 }
 
 def t2RFEDBW : T2RFE<0b111010000011,
-                   (outs), (ins rGPR:$Rn), NoItinerary, "rfedb", "\t$Rn!",
+                   (outs), (ins GPR:$Rn), NoItinerary, "rfedb", "\t$Rn!",
                    [/* For disassembly only; pattern left blank */]>;
 def t2RFEDB  : T2RFE<0b111010000001,
-                   (outs), (ins rGPR:$Rn), NoItinerary, "rfeab", "\t$Rn",
+                   (outs), (ins GPR:$Rn), NoItinerary, "rfedb", "\t$Rn",
                    [/* For disassembly only; pattern left blank */]>;
 def t2RFEIAW : T2RFE<0b111010011011,
-                   (outs), (ins rGPR:$Rn), NoItinerary, "rfeia", "\t$Rn!",
+                   (outs), (ins GPR:$Rn), NoItinerary, "rfeia", "\t$Rn!",
                    [/* For disassembly only; pattern left blank */]>;
 def t2RFEIA  : T2RFE<0b111010011001,
-                   (outs), (ins rGPR:$Rn), NoItinerary, "rfeia", "\t$Rn",
+                   (outs), (ins GPR:$Rn), NoItinerary, "rfeia", "\t$Rn",
                    [/* For disassembly only; pattern left blank */]>;
 
 //===----------------------------------------------------------------------===//
