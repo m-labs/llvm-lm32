@@ -24,8 +24,9 @@
 using namespace llvm;
 using namespace llvm::object;
 
-static cl::opt<std::string>
-InputFile(cl::Positional, cl::desc("<input file>"), cl::init("-"));
+static cl::list<std::string>
+InputFileList(cl::Positional, cl::ZeroOrMore,
+              cl::desc("<input file>"));
 
 enum ActionType {
   AC_Execute
@@ -37,6 +38,11 @@ Action(cl::desc("Action to perform:"),
        cl::values(clEnumValN(AC_Execute, "execute",
                              "Load, link, and execute the inputs."),
                   clEnumValEnd));
+
+static cl::opt<std::string>
+EntryPoint("entry",
+           cl::desc("Function to call as entry point."),
+           cl::init("_main"));
 
 /* *** */
 
@@ -77,26 +83,35 @@ static int Error(const Twine &Msg) {
 /* *** */
 
 static int executeInput() {
-  // Load the input memory buffer.
-  OwningPtr<MemoryBuffer> InputBuffer;
-  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFile, InputBuffer))
-    return Error("unable to read input: '" + ec.message() + "'");
-
   // Instantiate a dynamic linker.
   TrivialMemoryManager *MemMgr = new TrivialMemoryManager;
   RuntimeDyld Dyld(MemMgr);
 
-  // Load the object file into it.
-  if (Dyld.loadObject(InputBuffer.take())) {
-    return Error(Dyld.getErrorString());
+  // If we don't have any input files, read from stdin.
+  if (!InputFileList.size())
+    InputFileList.push_back("-");
+  for(unsigned i = 0, e = InputFileList.size(); i != e; ++i) {
+    // Load the input memory buffer.
+    OwningPtr<MemoryBuffer> InputBuffer;
+    if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFileList[i],
+                                                     InputBuffer))
+      return Error("unable to read input: '" + ec.message() + "'");
+
+    // Load the object file into it.
+    if (Dyld.loadObject(InputBuffer.take())) {
+      return Error(Dyld.getErrorString());
+    }
   }
+
   // Resolve all the relocations we can.
   Dyld.resolveRelocations();
 
-  // Get the address of "_main".
-  void *MainAddress = Dyld.getSymbolAddress("_main");
+  // FIXME: Error out if there are unresolved relocations.
+
+  // Get the address of the entry point (_main by default).
+  void *MainAddress = Dyld.getSymbolAddress(EntryPoint);
   if (MainAddress == 0)
-    return Error("no definition for '_main'");
+    return Error("no definition for '" + EntryPoint + "'");
 
   // Invalidate the instruction cache for each loaded function.
   for (unsigned i = 0, e = MemMgr->FunctionMemory.size(); i != e; ++i) {
@@ -108,14 +123,14 @@ static int executeInput() {
       return Error("unable to mark function executable: '" + ErrorStr + "'");
   }
 
-
   // Dispatch to _main().
-  errs() << "loaded '_main' at: " << (void*)MainAddress << "\n";
+  errs() << "loaded '" << EntryPoint << "' at: " << (void*)MainAddress << "\n";
 
   int (*Main)(int, const char**) =
     (int(*)(int,const char**)) uintptr_t(MainAddress);
   const char **Argv = new const char*[2];
-  Argv[0] = InputFile.c_str();
+  // Use the name of the first input object module as argv[0] for the target.
+  Argv[0] = InputFileList[0].c_str();
   Argv[1] = 0;
   return Main(1, Argv);
 }

@@ -1381,7 +1381,7 @@ def t2LDRSH_POST : T2Iidxldst<1, 0b01, 1, 0, (outs GPR:$dst, GPR:$Rn),
 // for disassembly only.
 // Ref: A8.6.57 LDR (immediate, Thumb) Encoding T4
 class T2IldT<bit signed, bits<2> type, string opc, InstrItinClass ii>
-  : T2Ii8<(outs GPR:$Rt), (ins t2addrmode_imm8:$addr), ii, opc,
+  : T2Ii8<(outs rGPR:$Rt), (ins t2addrmode_imm8:$addr), ii, opc,
           "\t$Rt, $addr", []> {
   let Inst{31-27} = 0b11111;
   let Inst{26-25} = 0b00;
@@ -1472,7 +1472,7 @@ def t2STRB_POST : T2Iidxldst<0, 0b00, 0, 0, (outs GPR:$base_wb),
 // only.
 // Ref: A8.6.193 STR (immediate, Thumb) Encoding T4
 class T2IstT<bits<2> type, string opc, InstrItinClass ii>
-  : T2Ii8<(outs GPR:$Rt), (ins t2addrmode_imm8:$addr), ii, opc,
+  : T2Ii8<(outs rGPR:$Rt), (ins t2addrmode_imm8:$addr), ii, opc,
           "\t$Rt, $addr", []> {
   let Inst{31-27} = 0b11111;
   let Inst{26-25} = 0b00;
@@ -1497,20 +1497,20 @@ def t2STRHT  : T2IstT<0b01, "strht", IIC_iStore_bh_i>;
 // ldrd / strd pre / post variants
 // For disassembly only.
 
-def t2LDRD_PRE  : T2Ii8s4<1, 1, 1, (outs GPR:$Rt, GPR:$Rt2),
+def t2LDRD_PRE  : T2Ii8s4<1, 1, 1, (outs rGPR:$Rt, rGPR:$Rt2),
                  (ins GPR:$base, t2am_imm8s4_offset:$imm), IIC_iLoad_d_ru,
                  "ldrd", "\t$Rt, $Rt2, [$base, $imm]!", []>;
 
-def t2LDRD_POST : T2Ii8s4<0, 1, 1, (outs GPR:$Rt, GPR:$Rt2),
+def t2LDRD_POST : T2Ii8s4<0, 1, 1, (outs rGPR:$Rt, rGPR:$Rt2),
                  (ins GPR:$base, t2am_imm8s4_offset:$imm), IIC_iLoad_d_ru,
                  "ldrd", "\t$Rt, $Rt2, [$base], $imm", []>;
 
 def t2STRD_PRE  : T2Ii8s4<1, 1, 0, (outs),
-                 (ins GPR:$Rt, GPR:$Rt2, GPR:$base, t2am_imm8s4_offset:$imm),
+                 (ins rGPR:$Rt, rGPR:$Rt2, GPR:$base, t2am_imm8s4_offset:$imm),
                  IIC_iStore_d_ru, "strd", "\t$Rt, $Rt2, [$base, $imm]!", []>;
 
 def t2STRD_POST : T2Ii8s4<0, 1, 0, (outs),
-                 (ins GPR:$Rt, GPR:$Rt2, GPR:$base, t2am_imm8s4_offset:$imm),
+                 (ins rGPR:$Rt, rGPR:$Rt2, GPR:$base, t2am_imm8s4_offset:$imm),
                  IIC_iStore_d_ru, "strd", "\t$Rt, $Rt2, [$base], $imm", []>;
 
 // T2Ipl (Preload Data/Instruction) signals the memory system of possible future
