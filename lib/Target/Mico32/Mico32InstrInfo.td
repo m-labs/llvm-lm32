@@ -30,6 +30,11 @@ def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_Mico32CallSeqStart,
 def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_Mico32CallSeqEnd,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
+// A mico32 return instruction SDNode.
+def RetFlag       : SDNode<"Mico32ISD::RetFlag", SDTNone,
+                           [SDNPHasChain, SDNPOptInGlue]>;
+
+
 
 
 //===----------------------------------------------------------------------===//
@@ -312,6 +317,23 @@ class StoreM<bits<6> op, string instr_asm, PatFrag OpNode> :
 ////===----------------------------------------------------------------------===//
 //// Branch and Link Instruction Formats
 ////===----------------------------------------------------------------------===//
+
+// The is actually an alias for "b r29".
+let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [R29] in {
+  let ra = R29.Num in
+    def RET: TBR<0x30, (outs), (ins), 
+		"ret", [(RetFlag)], IICall>;
+}
+
+// Treat this as call intinerary since it's always 4 cycles.
+// FIXME: Is hasCtrlDep needed? Not sure what it does...
+// Note the GPR can not be r30(ea) or R31(ba) aka ERET/BRET but the allocator 
+// is not allowed to use r30 or r31.
+let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
+  def B : TBR<0x30, (outs), (ins GPR:$dst),
+              "b       $dst", [(brind GPR:$dst)], IICall>;
+}
+
 //class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
 //              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
 //                 !strconcat(instr_asm, "   $link, $target"),

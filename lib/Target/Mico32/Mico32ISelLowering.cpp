@@ -46,7 +46,7 @@ const char *Mico32TargetLowering::getTargetNodeName(unsigned Opcode) const {
     case Mico32ISD::GPRel      : return "Mico32ISD::GPRel";
     case Mico32ISD::Wrap       : return "Mico32ISD::Wrap";
     case Mico32ISD::ICmp       : return "Mico32ISD::ICmp";
-    case Mico32ISD::Ret        : return "Mico32ISD::Ret";
+    case Mico32ISD::RetFlag    : return "Mico32ISD::RetFlag";
     case Mico32ISD::Select_CC  : return "Mico32ISD::Select_CC";
     default                    : return NULL;
   }
@@ -819,16 +819,12 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     Flag = Chain.getValue(1);
   }
 
-  // If this function is using the interrupt_handler calling convention
-  // then use "rtid r14, 0" otherwise use "rtsd r15, 8"
-  unsigned Ret = Mico32ISD::Ret;
-  unsigned Reg = Mico32::R15;
-  SDValue DReg = DAG.getRegister(Reg, MVT::i32);
-
   if (Flag.getNode())
-    return DAG.getNode(Ret, dl, MVT::Other, Chain, DReg, Flag);
-
-  return DAG.getNode(Ret, dl, MVT::Other, Chain, DReg);
+    return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
+                       Chain, DAG.getRegister(Mico32::R29, MVT::i32), Flag);
+  else // Return Void
+    return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
+                       Chain, DAG.getRegister(Mico32::R29, MVT::i32));
 }
 
 //===----------------------------------------------------------------------===//

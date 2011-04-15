@@ -79,10 +79,7 @@ namespace llvm {
       ICmp,
 
       // Return from subroutine
-      Ret,
-
-      // Return from interrupt
-      IRet
+      RetFlag
     };
   }
 
