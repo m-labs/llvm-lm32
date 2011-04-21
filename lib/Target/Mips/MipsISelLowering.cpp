@@ -52,6 +52,8 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
     case MipsISD::MSubu      : return "MipsISD::MSubu";
     case MipsISD::DivRem     : return "MipsISD::DivRem";
     case MipsISD::DivRemU    : return "MipsISD::DivRemU";
+    case MipsISD::BuildPairF64: return "MipsISD::BuildPairF64";
+    case MipsISD::ExtractElementF64: return "MipsISD::ExtractElementF64";
     default                  : return NULL;
   }
 }
@@ -442,8 +444,8 @@ static SDValue CreateFPCmp(SelectionDAG& DAG, const SDValue& Op) {
   SDValue RHS = Op.getOperand(1);
   DebugLoc dl = Op.getDebugLoc();
 
-  // Assume the 3rd operand is a CondCodeSDNode. Add code to check the type of node
-  // if necessary.
+  // Assume the 3rd operand is a CondCodeSDNode. Add code to check the type of
+  // node if necessary.
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
 
   return DAG.getNode(MipsISD::FPCmp, dl, MVT::Glue, LHS, RHS,
@@ -723,7 +725,7 @@ LowerBRCOND(SDValue Op, SelectionDAG &DAG) const
 
   SDValue CondRes = CreateFPCmp(DAG, Op.getOperand(1));
 
-  // Return if flag is not set by a floating point comparision.
+  // Return if flag is not set by a floating point comparison.
   if (CondRes.getOpcode() != MipsISD::FPCmp)
     return Op;
 
@@ -741,7 +743,7 @@ LowerSELECT(SDValue Op, SelectionDAG &DAG) const
 {
   SDValue Cond = CreateFPCmp(DAG, Op.getOperand(0));
 
-  // Return if flag is not set by a floating point comparision.
+  // Return if flag is not set by a floating point comparison.
   if (Cond.getOpcode() != MipsISD::FPCmp)
     return Op;
 
@@ -849,7 +851,8 @@ LowerJumpTable(SDValue Op, SelectionDAG &DAG) const
                          MachinePointerInfo(),
                          false, false, 0);
 
-  SDValue JTILo = DAG.getTargetJumpTable(JT->getIndex(), PtrVT, MipsII::MO_ABS_LO);
+  SDValue JTILo = DAG.getTargetJumpTable(JT->getIndex(), PtrVT,
+                                         MipsII::MO_ABS_LO);
   SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, JTILo);
   ResNode = DAG.getNode(ISD::ADD, dl, MVT::i32, HiPart, Lo);
 
@@ -867,7 +870,7 @@ LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
 
   // gp_rel relocation
   // FIXME: we should reference the constant pool using small data sections,
-  // but the asm printer currently doens't support this feature without
+  // but the asm printer currently doesn't support this feature without
   // hacking it. This feature should come soon so we can uncomment the
   // stuff below.
   //if (IsInSmallSection(C->getType())) {
@@ -1132,11 +1135,12 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
         if (VA.getValVT() == MVT::f32 && VA.getLocVT() == MVT::i32)
           Arg = DAG.getNode(ISD::BITCAST, dl, MVT::i32, Arg);
         if (VA.getValVT() == MVT::f64 && VA.getLocVT() == MVT::i32) {
-          Arg = DAG.getNode(ISD::BITCAST, dl, MVT::i64, Arg);
-          SDValue Lo = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Arg,
-                                   DAG.getConstant(0, getPointerTy()));
-          SDValue Hi = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Arg,
-                                   DAG.getConstant(1, getPointerTy()));
+          SDValue Lo = DAG.getNode(MipsISD::ExtractElementF64, dl, MVT::i32,
+                                   Arg, DAG.getConstant(0, MVT::i32));
+          SDValue Hi = DAG.getNode(MipsISD::ExtractElementF64, dl, MVT::i32,
+                                   Arg, DAG.getConstant(1, MVT::i32));
+          if (!Subtarget->isLittle())
+            std::swap(Lo, Hi);
           RegsToPass.push_back(std::make_pair(VA.getLocReg(), Lo));
           RegsToPass.push_back(std::make_pair(VA.getLocReg()+1, Hi));
           continue;
@@ -1189,7 +1193,7 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 
   // Build a sequence of copy-to-reg nodes chained together with token
   // chain and flag operands which copy the outgoing args into registers.
-  // The InFlag in necessary since all emited instructions must be
+  // The InFlag in necessary since all emitted instructions must be
   // stuck together.
   SDValue InFlag;
   for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i) {
@@ -1272,7 +1276,7 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 
   // Create a stack location to hold GP when PIC is used. This stack
   // location is used on function prologue to save GP and also after all
-  // emited CALL's to restore GP.
+  // emitted CALL's to restore GP.
   if (IsPIC) {
       // Function can have an arbitrary number of calls, so
       // hold the LastArgStackLoc with the biggest offset.
@@ -1347,11 +1351,12 @@ MipsTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
 /// and generate load operations for arguments places on the stack.
 SDValue
 MipsTargetLowering::LowerFormalArguments(SDValue Chain,
-                                        CallingConv::ID CallConv, bool isVarArg,
-                                        const SmallVectorImpl<ISD::InputArg>
-                                        &Ins,
-                                        DebugLoc dl, SelectionDAG &DAG,
-                                        SmallVectorImpl<SDValue> &InVals)
+                                         CallingConv::ID CallConv,
+                                         bool isVarArg,
+                                         const SmallVectorImpl<ISD::InputArg>
+                                         &Ins,
+                                         DebugLoc dl, SelectionDAG &DAG,
+                                         SmallVectorImpl<SDValue> &InVals)
                                           const {
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -1429,9 +1434,10 @@ MipsTargetLowering::LowerFormalArguments(SDValue Chain,
           unsigned Reg2 = AddLiveIn(DAG.getMachineFunction(),
                                     VA.getLocReg()+1, RC);
           SDValue ArgValue2 = DAG.getCopyFromReg(Chain, dl, Reg2, RegVT);
-          SDValue Pair = DAG.getNode(ISD::BUILD_PAIR, dl, MVT::i64, ArgValue, 
-                                       ArgValue2);
-          ArgValue = DAG.getNode(ISD::BITCAST, dl, MVT::f64, Pair);
+          if (!Subtarget->isLittle())
+            std::swap(ArgValue, ArgValue2);
+          ArgValue = DAG.getNode(MipsISD::BuildPairF64, dl, MVT::f64,
+                                 ArgValue, ArgValue2);
         }
       }
 

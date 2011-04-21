@@ -58,6 +58,11 @@ public:
   virtual void Initialize(MCContext &Ctx, const TargetMachine &TM);
 
   virtual const MCSection *getEHFrameSection() const;
+  virtual MCSymbol *getPersonalityPICSymbol(StringRef Name) const;
+
+  virtual void emitPersonalityValue(MCStreamer &Streamer,
+                                    const TargetMachine &TM,
+                                    const MCSymbol *Sym) const;
 
   const MCSection *getDataRelSection() const { return DataRelSection; }
 
@@ -94,7 +99,7 @@ class TargetLoweringObjectFileMachO : public TargetLoweringObjectFile {
   ///
   const MCSection *TLSBSSSection;         // Defaults to ".tbss".
   
-  /// TLSTLVSection - Section for thread local structure infomation.
+  /// TLSTLVSection - Section for thread local structure information.
   /// Contains the source code name of the variable, visibility and a pointer
   /// to the initial value (.tdata or .tbss).
   const MCSection *TLSTLVSection;         // Defaults to ".tlv".

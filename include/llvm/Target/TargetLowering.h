@@ -1042,7 +1042,7 @@ protected:
   }
 
   /// JumpIsExpensive - Tells the code generator not to expand sequence of
-  /// operations into a seperate sequences that increases the amount of
+  /// operations into a separate sequences that increases the amount of
   /// flow control.
   void setJumpIsExpensive(bool isExpensive = true) {
     JumpIsExpensive = isExpensive;
@@ -1253,7 +1253,7 @@ public:
   }
 
   /// HandleByVal - Target-specific cleanup for formal ByVal parameters.
-  virtual void HandleByVal(CCState *) const {}
+  virtual void HandleByVal(CCState *, unsigned &) const {}
 
   /// CanLowerReturn - This hook should be implemented to check whether the
   /// return values described by the Outs array can fit into the return

@@ -486,38 +486,10 @@ void AsmPrinter::EmitFunctionEntryLabel() {
 }
 
 
-static void EmitDebugLoc(DebugLoc DL, const MachineFunction *MF,
-                         raw_ostream &CommentOS) {
-  const LLVMContext &Ctx = MF->getFunction()->getContext();
-  if (!DL.isUnknown()) {          // Print source line info.
-    DIScope Scope(DL.getScope(Ctx));
-    // Omit the directory, because it's likely to be long and uninteresting.
-    if (Scope.Verify())
-      CommentOS << Scope.getFilename();
-    else
-      CommentOS << "<unknown>";
-    CommentOS << ':' << DL.getLine();
-    if (DL.getCol() != 0)
-      CommentOS << ':' << DL.getCol();
-    DebugLoc InlinedAtDL = DebugLoc::getFromDILocation(DL.getInlinedAt(Ctx));
-    if (!InlinedAtDL.isUnknown()) {
-      CommentOS << "[ ";
-      EmitDebugLoc(InlinedAtDL, MF, CommentOS);
-      CommentOS << " ]";
-    }
-  }
-}
-
 /// EmitComments - Pretty-print comments for instructions.
 static void EmitComments(const MachineInstr &MI, raw_ostream &CommentOS) {
   const MachineFunction *MF = MI.getParent()->getParent();
   const TargetMachine &TM = MF->getTarget();
-
-  DebugLoc DL = MI.getDebugLoc();
-  if (!DL.isUnknown()) {          // Print source line info.
-    EmitDebugLoc(DL, MF, CommentOS);
-    CommentOS << '\n';
-  }
 
   // Check for spills and reloads
   int FI;
@@ -644,24 +616,7 @@ void AsmPrinter::emitPrologLabel(const MachineInstr &MI) {
     }
   }
   assert(Move);
-
-  const MachineLocation &Dst = Move->getDestination();
-  const MachineLocation &Src = Move->getSource();
-  const TargetAsmInfo &AsmInfo = OutContext.getTargetAsmInfo();
-  if (Dst.isReg() && Dst.getReg() == MachineLocation::VirtualFP) {
-    if (Src.getReg() == MachineLocation::VirtualFP)
-      OutStreamer.EmitCFIDefCfaOffset(-Src.getOffset());
-    else {
-      unsigned Reg = AsmInfo.getDwarfRegNum(Src.getReg(), true);
-      OutStreamer.EmitCFIDefCfa(Reg, -Src.getOffset());
-    }
-  } else if (Src.isReg() && Src.getReg() == MachineLocation::VirtualFP) {
-    unsigned Reg = AsmInfo.getDwarfRegNum(Dst.getReg(), true);
-    OutStreamer.EmitCFIDefCfaRegister(Reg);
-  } else {
-    unsigned Reg = AsmInfo.getDwarfRegNum(Src.getReg(), true);
-    OutStreamer.EmitCFIOffset(Reg, -Dst.getOffset());
-  }
+  EmitCFIFrameMove(*Move);
 }
 
 /// EmitFunctionBody - This method emits the body and trailer for a

@@ -204,8 +204,8 @@ void MipsFrameLowering::adjustMipsStackFrame(MachineFunction &MF) const {
 }
 
 
-// expand pair of register and immediate if the immediate doesn't fit in the 16-bit
-// offset field.
+// expand pair of register and immediate if the immediate doesn't fit in the
+// 16-bit offset field.
 // e.g.
 //  if OrigImm = 0x10000, OrigReg = $sp:
 //    generate the following sequence of instrs:
@@ -216,7 +216,8 @@ void MipsFrameLowering::adjustMipsStackFrame(MachineFunction &MF) const {
 //    return true
 static bool expandRegLargeImmPair(unsigned OrigReg, int OrigImm,
                                   unsigned& NewReg, int& NewImm,
-                                  MachineBasicBlock& MBB, MachineBasicBlock::iterator I) {
+                                  MachineBasicBlock& MBB,
+                                  MachineBasicBlock::iterator I) {
   // OrigImm fits in the 16-bit field
   if (OrigImm < 0x8000 && OrigImm >= -0x8000) {
     NewReg = OrigReg;
@@ -228,12 +229,14 @@ static bool expandRegLargeImmPair(unsigned OrigReg, int OrigImm,
   const TargetInstrInfo *TII = MF->getTarget().getInstrInfo();
   DebugLoc DL = I->getDebugLoc();
   int ImmLo = OrigImm & 0xffff;
-  int ImmHi = (((unsigned)OrigImm & 0xffff0000) >> 16) + ((OrigImm & 0x8000) != 0);
+  int ImmHi = (((unsigned)OrigImm & 0xffff0000) >> 16) +
+              ((OrigImm & 0x8000) != 0);
 
   // FIXME: change this when mips goes MC".
   BuildMI(MBB, I, DL, TII->get(Mips::NOAT));
   BuildMI(MBB, I, DL, TII->get(Mips::LUi), Mips::AT).addImm(ImmHi);
-  BuildMI(MBB, I, DL, TII->get(Mips::ADDu), Mips::AT).addReg(OrigReg).addReg(Mips::AT);
+  BuildMI(MBB, I, DL, TII->get(Mips::ADDu), Mips::AT).addReg(OrigReg)
+                                                     .addReg(Mips::AT);
   NewReg = Mips::AT;
   NewImm = ImmLo;
 
@@ -285,7 +288,7 @@ void MipsFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (ATUsed)
     BuildMI(MBB, MBBI, dl, TII.get(Mips::ATMACRO));
 
-  // Save the return address only if the function isnt a leaf one.
+  // Save the return address only if the function isn't a leaf one.
   // sw  $ra, stack_loc($sp)
   if (MFI->adjustsStack()) {
     ATUsed = expandRegLargeImmPair(Mips::SP, RAOffset, NewReg, NewImm, MBB,
@@ -360,7 +363,7 @@ void MipsFrameLowering::emitEpilogue(MachineFunction &MF,
       BuildMI(MBB, MBBI, dl, TII.get(Mips::ATMACRO));
   }
 
-  // Restore the return address only if the function isnt a leaf one.
+  // Restore the return address only if the function isn't a leaf one.
   // lw  $ra, stack_loc($sp)
   if (MFI->adjustsStack()) {
     ATUsed = expandRegLargeImmPair(Mips::SP, RAOffset, NewReg, NewImm, MBB,

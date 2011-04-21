@@ -67,6 +67,11 @@ TrivCoalesceEnds("trivial-coalesce-ends",
                   cl::desc("Attempt trivial coalescing of interval ends"),
                   cl::init(false), cl::Hidden);
 
+static cl::opt<bool>
+AvoidWAWHazard("avoid-waw-hazard",
+               cl::desc("Avoid write-write hazards for some register classes"),
+               cl::init(false), cl::Hidden);
+
 static RegisterRegAlloc
 linearscanRegAlloc("linearscan", "linear scan register allocator",
                    createLinearScanRegisterAllocator);
@@ -110,6 +115,7 @@ namespace {
       if (NumRecentlyUsedRegs > 0)
         RecentRegs.resize(NumRecentlyUsedRegs, 0);
       RecentNext = RecentRegs.begin();
+      avoidWAW_ = 0;
     }
 
     typedef std::pair<LiveInterval*, LiveInterval::iterator> IntervalPtr;
@@ -180,6 +186,9 @@ namespace {
     SmallVector<unsigned, 4> RecentRegs;
     SmallVector<unsigned, 4>::iterator RecentNext;
 
+    // Last write-after-write register written.
+    unsigned avoidWAW_;
+
     // Record that we just picked this register.
     void recordRecentlyUsed(unsigned reg) {
       assert(reg != 0 && "Recently used register is NOREG!");
@@ -227,8 +236,8 @@ namespace {
 
     // Determine if we skip this register due to its being recently used.
     bool isRecentlyUsed(unsigned reg) const {
-      return std::find(RecentRegs.begin(), RecentRegs.end(), reg) !=
-             RecentRegs.end();
+      return reg == avoidWAW_ ||
+       std::find(RecentRegs.begin(), RecentRegs.end(), reg) != RecentRegs.end();
     }
 
   private:
@@ -792,7 +801,7 @@ void RALinScan::updateSpillWeights(std::vector<float> &Weights,
   // register class we are trying to allocate. Then add the weight to all
   // sub-registers of the super-register even if they are not aliases.
   // e.g. allocating for GR32, bh is not used, updating bl spill weight.
-  //      bl should get the same spill weight otherwise it will be choosen
+  //      bl should get the same spill weight otherwise it will be chosen
   //      as a spill candidate since spilling bh doesn't make ebx available.
   for (unsigned i = 0, e = Supers.size(); i != e; ++i) {
     for (const unsigned *sr = tri_->getSubRegisters(Supers[i]); *sr; ++sr)
@@ -1115,6 +1124,12 @@ void RALinScan::assignRegOrStackSlotAtInterval(LiveInterval* cur) {
     addRegUse(physReg);
     active_.push_back(std::make_pair(cur, cur->begin()));
     handled_.push_back(cur);
+
+    // Remember physReg for avoiding a write-after-write hazard in the next
+    // instruction.
+    if (AvoidWAWHazard &&
+        tri_->avoidWriteAfterWrite(mri_->getRegClass(cur->reg)))
+      avoidWAW_ = physReg;
 
     // "Upgrade" the physical register since it has been allocated.
     UpgradeRegister(physReg);
@@ -1446,7 +1461,7 @@ unsigned RALinScan::getFreePhysReg(LiveInterval* cur,
     if (reservedRegs_.test(Reg))
       continue;
     // Skip recently allocated registers.
-    if (isRegAvail(Reg) && !isRecentlyUsed(Reg)) {
+    if (isRegAvail(Reg) && (!SkipDGRegs || !isRecentlyUsed(Reg))) {
       FreeReg = Reg;
       if (FreeReg < inactiveCounts.size())
         FreeRegInactiveCount = inactiveCounts[FreeReg];
@@ -1477,7 +1492,8 @@ unsigned RALinScan::getFreePhysReg(LiveInterval* cur,
     if (reservedRegs_.test(Reg))
       continue;
     if (isRegAvail(Reg) && Reg < inactiveCounts.size() &&
-        FreeRegInactiveCount < inactiveCounts[Reg] && !isRecentlyUsed(Reg)) {
+        FreeRegInactiveCount < inactiveCounts[Reg] &&
+        (!SkipDGRegs || !isRecentlyUsed(Reg))) {
       FreeReg = Reg;
       FreeRegInactiveCount = inactiveCounts[Reg];
       if (FreeRegInactiveCount == MaxInactiveCount)
@@ -1528,12 +1544,10 @@ unsigned RALinScan::getFreePhysReg(LiveInterval *cur) {
       return Preference;
   }
 
-  if (!DowngradedRegs.empty()) {
-    unsigned FreeReg = getFreePhysReg(cur, RC, MaxInactiveCount, inactiveCounts,
-                                      true);
-    if (FreeReg)
-      return FreeReg;
-  }
+  unsigned FreeReg = getFreePhysReg(cur, RC, MaxInactiveCount, inactiveCounts,
+                                    true);
+  if (FreeReg)
+    return FreeReg;
   return getFreePhysReg(cur, RC, MaxInactiveCount, inactiveCounts, false);
 }
 
