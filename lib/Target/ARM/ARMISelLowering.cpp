@@ -609,6 +609,18 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setOperationAction(ISD::ATOMIC_LOAD_NAND, MVT::i8,  Expand);
     setOperationAction(ISD::ATOMIC_LOAD_NAND, MVT::i16, Expand);
     setOperationAction(ISD::ATOMIC_LOAD_NAND, MVT::i32, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MIN, MVT::i8,  Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MIN, MVT::i16, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MIN, MVT::i32, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MAX, MVT::i8,  Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MAX, MVT::i16, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_MAX, MVT::i32, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMIN, MVT::i8,  Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMIN, MVT::i16, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMIN, MVT::i32, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMAX, MVT::i8,  Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMAX, MVT::i16, Expand);
+    setOperationAction(ISD::ATOMIC_LOAD_UMAX, MVT::i32, Expand);
     // Since the libcalls include locking, fold in the fences
     setShouldFoldAtomicFences(true);
   }
@@ -5031,6 +5043,109 @@ ARMTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
   return BB;
 }
 
+MachineBasicBlock *
+ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
+                                          MachineBasicBlock *BB,
+                                          unsigned Size,
+                                          bool signExtend,
+                                          ARMCC::CondCodes Cond) const {
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineFunction *MF = BB->getParent();
+  MachineFunction::iterator It = BB;
+  ++It;
+
+  unsigned dest = MI->getOperand(0).getReg();
+  unsigned ptr = MI->getOperand(1).getReg();
+  unsigned incr = MI->getOperand(2).getReg();
+  unsigned oldval = dest;
+  DebugLoc dl = MI->getDebugLoc();
+
+  bool isThumb2 = Subtarget->isThumb2();
+  unsigned ldrOpc, strOpc, extendOpc;
+  switch (Size) {
+  default: llvm_unreachable("unsupported size for AtomicCmpSwap!");
+  case 1:
+    ldrOpc = isThumb2 ? ARM::t2LDREXB : ARM::LDREXB;
+    strOpc = isThumb2 ? ARM::t2STREXB : ARM::STREXB;
+    extendOpc = isThumb2 ? ARM::t2SXTBr : ARM::SXTBr;
+    break;
+  case 2:
+    ldrOpc = isThumb2 ? ARM::t2LDREXH : ARM::LDREXH;
+    strOpc = isThumb2 ? ARM::t2STREXH : ARM::STREXH;
+    extendOpc = isThumb2 ? ARM::t2SXTHr : ARM::SXTHr;
+    break;
+  case 4:
+    ldrOpc = isThumb2 ? ARM::t2LDREX : ARM::LDREX;
+    strOpc = isThumb2 ? ARM::t2STREX : ARM::STREX;
+    extendOpc = 0;
+    break;
+  }
+
+  MachineBasicBlock *loopMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *exitMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MF->insert(It, loopMBB);
+  MF->insert(It, exitMBB);
+
+  // Transfer the remainder of BB and its successor edges to exitMBB.
+  exitMBB->splice(exitMBB->begin(), BB,
+                  llvm::next(MachineBasicBlock::iterator(MI)),
+                  BB->end());
+  exitMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  MachineRegisterInfo &RegInfo = MF->getRegInfo();
+  unsigned scratch = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+  unsigned scratch2 = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+
+  //  thisMBB:
+  //   ...
+  //   fallthrough --> loopMBB
+  BB->addSuccessor(loopMBB);
+
+  //  loopMBB:
+  //   ldrex dest, ptr
+  //   (sign extend dest, if required)
+  //   cmp dest, incr
+  //   cmov.cond scratch2, dest, incr
+  //   strex scratch, scratch2, ptr
+  //   cmp scratch, #0
+  //   bne- loopMBB
+  //   fallthrough --> exitMBB
+  BB = loopMBB;
+  AddDefaultPred(BuildMI(BB, dl, TII->get(ldrOpc), dest).addReg(ptr));
+
+  // Sign extend the value, if necessary.
+  if (signExtend && extendOpc) {
+    oldval = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+    AddDefaultPred(BuildMI(BB, dl, TII->get(extendOpc), oldval).addReg(dest));
+  }
+
+  // Build compare and cmov instructions.
+  AddDefaultPred(BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2CMPrr : ARM::CMPrr))
+                 .addReg(oldval).addReg(incr));
+  BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2MOVCCr : ARM::MOVCCr), scratch2)
+         .addReg(oldval).addReg(incr).addImm(Cond).addReg(ARM::CPSR);
+
+  AddDefaultPred(BuildMI(BB, dl, TII->get(strOpc), scratch).addReg(scratch2)
+                 .addReg(ptr));
+  AddDefaultPred(BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2CMPri : ARM::CMPri))
+                 .addReg(scratch).addImm(0));
+  BuildMI(BB, dl, TII->get(isThumb2 ? ARM::t2Bcc : ARM::Bcc))
+    .addMBB(loopMBB).addImm(ARMCC::NE).addReg(ARM::CPSR);
+
+  BB->addSuccessor(loopMBB);
+  BB->addSuccessor(exitMBB);
+
+  //  exitMBB:
+  //   ...
+  BB = exitMBB;
+
+  MI->eraseFromParent();   // The instruction is gone now.
+
+  return BB;
+}
+
 static
 MachineBasicBlock *OtherSucc(MachineBasicBlock *MBB, MachineBasicBlock *Succ) {
   for (MachineBasicBlock::succ_iterator I = MBB->succ_begin(),
@@ -5040,6 +5155,72 @@ MachineBasicBlock *OtherSucc(MachineBasicBlock *MBB, MachineBasicBlock *Succ) {
   llvm_unreachable("Expecting a BB with two successors!");
 }
 
+// FIXME: This opcode table should obviously be expressed in the target
+// description. We probably just need a "machine opcode" value in the pseudo
+// instruction. But the ideal solution maybe to simply remove the "S" version
+// of the opcode altogether.
+struct AddSubFlagsOpcodePair {
+  unsigned PseudoOpc;
+  unsigned MachineOpc;
+};
+
+static AddSubFlagsOpcodePair AddSubFlagsOpcodeMap[] = {
+  {ARM::ADCSri, ARM::ADCri},
+  {ARM::ADCSrr, ARM::ADCrr},
+  {ARM::ADCSrs, ARM::ADCrs},
+  {ARM::SBCSri, ARM::SBCri},
+  {ARM::SBCSrr, ARM::SBCrr},
+  {ARM::SBCSrs, ARM::SBCrs},
+  {ARM::RSBSri, ARM::RSBri},
+  {ARM::RSBSrr, ARM::RSBrr},
+  {ARM::RSBSrs, ARM::RSBrs},
+  {ARM::RSCSri, ARM::RSCri},
+  {ARM::RSCSrs, ARM::RSCrs},
+  {ARM::t2ADCSri, ARM::t2ADCri},
+  {ARM::t2ADCSrr, ARM::t2ADCrr},
+  {ARM::t2ADCSrs, ARM::t2ADCrs},
+  {ARM::t2SBCSri, ARM::t2SBCri},
+  {ARM::t2SBCSrr, ARM::t2SBCrr},
+  {ARM::t2SBCSrs, ARM::t2SBCrs},
+  {ARM::t2RSBSri, ARM::t2RSBri},
+  {ARM::t2RSBSrs, ARM::t2RSBrs},
+};
+
+// Convert and Add or Subtract with Carry and Flags to a generic opcode with
+// CPSR<def> operand. e.g. ADCS (...) -> ADC (... CPSR<def>).
+//
+// FIXME: Somewhere we should assert that CPSR<def> is in the correct
+// position to be recognized by the target descrition as the 'S' bit.
+bool ARMTargetLowering::RemapAddSubWithFlags(MachineInstr *MI,
+                                             MachineBasicBlock *BB) const {
+  unsigned OldOpc = MI->getOpcode();
+  unsigned NewOpc = 0;
+
+  // This is only called for instructions that need remapping, so iterating over
+  // the tiny opcode table is not costly.
+  static const int NPairs =
+    sizeof(AddSubFlagsOpcodeMap) / sizeof(AddSubFlagsOpcodePair);
+  for (AddSubFlagsOpcodePair *Pair = &AddSubFlagsOpcodeMap[0],
+         *End = &AddSubFlagsOpcodeMap[NPairs]; Pair != End; ++Pair) {
+    if (OldOpc == Pair->PseudoOpc) {
+      NewOpc = Pair->MachineOpc;
+      break;
+    }
+  }
+  if (!NewOpc)
+    return false;
+
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  DebugLoc dl = MI->getDebugLoc();
+  MachineInstrBuilder MIB = BuildMI(*BB, MI, dl, TII->get(NewOpc));
+  for (unsigned i = 0; i < MI->getNumOperands(); ++i)
+    MIB.addOperand(MI->getOperand(i));
+  AddDefaultPred(MIB);
+  MIB.addReg(ARM::CPSR, RegState::Define); // S bit
+  MI->eraseFromParent();
+  return true;
+}
+
 MachineBasicBlock *
 ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *BB) const {
@@ -5047,10 +5228,13 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   DebugLoc dl = MI->getDebugLoc();
   bool isThumb2 = Subtarget->isThumb2();
   switch (MI->getOpcode()) {
-  default:
+  default: {
+    if (RemapAddSubWithFlags(MI, BB))
+      return BB;
+
     MI->dump();
     llvm_unreachable("Unexpected instr type to insert");
-
+  }
   case ARM::ATOMIC_LOAD_ADD_I8:
      return EmitAtomicBinary(MI, BB, 1, isThumb2 ? ARM::t2ADDrr : ARM::ADDrr);
   case ARM::ATOMIC_LOAD_ADD_I16:
@@ -5093,6 +5277,34 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   case ARM::ATOMIC_LOAD_SUB_I32:
      return EmitAtomicBinary(MI, BB, 4, isThumb2 ? ARM::t2SUBrr : ARM::SUBrr);
 
+  case ARM::ATOMIC_LOAD_MIN_I8:
+     return EmitAtomicBinaryMinMax(MI, BB, 1, true, ARMCC::LT);
+  case ARM::ATOMIC_LOAD_MIN_I16:
+     return EmitAtomicBinaryMinMax(MI, BB, 2, true, ARMCC::LT);
+  case ARM::ATOMIC_LOAD_MIN_I32:
+     return EmitAtomicBinaryMinMax(MI, BB, 4, true, ARMCC::LT);
+
+  case ARM::ATOMIC_LOAD_MAX_I8:
+     return EmitAtomicBinaryMinMax(MI, BB, 1, true, ARMCC::GT);
+  case ARM::ATOMIC_LOAD_MAX_I16:
+     return EmitAtomicBinaryMinMax(MI, BB, 2, true, ARMCC::GT);
+  case ARM::ATOMIC_LOAD_MAX_I32:
+     return EmitAtomicBinaryMinMax(MI, BB, 4, true, ARMCC::GT);
+
+  case ARM::ATOMIC_LOAD_UMIN_I8:
+     return EmitAtomicBinaryMinMax(MI, BB, 1, false, ARMCC::LO);
+  case ARM::ATOMIC_LOAD_UMIN_I16:
+     return EmitAtomicBinaryMinMax(MI, BB, 2, false, ARMCC::LO);
+  case ARM::ATOMIC_LOAD_UMIN_I32:
+     return EmitAtomicBinaryMinMax(MI, BB, 4, false, ARMCC::LO);
+
+  case ARM::ATOMIC_LOAD_UMAX_I8:
+     return EmitAtomicBinaryMinMax(MI, BB, 1, false, ARMCC::HI);
+  case ARM::ATOMIC_LOAD_UMAX_I16:
+     return EmitAtomicBinaryMinMax(MI, BB, 2, false, ARMCC::HI);
+  case ARM::ATOMIC_LOAD_UMAX_I32:
+     return EmitAtomicBinaryMinMax(MI, BB, 4, false, ARMCC::HI);
+
   case ARM::ATOMIC_SWAP_I8:  return EmitAtomicBinary(MI, BB, 1, 0);
   case ARM::ATOMIC_SWAP_I16: return EmitAtomicBinary(MI, BB, 2, 0);
   case ARM::ATOMIC_SWAP_I32: return EmitAtomicBinary(MI, BB, 4, 0);
@@ -5100,68 +5312,6 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   case ARM::ATOMIC_CMP_SWAP_I8:  return EmitAtomicCmpSwap(MI, BB, 1);
   case ARM::ATOMIC_CMP_SWAP_I16: return EmitAtomicCmpSwap(MI, BB, 2);
   case ARM::ATOMIC_CMP_SWAP_I32: return EmitAtomicCmpSwap(MI, BB, 4);
-
-  case ARM::ADCSSri:
-  case ARM::ADCSSrr:
-  case ARM::ADCSSrs:
-  case ARM::SBCSSri:
-  case ARM::SBCSSrr:
-  case ARM::SBCSSrs:
-  case ARM::RSBSri:
-  case ARM::RSBSrr:
-  case ARM::RSBSrs:
-  case ARM::RSCSri:
-  case ARM::RSCSrs: {
-    unsigned OldOpc = MI->getOpcode();
-    unsigned Opc = 0;
-    switch (OldOpc) {
-      case ARM::ADCSSrr:
-        Opc = ARM::ADCrr;
-        break;
-      case ARM::ADCSSri:
-        Opc = ARM::ADCri;
-        break;
-      case ARM::ADCSSrs:
-        Opc = ARM::ADCrs;
-        break;
-      case ARM::SBCSSrr:
-        Opc = ARM::SBCrr;
-        break;
-      case ARM::SBCSSri:
-        Opc = ARM::SBCri;
-        break;
-      case ARM::SBCSSrs:
-        Opc = ARM::SBCrs;
-        break;
-      case ARM::RSBSri:
-        Opc = ARM::RSBri;
-        break;
-      case ARM::RSBSrr:
-        Opc = ARM::RSBrr;
-        break;
-      case ARM::RSBSrs:
-        Opc = ARM::RSBrs;
-        break;
-      case ARM::RSCSri:
-        Opc = ARM::RSCri;
-        break;
-      case ARM::RSCSrs:
-        Opc = ARM::RSCrs;
-        break;
-      default:
-        llvm_unreachable("Unknown opcode?");
-    }
-
-    MachineInstrBuilder MIB =
-      BuildMI(*BB, MI, MI->getDebugLoc(), TII->get(Opc));
-    for (unsigned i = 0; i < MI->getNumOperands(); ++i)
-      MIB.addOperand(MI->getOperand(i));
-    AddDefaultPred(MIB);
-    MIB.addReg(ARM::CPSR, RegState::Define); // S bit
-    MI->eraseFromParent();
-    return BB;
-  }
-
 
   case ARM::tMOVCCr_pseudo: {
     // To "insert" a SELECT_CC instruction, we actually have to insert the
@@ -5474,7 +5624,7 @@ static SDValue PerformANDCombine(SDNode *N,
 
   if(!DAG.getTargetLoweringInfo().isTypeLegal(VT))
     return SDValue();
-  
+
   APInt SplatBits, SplatUndef;
   unsigned SplatBitSize;
   bool HasAnyUndefs;
@@ -5510,7 +5660,7 @@ static SDValue PerformORCombine(SDNode *N,
 
   if(!DAG.getTargetLoweringInfo().isTypeLegal(VT))
     return SDValue();
-  
+
   APInt SplatBits, SplatUndef;
   unsigned SplatBitSize;
   bool HasAnyUndefs;

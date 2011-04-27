@@ -28,7 +28,6 @@
 #include "llvm/Target/TargetRegistry.h"
 #include "llvm/Target/TargetAsmBackend.h"
 
-#include <vector>
 using namespace llvm;
 
 namespace {
@@ -692,7 +691,9 @@ bool MCAssembler::RelaxInstruction(MCAsmLayout &Layout,
 bool MCAssembler::RelaxLEB(MCAsmLayout &Layout, MCLEBFragment &LF) {
   int64_t Value = 0;
   uint64_t OldSize = LF.getContents().size();
-  LF.getValue().EvaluateAsAbsolute(Value, Layout);
+  bool IsAbs = LF.getValue().EvaluateAsAbsolute(Value, Layout);
+  (void)IsAbs;
+  assert(IsAbs);
   SmallString<8> &Data = LF.getContents();
   Data.clear();
   raw_svector_ostream OSE(Data);

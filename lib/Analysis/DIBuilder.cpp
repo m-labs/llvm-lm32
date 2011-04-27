@@ -518,7 +518,7 @@ DIType DIBuilder::createTemporaryType() {
   // Give the temporary MDNode a tag. It doesn't matter what tag we
   // use here as long as DIType accepts it.
   Value *Elts[] = { GetTagConstant(VMContext, DW_TAG_base_type) };
-  MDNode *Node = MDNode::getTemporary(VMContext, Elts, 1);
+  MDNode *Node = MDNode::getTemporary(VMContext, Elts);
   return DIType(Node);
 }
 
@@ -532,17 +532,17 @@ DIType DIBuilder::createTemporaryType(DIFile F) {
     NULL,
     F
   };
-  MDNode *Node = MDNode::getTemporary(VMContext, Elts, array_lengthof(Elts));
+  MDNode *Node = MDNode::getTemporary(VMContext, Elts);
   return DIType(Node);
 }
 
 /// getOrCreateArray - Get a DIArray, create one if required.
-DIArray DIBuilder::getOrCreateArray(Value *const *Elements, unsigned NumElements) {
-  if (NumElements == 0) {
+DIArray DIBuilder::getOrCreateArray(ArrayRef<Value *> Elements) {
+  if (Elements.empty()) {
     Value *Null = llvm::Constant::getNullValue(Type::getInt32Ty(VMContext));
-    return DIArray(MDNode::get(VMContext, &Null, 1));
+    return DIArray(MDNode::get(VMContext, Null));
   }
-  return DIArray(MDNode::get(VMContext, Elements, NumElements));
+  return DIArray(MDNode::get(VMContext, Elements));
 }
 
 /// getOrCreateSubrange - Create a descriptor for a value range.  This
@@ -647,8 +647,8 @@ DIVariable DIBuilder::createLocalVariable(unsigned Tag, DIDescriptor Scope,
 DIVariable DIBuilder::createComplexVariable(unsigned Tag, DIDescriptor Scope,
                                             StringRef Name, DIFile F,
                                             unsigned LineNo,
-                                            DIType Ty, Value *const *Addr,
-                                            unsigned NumAddr, unsigned ArgNo) {
+                                            DIType Ty, ArrayRef<Value *> Addr,
+                                            unsigned ArgNo) {
   SmallVector<Value *, 15> Elts;
   Elts.push_back(GetTagConstant(VMContext, Tag));
   Elts.push_back(Scope);
@@ -656,7 +656,8 @@ DIVariable DIBuilder::createComplexVariable(unsigned Tag, DIDescriptor Scope,
   Elts.push_back(F);
   Elts.push_back(ConstantInt::get(Type::getInt32Ty(VMContext), (LineNo | (ArgNo << 24))));
   Elts.push_back(Ty);
-  Elts.append(Addr, Addr+NumAddr);
+  Elts.push_back(llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)));
+  Elts.append(Addr.begin(), Addr.end());
 
   return DIVariable(MDNode::get(VMContext, Elts));
 }
@@ -670,7 +671,8 @@ DISubprogram DIBuilder::createFunction(DIDescriptor Context,
                                        bool isLocalToUnit, bool isDefinition,
                                        unsigned Flags, bool isOptimized,
                                        Function *Fn,
-                                       MDNode *TParams) {
+                                       MDNode *TParams,
+                                       MDNode *Decl) {
   Value *Elts[] = {
     GetTagConstant(VMContext, dwarf::DW_TAG_subprogram),
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
@@ -689,7 +691,8 @@ DISubprogram DIBuilder::createFunction(DIDescriptor Context,
     ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
     ConstantInt::get(Type::getInt1Ty(VMContext), isOptimized),
     Fn,
-    TParams
+    TParams,
+    Decl
   };
   MDNode *Node = MDNode::get(VMContext, Elts);
 
@@ -778,7 +781,7 @@ Instruction *DIBuilder::insertDeclare(Value *Storage, DIVariable VarInfo,
   if (!DeclareFn)
     DeclareFn = Intrinsic::getDeclaration(&M, Intrinsic::dbg_declare);
 
-  Value *Args[] = { MDNode::get(Storage->getContext(), &Storage, 1), VarInfo };
+  Value *Args[] = { MDNode::get(Storage->getContext(), Storage), VarInfo };
   return CallInst::Create(DeclareFn, Args, Args+2, "", InsertBefore);
 }
 
@@ -790,7 +793,7 @@ Instruction *DIBuilder::insertDeclare(Value *Storage, DIVariable VarInfo,
   if (!DeclareFn)
     DeclareFn = Intrinsic::getDeclaration(&M, Intrinsic::dbg_declare);
 
-  Value *Args[] = { MDNode::get(Storage->getContext(), &Storage, 1), VarInfo };
+  Value *Args[] = { MDNode::get(Storage->getContext(), Storage), VarInfo };
 
   // If this block already has a terminator then insert this intrinsic
   // before the terminator.
@@ -809,7 +812,7 @@ Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
   if (!ValueFn)
     ValueFn = Intrinsic::getDeclaration(&M, Intrinsic::dbg_value);
 
-  Value *Args[] = { MDNode::get(V->getContext(), &V, 1),
+  Value *Args[] = { MDNode::get(V->getContext(), V),
                     ConstantInt::get(Type::getInt64Ty(V->getContext()), Offset),
                     VarInfo };
   return CallInst::Create(ValueFn, Args, Args+3, "", InsertBefore);
@@ -824,7 +827,7 @@ Instruction *DIBuilder::insertDbgValueIntrinsic(Value *V, uint64_t Offset,
   if (!ValueFn)
     ValueFn = Intrinsic::getDeclaration(&M, Intrinsic::dbg_value);
 
-  Value *Args[] = { MDNode::get(V->getContext(), &V, 1),
+  Value *Args[] = { MDNode::get(V->getContext(), V),
                     ConstantInt::get(Type::getInt64Ty(V->getContext()), Offset),
                     VarInfo };
   return CallInst::Create(ValueFn, Args, Args+3, "", InsertAtEnd);

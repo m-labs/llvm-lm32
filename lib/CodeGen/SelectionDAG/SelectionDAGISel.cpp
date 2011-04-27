@@ -762,22 +762,33 @@ void SelectionDAGISel::PrepareEHLandingPad() {
 bool SelectionDAGISel::TryToFoldFastISelLoad(const LoadInst *LI,
                                              const Instruction *FoldInst,
                                              FastISel *FastIS) {
-  SmallPtrSet<const Instruction*, 4> FoldedInsts;
-  for (BasicBlock::const_iterator II = FoldInst; &*II != LI; --II)
-    FoldedInsts.insert(II);
-  
   // We know that the load has a single use, but don't know what it is.  If it
-  // isn't one of the folded instructions, then we can't succeed here.
-  if (!FoldedInsts.count(LI->use_back()))
-    return false;
+  // isn't one of the folded instructions, then we can't succeed here.  Handle
+  // this by scanning the single-use users of the load until we get to FoldInst.
+  unsigned MaxUsers = 6;  // Don't scan down huge single-use chains of instrs.
+  
+  const Instruction *TheUser = LI->use_back();
+  while (TheUser != FoldInst &&   // Scan up until we find FoldInst.
+         // Stay in the right block.
+         TheUser->getParent() == FoldInst->getParent() &&
+         --MaxUsers) {  // Don't scan too far.
+    // If there are multiple or no uses of this instruction, then bail out.
+    if (!TheUser->hasOneUse())
+      return false;
+    
+    TheUser = TheUser->use_back();
+  }
   
   // Don't try to fold volatile loads.  Target has to deal with alignment
   // constraints.
   if (LI->isVolatile()) return false;
 
-  // Figure out which vreg this is going into.
+  // Figure out which vreg this is going into.  If there is no assigned vreg yet
+  // then there actually was no reference to it.  Perhaps the load is referenced
+  // by a dead instruction.
   unsigned LoadReg = FastIS->getRegForValue(LI);
-  assert(LoadReg && "Load isn't already assigned a vreg? ");
+  if (LoadReg == 0)
+    return false;
 
   // Check to see what the uses of this vreg are.  If it has no uses, or more
   // than one use (at the machine instr level) then we can't fold it.

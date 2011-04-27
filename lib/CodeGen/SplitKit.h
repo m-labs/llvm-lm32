@@ -12,6 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef LLVM_CODEGEN_SPLITKIT_H
+#define LLVM_CODEGEN_SPLITKIT_H
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
@@ -146,6 +149,11 @@ public:
 
   /// getThroughBlocks - Return the set of through blocks.
   const BitVector &getThroughBlocks() const { return ThroughBlocks; }
+
+  /// countLiveBlocks - Return the number of blocks where li is live.
+  /// This is guaranteed to return the same number as getNumThroughBlocks() +
+  /// getUseBlocks().size() after calling analyze(li).
+  unsigned countLiveBlocks(const LiveInterval *li) const;
 
   typedef SmallPtrSet<const MachineBasicBlock*, 16> BlockPtrSet;
 
@@ -368,7 +376,10 @@ public:
 
   /// finish - after all the new live ranges have been created, compute the
   /// remaining live range, and rewrite instructions to use the new registers.
-  void finish();
+  /// @param LRMap When not null, this vector will map each live range in Edit
+  ///              back to the indices returned by openIntv.
+  ///              There may be extra indices created by dead code elimination.
+  void finish(SmallVectorImpl<unsigned> *LRMap = 0);
 
   /// dump - print the current interval maping to dbgs().
   void dump() const;
@@ -386,3 +397,5 @@ public:
 };
 
 }
+
+#endif

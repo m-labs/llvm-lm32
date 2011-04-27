@@ -200,3 +200,41 @@ block2:
   call void (...)* @test16callee(double 1.000000e+00)
   ret void
 }
+
+
+declare void @foo() unnamed_addr ssp align 2
+
+; Verify that we don't fold the load into the compare here.  That would move it
+; w.r.t. the call.
+define i32 @test17(i32 *%P) ssp nounwind {
+entry:
+  %tmp = load i32* %P
+  %cmp = icmp ne i32 %tmp, 5
+  call void @foo()
+  br i1 %cmp, label %if.then, label %if.else
+
+if.then:                                          ; preds = %entry
+  ret i32 1
+
+if.else:                                          ; preds = %entry
+  ret i32 2
+; CHECK: test17:
+; CHECK: movl	(%rdi), %eax
+; CHECK: callq _foo
+; CHECK: cmpl	$5, %eax
+; CHECK-NEXT: je 
+}
+
+; Check that 0.0 is materialized using pxor
+define void @test18(float* %p1) {
+  store float 0.0, float* %p1
+  ret void
+; CHECK: test18:
+; CHECK: pxor
+}
+define void @test19(double* %p1) {
+  store double 0.0, double* %p1
+  ret void
+; CHECK: test19:
+; CHECK: pxor
+}

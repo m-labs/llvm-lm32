@@ -940,16 +940,16 @@ multiclass AI1_adde_sube_irs<bits<4> opcod, string opc, PatFrag opnode,
 // NOTE: CPSR def omitted because it will be handled by the custom inserter.
 let usesCustomInserter = 1 in {
 multiclass AI1_adde_sube_s_irs<PatFrag opnode, bit Commutable = 0> {
-  def Sri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm),
-                Size4Bytes, IIC_iALUi,
+  def ri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm),
+               Size4Bytes, IIC_iALUi,
                [(set GPR:$Rd, (opnode GPR:$Rn, so_imm:$imm))]>;
-  def Srr : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
-                Size4Bytes, IIC_iALUr,
+  def rr : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm),
+               Size4Bytes, IIC_iALUr,
                [(set GPR:$Rd, (opnode GPR:$Rn, GPR:$Rm))]> {
     let isCommutable = Commutable;
   }
-  def Srs : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_reg:$shift),
-                Size4Bytes, IIC_iALUsr,
+  def rs : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_reg:$shift),
+               Size4Bytes, IIC_iALUsr,
                [(set GPR:$Rd, (opnode GPR:$Rn, so_reg:$shift))]>;
 }
 }
@@ -2330,8 +2330,10 @@ def : ARMPat<(addc   GPR:$src, so_imm_neg:$imm),
 // The with-carry-in form matches bitwise not instead of the negation.
 // Effectively, the inverse interpretation of the carry flag already accounts
 // for part of the negation.
-def : ARMPat<(adde   GPR:$src, so_imm_not:$imm),
+def : ARMPat<(adde_dead_carry   GPR:$src, so_imm_not:$imm),
              (SBCri  GPR:$src, so_imm_not:$imm)>;
+def : ARMPat<(adde_live_carry   GPR:$src, so_imm_not:$imm),
+             (SBCSri GPR:$src, so_imm_not:$imm)>;
 
 // Note: These are implemented in C++ code, because they have to generate
 // ADD/SUBrs instructions, which use a complex pattern that a xform function
@@ -3254,6 +3256,18 @@ let usesCustomInserter = 1 in {
     def ATOMIC_LOAD_NAND_I8 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$incr), NoItinerary,
       [(set GPR:$dst, (atomic_load_nand_8 GPR:$ptr, GPR:$incr))]>;
+    def ATOMIC_LOAD_MIN_I8 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_8 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_MAX_I8 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_8 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMIN_I8 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_8 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMAX_I8 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_8 GPR:$ptr, GPR:$val))]>;
     def ATOMIC_LOAD_ADD_I16 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$incr), NoItinerary,
       [(set GPR:$dst, (atomic_load_add_16 GPR:$ptr, GPR:$incr))]>;
@@ -3272,6 +3286,18 @@ let usesCustomInserter = 1 in {
     def ATOMIC_LOAD_NAND_I16 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$incr), NoItinerary,
       [(set GPR:$dst, (atomic_load_nand_16 GPR:$ptr, GPR:$incr))]>;
+    def ATOMIC_LOAD_MIN_I16 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_16 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_MAX_I16 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_16 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMIN_I16 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_16 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMAX_I16 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_16 GPR:$ptr, GPR:$val))]>;
     def ATOMIC_LOAD_ADD_I32 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$incr), NoItinerary,
       [(set GPR:$dst, (atomic_load_add_32 GPR:$ptr, GPR:$incr))]>;
@@ -3290,6 +3316,18 @@ let usesCustomInserter = 1 in {
     def ATOMIC_LOAD_NAND_I32 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$incr), NoItinerary,
       [(set GPR:$dst, (atomic_load_nand_32 GPR:$ptr, GPR:$incr))]>;
+    def ATOMIC_LOAD_MIN_I32 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_32 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_MAX_I32 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_32 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMIN_I32 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_min_32 GPR:$ptr, GPR:$val))]>;
+    def ATOMIC_LOAD_UMAX_I32 : PseudoInst<
+      (outs GPR:$dst), (ins GPR:$ptr, GPR:$val), NoItinerary,
+      [(set GPR:$dst, (atomic_load_max_32 GPR:$ptr, GPR:$val))]>;
 
     def ATOMIC_SWAP_I8 : PseudoInst<
       (outs GPR:$dst), (ins GPR:$ptr, GPR:$new), NoItinerary,

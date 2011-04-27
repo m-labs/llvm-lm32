@@ -57,6 +57,8 @@ namespace llvm {
     MCDwarfFrameInfo *getCurrentFrameInfo();
     void EnsureValidFrame();
 
+    const MCSymbol* LastNonPrivate;
+
     /// SectionStack - This is stack of current and previous section
     /// values saved by PushSection.
     SmallVector<std::pair<const MCSection *,
@@ -180,7 +182,7 @@ namespace llvm {
     /// @param Symbol - The symbol to emit. A given symbol should only be
     /// emitted as a label once, and symbols emitted as a label should never be
     /// used in an assignment.
-    virtual void EmitLabel(MCSymbol *Symbol) = 0;
+    virtual void EmitLabel(MCSymbol *Symbol);
 
     /// EmitAssemblerFlag - Note in the output the specified @p Flag
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) = 0;
@@ -319,11 +321,9 @@ namespace llvm {
     void EmitAbsValue(const MCExpr *Value, unsigned Size,
                       unsigned AddrSpace = 0);
 
-    virtual void EmitULEB128Value(const MCExpr *Value,
-                                  unsigned AddrSpace = 0) = 0;
+    virtual void EmitULEB128Value(const MCExpr *Value) = 0;
 
-    virtual void EmitSLEB128Value(const MCExpr *Value,
-                                  unsigned AddrSpace = 0) = 0;
+    virtual void EmitSLEB128Value(const MCExpr *Value) = 0;
 
     /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.

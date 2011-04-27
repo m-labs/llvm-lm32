@@ -88,7 +88,7 @@ namespace llvm {
       MEMBARRIER_MCR, // Memory barrier (MCR)
 
       PRELOAD,      // Preload
-      
+
       VCEQ,         // Vector compare equal.
       VCEQZ,        // Vector compare equal to zero.
       VCGE,         // Vector compare greater than or equal.
@@ -173,7 +173,7 @@ namespace llvm {
 
       // Bit-field insert
       BFI,
-      
+
       // Vector OR with immediate
       VORRIMM,
       // Vector AND with NOT of immediate
@@ -408,7 +408,7 @@ namespace llvm {
     SDValue LowerShiftRightParts(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFLT_ROUNDS_(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG, 
+    SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
                               const ARMSubtarget *ST) const;
 
     SDValue ReconstructShuffle(SDValue Op, SelectionDAG &DAG) const;
@@ -484,16 +484,22 @@ namespace llvm {
                                         MachineBasicBlock *BB,
                                         unsigned Size,
                                         unsigned BinOpcode) const;
+    MachineBasicBlock * EmitAtomicBinaryMinMax(MachineInstr *MI,
+                                               MachineBasicBlock *BB,
+                                               unsigned Size,
+                                               bool signExtend,
+                                               ARMCC::CondCodes Cond) const;
 
+    bool RemapAddSubWithFlags(MachineInstr *MI, MachineBasicBlock *BB) const;
   };
-  
+
   enum NEONModImmType {
     VMOVModImm,
     VMVNModImm,
     OtherModImm
   };
-  
-  
+
+
   namespace ARM {
     FastISel *createFastISel(FunctionLoweringInfo &funcInfo);
   }

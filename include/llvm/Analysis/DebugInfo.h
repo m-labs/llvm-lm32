@@ -538,6 +538,9 @@ namespace llvm {
 
     Function *getFunction() const { return getFunctionField(16); }
     DIArray getTemplateParams() const { return getFieldAs<DIArray>(17); }
+    DISubprogram getFunctionDeclaration() const {
+      return getFieldAs<DISubprogram>(18);
+    }
   };
 
   /// DIGlobalVariable - This is a wrapper for a global variable.
@@ -619,7 +622,9 @@ namespace llvm {
     unsigned getNumAddrElements() const;
     
     uint64_t getAddrElement(unsigned Idx) const {
-      return getUInt64Field(Idx+6);
+      if (getVersion() <= llvm::LLVMDebugVersion8)
+        return getUInt64Field(Idx+6);
+      return getUInt64Field(Idx+7);
     }
 
     /// isBlockByrefVariable - Return true if the variable was declared as

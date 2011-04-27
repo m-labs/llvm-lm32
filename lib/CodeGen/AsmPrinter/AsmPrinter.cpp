@@ -289,12 +289,6 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
   if (GVKind.isCommon() || GVKind.isBSSLocal()) {
     if (Size == 0) Size = 1;   // .comm Foo, 0 is undefined, avoid it.
 
-    if (isVerbose()) {
-      WriteAsOperand(OutStreamer.GetCommentOS(), GV,
-                     /*PrintType=*/false, GV->getParent());
-      OutStreamer.GetCommentOS() << '\n';
-    }
-
     // Handle common symbols.
     if (GVKind.isCommon()) {
       unsigned Align = 1 << AlignLog;
@@ -599,24 +593,27 @@ static bool EmitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
 
 void AsmPrinter::emitPrologLabel(const MachineInstr &MI) {
   MCSymbol *Label = MI.getOperand(0).getMCSymbol();
-  if (MAI->getExceptionHandlingType() != ExceptionHandling::DwarfCFI) {
+
+  if (MAI->doesDwarfRequireFrameSection() ||
+      MAI->getExceptionHandlingType() != ExceptionHandling::DwarfCFI)
     OutStreamer.EmitLabel(Label);
+
+  if (MAI->getExceptionHandlingType() != ExceptionHandling::DwarfCFI)
     return;
-  }
 
   const MachineFunction &MF = *MI.getParent()->getParent();
   MachineModuleInfo &MMI = MF.getMMI();
   std::vector<MachineMove> &Moves = MMI.getFrameMoves();
-  const MachineMove *Move = NULL;
+  bool FoundOne = false;
+  (void)FoundOne;
   for (std::vector<MachineMove>::iterator I = Moves.begin(),
          E = Moves.end(); I != E; ++I) {
     if (I->getLabel() == Label) {
-      Move = &*I;
-      break;
+      EmitCFIFrameMove(*I);
+      FoundOne = true;
     }
   }
-  assert(Move);
-  EmitCFIFrameMove(*Move);
+  assert(FoundOne);
 }
 
 /// EmitFunctionBody - This method emits the body and trailer for a
@@ -750,6 +747,40 @@ MachineLocation AsmPrinter::
 getDebugValueLocation(const MachineInstr *MI) const {
   // Target specific DBG_VALUE instructions are handled by each target.
   return MachineLocation();
+}
+
+/// EmitDwarfRegOp - Emit dwarf register operation.
+void AsmPrinter::EmitDwarfRegOp(const MachineLocation &MLoc) const {
+  const TargetRegisterInfo *RI = TM.getRegisterInfo();
+  unsigned Reg = RI->getDwarfRegNum(MLoc.getReg(), false);
+  if (int Offset =  MLoc.getOffset()) {
+    // If the value is at a certain offset from frame register then
+    // use DW_OP_fbreg.
+    unsigned OffsetSize = Offset ? MCAsmInfo::getSLEB128Size(Offset) : 1;
+    OutStreamer.AddComment("Loc expr size");
+    EmitInt16(1 + OffsetSize);
+    OutStreamer.AddComment(
+      dwarf::OperationEncodingString(dwarf::DW_OP_fbreg));
+    EmitInt8(dwarf::DW_OP_fbreg);
+    OutStreamer.AddComment("Offset");
+    EmitSLEB128(Offset);
+  } else {
+    if (Reg < 32) {
+      OutStreamer.AddComment("Loc expr size");
+      EmitInt16(1);
+      OutStreamer.AddComment(
+        dwarf::OperationEncodingString(dwarf::DW_OP_reg0 + Reg));
+      EmitInt8(dwarf::DW_OP_reg0 + Reg);
+    } else {
+      OutStreamer.AddComment("Loc expr size");
+      EmitInt16(1 + MCAsmInfo::getULEB128Size(Reg));
+      OutStreamer.AddComment(
+        dwarf::OperationEncodingString(dwarf::DW_OP_regx));
+      EmitInt8(dwarf::DW_OP_regx);
+      OutStreamer.AddComment(Twine(Reg));
+      EmitULEB128(Reg);
+    }
+  }
 }
 
 bool AsmPrinter::doFinalization(Module &M) {
