@@ -19,6 +19,9 @@ include "Mico32InstrFormats.td"
 def SDT_Mico32CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>]>;
 def SDT_Mico32CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 
+// SDT_Mico32Call has no results, target address operand, ...
+// -1 indicates variadic/arbitrary number of arguments.
+def SDT_Mico32Call : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
 
 //===----------------------------------------------------------------------===//
 // Mico32 specific nodes
@@ -34,6 +37,9 @@ def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_Mico32CallSeqEnd,
 def RetFlag       : SDNode<"Mico32ISD::RetFlag", SDTNone,
                            [SDNPHasChain, SDNPOptInGlue]>;
 
+def Mico32Call    : SDNode<"Mico32ISD::JmpLink", SDT_Mico32Call,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
+                            SDNPVariadic]>;
 
 
 
@@ -49,6 +55,23 @@ def HasMUL       : Predicate<"Subtarget.hasMUL()">;
 //===----------------------------------------------------------------------===//
 // Mico32 Operand, Complex Patterns and Transformations Definitions.
 //===----------------------------------------------------------------------===//
+
+
+// From XCore.
+// Transformation function: imm/4
+def div4_xform : SDNodeXForm<imm, [{
+  assert(N->getZExtValue() % 4 == 0);
+  return getI32Imm(N->getZExtValue()/4);
+}]>;
+
+// A 28bit sign extened offset that is used in the instructions
+// as a 26 bit word offset. Used with the div4_xform SDNodeXForm
+// it is converted to a 26 bit word offset. (Also modeled after XCore.)
+// isInt() is from MathExtras.h.
+def immSExt26ShftOff : PatLeaf<(imm),
+                            [{return (isInt<28>(N->getSExtValue())) && 
+                                     ((N->getSExtValue() & 0x03) == 0);}]>;
+
 
 // This is from MBlaze - need to see how it works.
 def Mico32MemAsmOperand : AsmOperandClass {
@@ -87,25 +110,16 @@ def HI16 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant((unsigned)N->getZExtValue() >> 16, MVT::i32);
 }]>;
 
+// shift amount field must fit in 5 bits.
+def immZExt5 : PatLeaf<(imm), [{return isUInt<5>(N->getZExtValue());}]>;
 
-// from PPC / X86
 // immSExt16 predicate - True if the immediate fits in a 16-bit sign extended
 // field.  Used by instructions like 'addi'.
-def immSExt16  : PatLeaf<(imm), [{
-  if (N->getValueType(0) == MVT::i32)
-    return (int32_t)N->getZExtValue() == (int16_t)N->getZExtValue();
-  else if (N->getValueType(0) == MVT::i64)
-    return (int64_t)N->getZExtValue() == (int16_t)N->getZExtValue();
-  else {
-    assert(0);
-  }
-}]>;
+def immSExt16  : PatLeaf<(imm), [{return isInt<16>(N->getSExtValue());}]>;
 
 // immZExt16 predicate - True if the immediate fits in a 16-bit zero extended
 // field.  Used by instructions like 'ori'.
-def immZExt16  : PatLeaf<(imm), [{
-  return (uint64_t)N->getZExtValue() == (uint16_t)N->getZExtValue();
-}], LO16>;
+def immZExt16 : PatLeaf<(imm), [{return isUInt<16>(N->getZExtValue());}], LO16>;
 
 
 // From PowerPC: 
@@ -116,10 +130,9 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 }], HI16>;
 
 
-// shift amount field must fit in 5 bits.
-def immZExt5 : PatLeaf<(imm), [{
-  return N->getZExtValue() == ((N->getZExtValue()) & 0x1f) ;
-}]>;
+
+
+
 
 // Addressing modes.
 // Note SelectAddrRegImm is defined in MonarchISelDAGToDAG.cpp.
@@ -179,7 +192,7 @@ def MEMrr : Operand<i32> {
 
 // This is a call frame create  pseudo opcode.
 // As stack alignment is always done with addiu, we need a 16-bit immediate
-let Defs = [R28], Uses = [R28] in {
+let Defs = [RSP], Uses = [RSP] in {
 def ADJCALLSTACKDOWN : Mico32Pseudo<(outs), (ins simm16:$amt),
                                     "#ADJCALLSTACKDOWN $amt",
                                     [(callseq_start timm:$amt)]>;
@@ -319,20 +332,50 @@ class StoreM<bits<6> op, string instr_asm, PatFrag OpNode> :
 ////===----------------------------------------------------------------------===//
 
 // The is actually an alias for "b r29".
-let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [R29] in {
-  let ra = R29.Num in
+let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [RRA] in {
+  let ra = RRA.Num in
     def RET: TBR<0x30, (outs), (ins), 
 		"ret", [(RetFlag)], IICall>;
 }
 
 // Treat this as call intinerary since it's always 4 cycles.
 // FIXME: Is hasCtrlDep needed? Not sure what it does...
-// Note the GPR can not be r30(ea) or R31(ba) aka ERET/BRET but the allocator 
-// is not allowed to use r30 or r31.
+// Note the GPR can not be r30(ea) or R31(ba) aka ERET/BRET but since 
+// the allocator is not allowed to use r30 or r31 we don't do anything special.
 let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
   def B : TBR<0x30, (outs), (ins GPR:$dst),
               "b       $dst", [(brind GPR:$dst)], IICall>;
 }
+
+// FIXME: Note that Monarch adds registers to the end
+// of the CALL operand list so they are known live into the call.
+// Do we need to do this?
+//
+// SP is marked as a use to prevent stack-pointer assignments that
+// appear immediately before calls from potentially appearing dead.
+// ARM also marks FP as a use to prevent frame-pointer assignments
+// from being moved above / below calls.
+let isCall=1,
+    // All calls clobber the link register and the non-callee-saved registers:
+    Defs = [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, RRA],
+    Uses = [RSP] in {
+
+  def CALLI : TI<0x3e, (outs), (ins calltarget:$target, variable_ops),
+                 "calli   $target", [], IICall>;
+
+  def CALL : TBR<0x36, (outs), (ins GPR:$dst, variable_ops),
+                 "call    $dst", [(Mico32Call GPR:$dst)], IICall>;
+}
+
+// I think the linker should relax these as needed.
+// FIXME:  check it really does.
+def : Pat<(Mico32Call tglobaladdr:$addr), (CALLI tglobaladdr:$addr)>;
+def : Pat<(Mico32Call texternalsym:$addr), (CALLI texternalsym:$addr)>;
+def : Pat<(Mico32Call immSExt26ShftOff:$target),
+            (CALLI (div4_xform immSExt26ShftOff:$target))>;
+
+
+
 
 //class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
 //              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
@@ -501,4 +544,12 @@ def WCSR  : TCR<0x34, (outs CSR:$csr), (ins GPR:$a),
 //===----------------------------------------------------------------------===//
 //  Arbitrary patterns that map to one or more instructions
 //===----------------------------------------------------------------------===//
+
+// Small (16 bit) signed immediates.
+def : Pat<(i32 immSExt16:$val),
+          (ADDI R0, imm:$val)>;
+
+// Small (16 bit) unsigned immediates.
+def : Pat<(i32 immZExt16:$val),
+          (ORI R0, imm:$val)>;
 

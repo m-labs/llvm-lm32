@@ -69,6 +69,7 @@ public:
                            MachineBasicBlock::iterator I, DebugLoc DL,
                            unsigned DestReg, unsigned SrcReg,
                            bool KillSrc) const;
+#endif
   virtual void storeRegToStackSlot(MachineBasicBlock &MBB,
                                    MachineBasicBlock::iterator MBBI,
                                    unsigned SrcReg, bool isKill, int FrameIndex,
@@ -80,17 +81,23 @@ public:
                                     unsigned DestReg, int FrameIndex,
                                     const TargetRegisterClass *RC,
                                     const TargetRegisterInfo *TRI) const;
+#if 0 
 
   /// Insert nop instruction when hazard condition is found
   virtual void insertNoop(MachineBasicBlock &MBB,
                           MachineBasicBlock::iterator MI) const;
 
 #endif
+
+#if 0
   /// getGlobalBaseReg - Return a virtual register initialized with the
   /// the global base register value. Output instructions required to
   /// initialize the register in the function entry block, if necessary.
+  /// getGlobalBaseReg - insert code into the entry mbb to materialize the PIC
+  /// base register.  Return the virtual register that holds this value.
   ///
   unsigned getGlobalBaseReg(MachineFunction *MF) const;
+#endif
 };
 
 }

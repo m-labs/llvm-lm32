@@ -1,4 +1,4 @@
-//=- Mico32FrameLowering.h - Define frame lowering for MicroBlaze -*- C++ -*-=//
+//===-- Mico32FrameLowering.h - Frame info for Mico32 Target -----*- C++ -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,51 +7,59 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// This file contains Mico32 frame information that doesn't fit anywhere else
+// cleanly...
 //
-//
+// Based on XCore.
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32_FRAMEINFO_H
-#define MICO32_FRAMEINFO_H
+#ifndef MICO32FRAMEINFO_H
+#define MICO32FRAMEINFO_H
 
-#include "Mico32.h"
-#include "Mico32Subtarget.h"
 #include "llvm/Target/TargetFrameLowering.h"
+#include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
   class Mico32Subtarget;
 
-class Mico32FrameLowering : public TargetFrameLowering {
-protected:
-  const Mico32Subtarget &STI;
+  class Mico32FrameLowering: public TargetFrameLowering {
+    const Mico32Subtarget &STI;
+  public:
+    Mico32FrameLowering(const Mico32Subtarget &STI);
 
-public:
-// On function prologue, the stack is created by decrementing
-// its pointer. Once decremented, all references are done with positive
-// offset from the stack/frame pointer, using StackGrowsUp enables
-// an easier handling.
-  explicit Mico32FrameLowering(const Mico32Subtarget &sti)
-    : TargetFrameLowering(TargetFrameLowering::StackGrowsUp, 4, 0), STI(sti) {
-  }
+    /// Determine the frame's layout
+    void determineFrameLayout(MachineFunction &MF) const;
 
-  /// targetHandlesStackFrameRounding - Returns true if the target is
-  /// responsible for rounding up the stack frame (probably at emitPrologue
-  /// time).
-  bool targetHandlesStackFrameRounding() const { return true; }
+    /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
+    /// the function.
+    void emitPrologue(MachineFunction &MF) const;
+    void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
 
-  /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
-  /// the function.
-  void emitPrologue(MachineFunction &MF) const;
-  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
+    // Is this frame using a Frame Pointer?
+    bool hasFP(const MachineFunction &MF) const;
 
-  bool hasFP(const MachineFunction &MF) const;
+    /// getInitialFrameState - Returns a list of machine moves that are assumed
+    /// on entry to a function.
+    void getInitialFrameState(std::vector<MachineMove> &Moves) const;
 
-  int getFrameIndexOffset(const MachineFunction &MF, int FI) const;
+    /// processFunctionBeforeFrameFinalized - This method is called immediately
+    /// before the specified functions frame layout (MF.getFrameInfo()) is
+    /// finalized.  Once the frame is finalized, MO_FrameIndex operands are
+    /// replaced with direct constants.  This method is optional.
+    void processFunctionBeforeFrameFinalized(MachineFunction &MF) const;
 
-  virtual void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
-                                                    RegScavenger *RS) const;
-};
+    /// processFunctionBeforeCalleeSavedScan - This method is called immediately
+    /// before PrologEpilogInserter scans the physical registers used to 
+    /// determine what callee saved registers should be spilled. This method 
+    /// is optional.
+    void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
+                                                RegScavenger *RS = NULL) const;
+    
+    //! Stack slot size (4 bytes)
+    static int stackSlotSize() {
+      return 4;
+    }
+  };
+}
 
-} // End llvm namespace
-
-#endif
+#endif // MICO32FRAMEINFO_H

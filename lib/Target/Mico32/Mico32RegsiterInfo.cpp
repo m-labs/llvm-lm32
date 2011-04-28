@@ -17,7 +17,7 @@
 #include "Mico32.h"
 #include "Mico32Subtarget.h"
 #include "Mico32RegisterInfo.h"
-#include "Mico32MachineFunction.h"
+#include "Mico32MachineFunctionInfo.h"
 #include "llvm/Constants.h"
 #include "llvm/Type.h"
 #include "llvm/Function.h"
@@ -63,7 +63,7 @@ getCalleeSavedRegs(const MachineFunction *MF) const {
     Mico32::R15, Mico32::R16, Mico32::R17, Mico32::R18,
     Mico32::R19, Mico32::R20, Mico32::R21, Mico32::R22,
     Mico32::R23, Mico32::R24, Mico32::R25, 
-    Mico32::R28, Mico32::R29, 
+    Mico32::RSP, Mico32::RRA, 
     0
   };
 
@@ -79,12 +79,12 @@ BitVector Mico32RegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
   Reserved.set(Mico32::R0);  // Always 0
-  Reserved.set(Mico32::R26); // GP register
-//  Reserved.set(Mico32::R27); // Frame Pointer (GCC not fixed)
-  Reserved.set(Mico32::R28); // Stack Pointer
-//  Reserved.set(Mico32::R29); // Return Address (GCC not fixed)
-  Reserved.set(Mico32::R30); // Exception Address
-  Reserved.set(Mico32::R31); // Breakpoint Address
+  Reserved.set(Mico32::RGP); // R26 - GP register
+//  Reserved.set(Mico32::RFP); // R27 - Frame Pointer (GCC not fixed)
+  Reserved.set(Mico32::RSP); // R28 - Stack Pointer
+//  Reserved.set(Mico32::RRA); // R29 - Return Address (GCC not fixed)
+  Reserved.set(Mico32::REA); // R30 - Exception Address
+  Reserved.set(Mico32::RBA); // R31 - Breakpoint Address
   return Reserved;
 }
 
@@ -109,12 +109,12 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 
       MachineInstr *New;
       if (Old->getOpcode() == Mico32::ADJCALLSTACKDOWN) {
-        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::R28)
-                .addReg(Mico32::R28).addImm(-Amount);
+        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::RSP)
+                .addReg(Mico32::RSP).addImm(-Amount);
       } else {
         assert(Old->getOpcode() == Mico32::ADJCALLSTACKUP);
-        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::R28)
-                .addReg(Mico32::R28).addImm(Amount);
+        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::RSP)
+                .addReg(Mico32::RSP).addImm(Amount);
       }
 
       // Replace the pseudo instruction with a new instruction...
@@ -171,12 +171,12 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
   int stackSize  = MFI->getStackSize();
   int spOffset   = MFI->getObjectOffset(FrameIndex);
 
-  DEBUG(Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
+  DEBUG(//Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
         dbgs() << "FrameIndex : " << FrameIndex << "\n"
                << "spOffset   : " << spOffset << "\n"
                << "stackSize  : " << stackSize << "\n"
                << "isFixed    : " << MFI->isFixedObjectIndex(FrameIndex) << "\n"
-               << "isLiveIn   : " << Mico32FI->isLiveIn(FrameIndex) << "\n"
+//               << "isLiveIn   : " << Mico32FI->isLiveIn(FrameIndex) << "\n"
                << "isSpill    : " << MFI->isSpillSlotObjectIndex(FrameIndex)
                << "\n" );
 
@@ -198,22 +198,24 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
 /// replaced with direct constants.  This method is optional.
 void Mico32RegisterInfo::
 processFunctionBeforeFrameFinalized(MachineFunction &MF) const {
+#if 0
   // Set the stack offset where GP must be saved/loaded from.
   MachineFrameInfo *MFI = MF.getFrameInfo();
   Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
   if (Mico32FI->needGPSaveRestore())
     MFI->setObjectOffset(Mico32FI->getGPFI(), Mico32FI->getGPStackOffset());
+#endif
 }
 
 
 unsigned Mico32RegisterInfo::getRARegister() const {
-  return Mico32::R29;
+  return Mico32::RRA;
 }
 
 unsigned Mico32RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
 
-  return TFI->hasFP(MF) ? Mico32::R27 : Mico32::R28;
+  return TFI->hasFP(MF) ? Mico32::RFP : Mico32::RSP;
 }
 
 unsigned Mico32RegisterInfo::getEHExceptionRegister() const {

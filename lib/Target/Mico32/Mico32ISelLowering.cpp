@@ -14,7 +14,7 @@
 
 #define DEBUG_TYPE "mico32-lower"
 #include "Mico32ISelLowering.h"
-#include "Mico32MachineFunction.h"
+#include "Mico32MachineFunctionInfo.h"
 #include "Mico32TargetMachine.h"
 #include "Mico32TargetObjectFile.h"
 #include "Mico32Subtarget.h"
@@ -34,11 +34,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
-
-static bool CC_Mico32_AssignReg(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
-                                CCValAssign::LocInfo &LocInfo,
-                                ISD::ArgFlagsTy &ArgFlags,
-                                CCState &State);
 
 const char *Mico32TargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
@@ -187,7 +182,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,      MVT::Other, Expand);
 
-  setStackPointerRegisterToSaveRestore(Mico32::R28);
+  setStackPointerRegisterToSaveRestore(Mico32::RSP);
 
   computeRegisterProperties();
 }
@@ -414,33 +409,39 @@ SDValue Mico32TargetLowering::LowerVASTART(SDValue Op,
 
 //===----------------------------------------------------------------------===//
 //                      Calling Convention Implementation
+//
+//  The lower operations present on calling convention works on this order:
+//      LowerCall (virt regs --> phys regs, virt regs --> stack) 
+//      LowerFormalArguments (phys --> virt regs, stack --> virt regs)
+//      LowerReturn (virt regs --> phys regs)
+//      LowerCall (phys regs --> virt regs)
+//
 //===----------------------------------------------------------------------===//
 
 #include "Mico32GenCallingConv.inc"
 
-static bool CC_Mico32_AssignReg(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
-                                CCValAssign::LocInfo &LocInfo,
-                                ISD::ArgFlagsTy &ArgFlags,
-                                CCState &State) {
-  static const unsigned ArgRegs[] = {
-    Mico32::R5, Mico32::R6, Mico32::R7,
-    Mico32::R8, Mico32::R9, Mico32::R10
-  };
-
-  const unsigned NumArgRegs = array_lengthof(ArgRegs);
-  unsigned Reg = State.AllocateReg(ArgRegs, NumArgRegs);
-  if (!Reg) return false;
-
-  unsigned SizeInBytes = ValVT.getSizeInBits() >> 3;
-  State.AllocateStack(SizeInBytes, SizeInBytes);
-  State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
-
-  return true;
-}
-
 //===----------------------------------------------------------------------===//
 //                  Call Calling Convention Implementation
 //===----------------------------------------------------------------------===//
+//	 This is modeled after XCore code with MIPS and others influences.
+//         For XCore ABI see https://www.xmos.com/system/files/abi87.pdf
+//              https://www.xmos.com/support/documentation/software
+//   For mips eabi see http://www.cygwin.com/ml/binutils/2003-06/msg00436.html
+//     Elements may have been used from SparcTargetLowering::LowerArguments.
+//===----------------------------------------------------------------------===//
+/// Monarch call implementation
+/// LowerCall - This hook must be implemented to lower calls into the
+/// the specified DAG. The outgoing arguments to the call are described
+/// by the OutVals array, and the values to be returned by the call are
+/// described by the Ins array. The implementation should fill in the
+/// InVals array with legal-type return values from the call, and return
+/// the resulting token chain value.
+///
+/// The isTailCall flag here is normative. If it is true, the
+/// implementation must emit a tail call. The
+/// IsEligibleForTailCallOptimization hook should be used to catch
+/// cases that cannot be handled.
+///
 
 /// LowerCall - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
@@ -453,127 +454,114 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
           const SmallVectorImpl<ISD::InputArg> &Ins,
           DebugLoc dl, SelectionDAG &DAG,
           SmallVectorImpl<SDValue> &InVals) const {
+
+  // For now, only CallingConv::C implemented
+  if (CallConv != CallingConv::Fast && CallConv != CallingConv::C)
+    llvm_unreachable("Unsupported calling convention");
+
   // Mico32 does not yet support tail call optimization
   isTailCall = false;
 
-  // The Mico32 requires stack slots for arguments passed to var arg
-  // functions even if they are passed in registers.
-  bool needsRegArgSlots = isVarArg;
-
-  MachineFunction &MF = DAG.getMachineFunction();
-  MachineFrameInfo *MFI = MF.getFrameInfo();
-  const TargetFrameLowering &TFI = *MF.getTarget().getFrameLowering();
-
   // Analyze operands of the call, assigning locations to each operand.
+//FIXME: Check this 16 argument number
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CallConv, isVarArg, getTargetMachine(), ArgLocs,
-                 *DAG.getContext());
+  CCState CCInfo(CallConv, isVarArg, getTargetMachine(),
+                 ArgLocs, *DAG.getContext());
+
   CCInfo.AnalyzeCallOperands(Outs, CC_Mico32);
 
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NumBytes = CCInfo.getNextStackOffset();
 
-  // Variable argument function calls require a minimum of 24-bytes of stack
-  if (isVarArg && NumBytes < 24) NumBytes = 24;
-
+  // Comment from ARM: Adjust the stack pointer for the new arguments...
+  // These operations are automatically eliminated by the prolog/epilog pass
   Chain = DAG.getCALLSEQ_START(Chain, DAG.getIntPtrConstant(NumBytes, true));
 
-  SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
+
+  // With EABI is it possible to have 16 args on registers.
+//FIXME: Check this 16 register argument number
+//FIXME: Check this 8 stack argument number
+  SmallVector<std::pair<unsigned, SDValue>, 16> RegsToPass;
   SmallVector<SDValue, 8> MemOpChains;
 
   // Walk the register/memloc assignments, inserting copies/loads.
+  // This was based on Sparc but the Sparc code has been updated.
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
-    MVT RegVT = VA.getLocVT();
     SDValue Arg = OutVals[i];
 
     // Promote the value if needed.
     switch (VA.getLocInfo()) {
-    default: llvm_unreachable("Unknown loc info!");
-    case CCValAssign::Full: break;
-    case CCValAssign::SExt:
-      Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, RegVT, Arg);
-      break;
-    case CCValAssign::ZExt:
-      Arg = DAG.getNode(ISD::ZERO_EXTEND, dl, RegVT, Arg);
-      break;
-    case CCValAssign::AExt:
-      Arg = DAG.getNode(ISD::ANY_EXTEND, dl, RegVT, Arg);
-      break;
+      default: llvm_unreachable("Unknown loc info!");
+      case CCValAssign::Full: break;
+      case CCValAssign::SExt:
+        Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, VA.getLocVT(), Arg);
+        break;
+      case CCValAssign::ZExt:
+        Arg = DAG.getNode(ISD::ZERO_EXTEND, dl, VA.getLocVT(), Arg);
+        break;
+      case CCValAssign::AExt:
+        Arg = DAG.getNode(ISD::ANY_EXTEND, dl, VA.getLocVT(), Arg);
+        break;
     }
-
-    // Arguments that can be passed on register must be kept at
+    
+    // Arguments that can be passed on register must be kept at 
     // RegsToPass vector
     if (VA.isRegLoc()) {
       RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
     } else {
-      // Register can't get to this point...
       assert(VA.isMemLoc());
 
-      // Since we are alread passing values on the stack we don't
-      // need to worry about creating additional slots for the
-      // values passed via registers.
-      needsRegArgSlots = false;
-
-      // Create the frame index object for this incoming parameter
-      unsigned ArgSize = VA.getValVT().getSizeInBits()/8;
-      unsigned StackLoc = VA.getLocMemOffset() + 4;
-      int FI = MFI->CreateFixedObject(ArgSize, StackLoc, true);
-
-      SDValue PtrOff = DAG.getFrameIndex(FI,getPointerTy());
-
-      // emit ISD::STORE whichs stores the
-      // parameter value to a stack Location
-      MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff,
+      // Create a store off the stack pointer for this argument.
+      SDValue StackPtr = DAG.getRegister(Mico32::RSP, MVT::i32);
+      SDValue PtrOff = DAG.getIntPtrConstant(VA.getLocMemOffset());
+      PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
+      MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff, 
                                          MachinePointerInfo(),
                                          false, false, 0));
     }
   }
 
-  // If we need to reserve stack space for the arguments passed via registers
-  // then create a fixed stack object at the beginning of the stack.
-  if (needsRegArgSlots && TFI.hasReservedCallFrame(MF))
-    MFI->CreateFixedObject(28,0,true);
-
-  // Transform all store nodes into one single node because all store
-  // nodes are independent of each other.
+  // Transform all store nodes into one single node because
+  // all store nodes are independent of each other.
   if (!MemOpChains.empty())
-    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, 
                         &MemOpChains[0], MemOpChains.size());
 
-  // Build a sequence of copy-to-reg nodes chained together with token
+  // Build a sequence of copy-to-reg nodes chained together with token 
   // chain and flag operands which copy the outgoing args into registers.
   // The InFlag in necessary since all emited instructions must be
   // stuck together.
   SDValue InFlag;
   for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i) {
-    Chain = DAG.getCopyToReg(Chain, dl, RegsToPass[i].first,
+    Chain = DAG.getCopyToReg(Chain, dl, RegsToPass[i].first, 
                              RegsToPass[i].second, InFlag);
     InFlag = Chain.getValue(1);
   }
 
-  // If the callee is a GlobalAddress/ExternalSymbol node (quite common, every
-  // direct call is) turn it into a TargetGlobalAddress/TargetExternalSymbol
-  // node so that legalize doesn't hack it.
+  // If the callee is a GlobalAddress node (quite common, every direct call is)
+  // turn it into a TargetGlobalAddress node so that legalize doesn't hack it.
+  // Likewise ExternalSymbol -> TargetExternalSymbol.
   if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
-    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl,
-                                getPointerTy(), 0, 0);
-  else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee))
-    Callee = DAG.getTargetExternalSymbol(S->getSymbol(),
-                                getPointerTy(), 0);
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl, MVT::i32);
+    //Mips: Callee = DAG.getT...Address(G->getGlobal(), getPointerTy());
+  else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
+    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i32);
+    // Mips: Callee = DAG.getT...lSymbol(E->getSymbol(), getPointerTy());
 
-  // Mico32JmpLink = #chain, #target_address, #opt_in_flags...
-  //             = Chain, Callee, Reg#1, Reg#2, ...
+  // Mico32BranchLink = #chain, #target_address, #opt_in_flags...
+  //             = Chain, Callee, Reg#1, Reg#2, ...  
   //
   // Returns a chain & a flag for retval copy to use.
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
-  SmallVector<SDValue, 8> Ops;
+  SmallVector<SDValue, 16> Ops;
   Ops.push_back(Chain);
   Ops.push_back(Callee);
 
-  // Add argument registers to the end of the list so that they are
+  // Add argument registers to the end of the list so that they are 
   // known live into the call.
   for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i) {
+    assert (i < 13);
     Ops.push_back(DAG.getRegister(RegsToPass[i].first,
                                   RegsToPass[i].second.getValueType()));
   }
@@ -585,19 +573,24 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   InFlag = Chain.getValue(1);
 
   // Create the CALLSEQ_END node.
-  Chain = DAG.getCALLSEQ_END(Chain, DAG.getIntPtrConstant(NumBytes, true),
-                             DAG.getIntPtrConstant(0, true), InFlag);
-  if (!Ins.empty())
-    InFlag = Chain.getValue(1);
+  Chain = DAG.getCALLSEQ_END(Chain,
+                             DAG.getConstant(NumBytes, getPointerTy(), true),
+                             DAG.getConstant(0, getPointerTy(), true),
+                             InFlag);
+  InFlag = Chain.getValue(1);
 
   // Handle result values, copying them out of physregs into vregs that we
   // return.
-  return LowerCallResult(Chain, InFlag, CallConv, isVarArg,
+  return LowerCallResult(Chain, InFlag, CallConv, isVarArg, 
                          Ins, dl, DAG, InVals);
 }
 
-/// LowerCallResult - Lower the result values of a call into the
-/// appropriate copies out of appropriate physical registers.
+/// LowerCallResult - Lower the result values of an ISD::CALL into the
+/// appropriate copies out of appropriate physical registers.  This assumes that
+/// Chain/InFlag are the input chain/flag to use, and that TheCall is the call
+/// being lowered. Returns a SDNode with the same number of values as the 
+/// ISD::CALL.
+// From Mips.
 SDValue Mico32TargetLowering::
 LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
                 bool isVarArg, const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -628,6 +621,9 @@ LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
 /// LowerFormalArguments - transform physical registers into
 /// virtual registers and generate load operations for
 /// arguments places on the stack.
+/// TODO: isVarArg, structure return
+/// Based on Mips.
+/// Note: same as Monarch
 SDValue Mico32TargetLowering::
 LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                      const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -636,9 +632,6 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo *MFI = MF.getFrameInfo();
   Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
-
-  unsigned StackReg = MF.getTarget().getRegisterInfo()->getFrameRegister(MF);
-  Mico32FI->setVarArgsFrameIndex(0);
 
   // Used with vargs to acumulate store chains.
   std::vector<SDValue> OutChains;
@@ -652,7 +645,6 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                  ArgLocs, *DAG.getContext());
 
   CCInfo.AnalyzeFormalArguments(Ins, CC_Mico32);
-  SDValue StackPtr;
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
@@ -665,8 +657,9 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
       if (RegVT == MVT::i32)
         RC = Mico32::GPRRegisterClass;
-      else if (RegVT == MVT::f32)
-        RC = Mico32::GPRRegisterClass;
+// FIXME: should we have f32?
+//      else if (RegVT == MVT::f32)
+//        RC = Mico32::GPRRegisterClass;
       else
         llvm_unreachable("RegVT not supported by LowerFormalArguments");
 
@@ -696,81 +689,43 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
       // sanity check
       assert(VA.isMemLoc());
 
-      // The last argument is not a register
-      ArgRegEnd = 0;
-
-      // The stack pointer offset is relative to the caller stack frame.
-      // Since the real stack size is unknown here, a negative SPOffset
-      // is used so there's a way to adjust these offsets when the stack
-      // size get known (on EliminateFrameIndex). A dummy SPOffset is
-      // used instead of a direct negative address (which is recorded to
-      // be used on emitPrologue) to avoid mis-calc of the first stack
-      // offset on PEI::calculateFrameObjectOffsets.
-      // Arguments are always 32-bit.
+      // Load the argument to a virtual register
       unsigned ArgSize = VA.getLocVT().getSizeInBits()/8;
-      unsigned StackLoc = VA.getLocMemOffset() + 4;
-      int FI = MFI->CreateFixedObject(ArgSize, 0, true);
-      Mico32FI->recordLoadArgsFI(FI, -StackLoc);
-      Mico32FI->recordLiveIn(FI);
+      assert(ArgSize == 4 && "This should be a word size.");
+#if 0
+      if (ArgSize > StackSlotSize) {
+        report_fatal_error("LowerFormalArguments Unhandled argument type: " +
+                         Twine((unsigned)VA.getLocVT().getSimpleVT().SimpleTy));
+      }
+#endif
+
+
+      // Create the frame index object for this incoming parameter...
+      int FI = MFI->CreateFixedObject(ArgSize, VA.getLocMemOffset(), true);
 
       // Create load nodes to retrieve arguments from the stack
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy());
-      InVals.push_back(DAG.getLoad(VA.getValVT(), dl, Chain, FIN,
-                                   MachinePointerInfo::getFixedStack(FI),
-                                   false, false, 0));
+      SDValue lod = DAG.getLoad(VA.getValVT(), dl, Chain,
+                                   FIN, MachinePointerInfo::getFixedStack(FI),
+                                   false, false, 0);
+    // SelectionDAGLegalize::LegalizeOp(SDValue Op), in the ISD::Load case
+    // there's a test for "if (LD->getAlignment() < ABIAlignment){".  When the
+    // MERGE_VALUES node is processed it causes the load to get reprocessed.
+    // So we ensure the alignment is valid here instead of hanging.
+    assert(((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->getAlignment() == 4) && "invalid memory access alignment");
+
+      InVals.push_back(lod);
     }
   }
 
-  // To meet ABI, when VARARGS are passed on registers, the registers
-  // must have their values written to the caller stack frame. If the last
-  // argument was placed in the stack, there's no need to save any register.
-  if ((isVarArg) && ArgRegEnd) {
-    if (StackPtr.getNode() == 0)
-      StackPtr = DAG.getRegister(StackReg, getPointerTy());
-
-    // The last register argument that must be saved is Mico32::R10
-    TargetRegisterClass *RC = Mico32::GPRRegisterClass;
-
-//FIXME:
-#if 0
-    unsigned Begin = Mico32RegisterInfo::getRegisterNumbering(Mico32::R5);
-    unsigned Start = Mico32RegisterInfo::getRegisterNumbering(ArgRegEnd+1);
-    unsigned End   = Mico32RegisterInfo::getRegisterNumbering(Mico32::R10);
-#endif
-    unsigned Begin = 5;
-    unsigned Start = 6;
-    unsigned End   = 7;
-    unsigned StackLoc = Start - Begin + 1;
-
-    for (; Start <= End; ++Start, ++StackLoc) {
-//FIXME:
-#if 0
-      unsigned Reg = Mico32RegisterInfo::getRegisterFromNumbering(Start);
-#endif
-      unsigned Reg = 1;
-      unsigned LiveReg = MF.addLiveIn(Reg, RC);
-      SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, LiveReg, MVT::i32);
-
-      int FI = MFI->CreateFixedObject(4, 0, true);
-      Mico32FI->recordStoreVarArgsFI(FI, -(StackLoc*4));
-      SDValue PtrOff = DAG.getFrameIndex(FI, getPointerTy());
-      OutChains.push_back(DAG.getStore(Chain, dl, ArgValue, PtrOff,
-                                       MachinePointerInfo(),
-                                       false, false, 0));
-
-      // Record the frame index of the first variable argument
-      // which is a value necessary to VASTART.
-      if (!Mico32FI->getVarArgsFrameIndex())
-        Mico32FI->setVarArgsFrameIndex(FI);
-    }
-  }
-
-  // All stores are grouped in one node to allow the matching between
-  // the size of Ins and InVals. This only happens when on varg functions
-  if (!OutChains.empty()) {
-    OutChains.push_back(Chain);
-    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                        &OutChains[0], OutChains.size());
+  // For Variable argument functions Mico32 passes all parameters on the stack.
+  // The formal argument processing only processes the non-variable parameters,
+  // the variable parameters have not been processed yet so 
+  // CCInfo.getNextStackOffset() will give us the first variable argument.
+  if (isVarArg) {
+      // This will point to the next argument passed via stack.
+      Mico32FI->setVarArgsFrameIndex(
+                  MFI->CreateFixedObject(4, CCInfo.getNextStackOffset(), true));
   }
 
   return Chain;
@@ -780,6 +735,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 //               Return Value Calling Convention Implementation
 //===----------------------------------------------------------------------===//
 
+// Note: Same as Monarch
 SDValue Mico32TargetLowering::
 LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
             const SmallVectorImpl<ISD::OutputArg> &Outs,
@@ -811,8 +767,7 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     CCValAssign &VA = RVLocs[i];
     assert(VA.isRegLoc() && "Can only return in registers!");
 
-    Chain = DAG.getCopyToReg(Chain, dl, VA.getLocReg(),
-                             OutVals[i], Flag);
+    Chain = DAG.getCopyToReg(Chain, dl, VA.getLocReg(), OutVals[i], Flag);
 
     // guarantee that all emitted copies are
     // stuck together, avoiding something bad
@@ -821,10 +776,10 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
   if (Flag.getNode())
     return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(Mico32::R29, MVT::i32), Flag);
+                       Chain, DAG.getRegister(Mico32::RRA, MVT::i32), Flag);
   else // Return Void
     return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(Mico32::R29, MVT::i32));
+                       Chain, DAG.getRegister(Mico32::RRA, MVT::i32));
 }
 
 //===----------------------------------------------------------------------===//
@@ -930,8 +885,8 @@ getRegClassForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
         Mico32::R7,  Mico32::R9,  Mico32::R10, Mico32::R11,
         Mico32::R12, Mico32::R19, Mico32::R20, Mico32::R21,
         Mico32::R22, Mico32::R23, Mico32::R24, Mico32::R25,
-        Mico32::R26, Mico32::R27, Mico32::R28, Mico32::R29,
-        Mico32::R30, Mico32::R31, 0);
+        Mico32::R26, Mico32::RFP, Mico32::RSP, Mico32::RRA,
+        Mico32::REA, Mico32::RBA, 0);
   }
   return std::vector<unsigned>();
 }

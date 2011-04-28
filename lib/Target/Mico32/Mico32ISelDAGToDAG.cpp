@@ -13,7 +13,7 @@
 
 #define DEBUG_TYPE "mico32-isel"
 #include "Mico32.h"
-#include "Mico32MachineFunction.h"
+#include "Mico32MachineFunctionInfo.h"
 #include "Mico32RegisterInfo.h"
 #include "Mico32Subtarget.h"
 #include "Mico32TargetMachine.h"
@@ -186,6 +186,8 @@ SelectAddrRegImm(SDValue N, SDValue &Base, SDValue &Disp) {
 }
 
 
+#if 0
+FIXME: No PIC support.
 /// getGlobalBaseReg - Output the instructions required to put the
 /// GOT address into a register.
 SDNode *Mico32DAGToDAGISel::getGlobalBaseReg() {
@@ -193,6 +195,7 @@ SDNode *Mico32DAGToDAGISel::getGlobalBaseReg() {
   unsigned GlobalBaseReg = getInstrInfo()->getGlobalBaseReg(MF);
   return CurDAG->getRegister(GlobalBaseReg, TLI.getPointerTy()).getNode();
 }
+#endif
 
 /// Select instructions not customized! Used for
 /// expanded, promoted and normal instructions
@@ -212,9 +215,12 @@ SDNode* Mico32DAGToDAGISel::Select(SDNode *Node) {
   switch (Opcode) {
     default: break;
 
+#if 0
+FIXME: No PIC support.
     // Get target GOT address.
     case ISD::GLOBAL_OFFSET_TABLE:
       return getGlobalBaseReg();
+#endif
 
     case ISD::FrameIndex: {
         SDValue imm = CurDAG->getTargetConstant(0, MVT::i32);
@@ -228,12 +234,12 @@ SDNode* Mico32DAGToDAGISel::Select(SDNode *Node) {
     }
 
 
+#if 0
     /// Handle direct and indirect calls when using PIC. On PIC, when
     /// GOT is smaller than about 64k (small code) the GA target is
     /// loaded with only one instruction. Otherwise GA's target must
     /// be loaded with 3 instructions.
     case Mico32ISD::JmpLink: {
-#if 0
       if (TM.getRelocationModel() == Reloc::PIC_) {
         SDValue Chain  = Node->getOperand(0);
         SDValue Callee = Node->getOperand(1);
@@ -267,8 +273,8 @@ SDNode* Mico32DAGToDAGISel::Select(SDNode *Node) {
         ReplaceUses(SDValue(Node, 1), InFlag);
         return ResNode;
       }
-#endif
     }
+#endif
   }
 
   // Select the default instruction

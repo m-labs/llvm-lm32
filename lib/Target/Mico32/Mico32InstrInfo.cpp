@@ -13,7 +13,7 @@
 
 #include "Mico32InstrInfo.h"
 #include "Mico32TargetMachine.h"
-#include "Mico32MachineFunction.h"
+#include "Mico32MachineFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -26,9 +26,12 @@ Mico32InstrInfo::Mico32InstrInfo(Mico32TargetMachine &tm)
   : TargetInstrInfoImpl(Mico32Insts, array_lengthof(Mico32Insts)),
     TM(tm), RI(*TM.getSubtargetImpl(), *this) {}
 
+#if 0
 static bool isZeroImm(const MachineOperand &op) {
   return op.isImm() && op.getImm() == 0;
 }
+#endif 
+
 #if 0
 
 /// isLoadFromStackSlot - If the specified machine instruction is a direct
@@ -84,15 +87,19 @@ copyPhysReg(MachineBasicBlock &MBB,
   llvm::BuildMI(MBB, I, DL, get(Mico32::ADDK), DestReg)
     .addReg(SrcReg, getKillRegState(KillSrc)).addReg(Mico32::R0);
 }
+#endif
 
 void Mico32InstrInfo::
 storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                     unsigned SrcReg, bool isKill, int FI,
                     const TargetRegisterClass *RC,
                     const TargetRegisterInfo *TRI) const {
+  assert(RC == Mico32::GPRRegisterClass && "Unknown register class.");
   DebugLoc DL;
-  BuildMI(MBB, I, DL, get(Mico32::SWI)).addReg(SrcReg,getKillRegState(isKill))
-    .addFrameIndex(FI).addImm(0); //.addFrameIndex(FI);
+  if (I != MBB.end()) DL = I->getDebugLoc();
+
+  BuildMI(MBB, I, DL, get(Mico32::SW)).addReg(SrcReg,getKillRegState(isKill))
+    .addFrameIndex(FI).addImm(0); 
 }
 
 void Mico32InstrInfo::
@@ -100,11 +107,14 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                      unsigned DestReg, int FI,
                      const TargetRegisterClass *RC,
                      const TargetRegisterInfo *TRI) const {
+  assert(RC == Mico32::GPRRegisterClass && "Unexpected register class.");
   DebugLoc DL;
-  BuildMI(MBB, I, DL, get(Mico32::LWI), DestReg)
-      .addFrameIndex(FI).addImm(0); //.addFrameIndex(FI);
+  if (I != MBB.end()) DL = I->getDebugLoc();
+
+  BuildMI(MBB, I, DL, get(Mico32::LW), DestReg).addFrameIndex(FI).addImm(0);
 }
 
+#if 0
 //===----------------------------------------------------------------------===//
 // Branch Analysis
 //===----------------------------------------------------------------------===//
@@ -267,9 +277,13 @@ bool Mico32InstrInfo::ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Co
 }
 
 #endif
+
+#if 0
 /// getGlobalBaseReg - Return a virtual register initialized with the
 /// the global base register value. Output instructions required to
 /// initialize the register in the function entry block, if necessary.
+/// getGlobalBaseReg - insert code into the entry mbb to materialize the PIC
+/// base register.  Return the virtual register that holds this value.
 ///
 unsigned Mico32InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
 //FIXME: not ported to Mico32
@@ -292,3 +306,4 @@ unsigned Mico32InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
   Mico32FI->setGlobalBaseReg(GlobalBaseReg);
   return GlobalBaseReg;
 }
+#endif

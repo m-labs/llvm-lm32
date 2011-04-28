@@ -37,16 +37,16 @@ class M32CSR<bits<5> num, string n> : Mico32Reg<n> {
 //===----------------------------------------------------------------------===//
 
 // General-purpose registers
-def R0  : M32GPR< 0,  "r0">, DwarfRegNum<[0]>;
-def R1  : M32GPR< 1,  "r1">, DwarfRegNum<[1]>;
-def R2  : M32GPR< 2,  "r2">, DwarfRegNum<[2]>;
-def R3  : M32GPR< 3,  "r3">, DwarfRegNum<[3]>;
-def R4  : M32GPR< 4,  "r4">, DwarfRegNum<[4]>;
-def R5  : M32GPR< 5,  "r5">, DwarfRegNum<[5]>;
-def R6  : M32GPR< 6,  "r6">, DwarfRegNum<[6]>;
-def R7  : M32GPR< 7,  "r7">, DwarfRegNum<[7]>;
-def R8  : M32GPR< 8,  "r8">, DwarfRegNum<[8]>;
-def R9  : M32GPR< 9,  "r9">, DwarfRegNum<[9]>;
+def R0  : M32GPR< 0, "r0">,  DwarfRegNum<[0]>;
+def R1  : M32GPR< 1, "r1">,  DwarfRegNum<[1]>;
+def R2  : M32GPR< 2, "r2">,  DwarfRegNum<[2]>;
+def R3  : M32GPR< 3, "r3">,  DwarfRegNum<[3]>;
+def R4  : M32GPR< 4, "r4">,  DwarfRegNum<[4]>;
+def R5  : M32GPR< 5, "r5">,  DwarfRegNum<[5]>;
+def R6  : M32GPR< 6, "r6">,  DwarfRegNum<[6]>;
+def R7  : M32GPR< 7, "r7">,  DwarfRegNum<[7]>;
+def R8  : M32GPR< 8, "r8">,  DwarfRegNum<[8]>;
+def R9  : M32GPR< 9, "r9">,  DwarfRegNum<[9]>;
 def R10 : M32GPR<10, "r10">, DwarfRegNum<[10]>;
 def R11 : M32GPR<11, "r11">, DwarfRegNum<[11]>;
 def R12 : M32GPR<12, "r12">, DwarfRegNum<[12]>;
@@ -63,15 +63,15 @@ def R22 : M32GPR<22, "r22">, DwarfRegNum<[22]>;
 def R23 : M32GPR<23, "r23">, DwarfRegNum<[23]>;
 def R24 : M32GPR<24, "r24">, DwarfRegNum<[24]>;
 def R25 : M32GPR<25, "r25">, DwarfRegNum<[25]>;
-def R26 : M32GPR<26, "r26">, DwarfRegNum<[26]>;
-def R27 : M32GPR<27, "r27">, DwarfRegNum<[27]>;
-def R28 : M32GPR<28, "r28">, DwarfRegNum<[28]>;
-def R29 : M32GPR<29, "r29">, DwarfRegNum<[29]>;
-def R30 : M32GPR<30, "r30">, DwarfRegNum<[30]>;
-def R31 : M32GPR<31, "r31">, DwarfRegNum<[31]>;
+def RGP : M32GPR<26, "gp">,  DwarfRegNum<[26]>;
+def RFP : M32GPR<27, "fp">,  DwarfRegNum<[27]>;
+def RSP : M32GPR<28, "sp">,  DwarfRegNum<[28]>;
+def RRA : M32GPR<29, "ra">,  DwarfRegNum<[29]>;
+def REA : M32GPR<30, "ea">,  DwarfRegNum<[30]>;
+def RBA : M32GPR<31, "ba">,  DwarfRegNum<[31]>;
 
 // Control and Status Registers.
-// FIXME: These dwarf numbera are made up.
+// FIXME: These dwarf numbers are made up.
 def IE   : M32CSR<0, "ie">,    DwarfRegNum<[96]>;
 def IM   : M32CSR<1, "im">,    DwarfRegNum<[97]>;
 def IP   : M32CSR<2, "ip">,    DwarfRegNum<[98]>;
@@ -101,16 +101,16 @@ def GPR : RegisterClass<"Mico32", [i32], 32,
     R11, R12, R13, R14, R15, R16, R17, R18, R19, R20,
     R21, R22, R23, R24, R25,
     // Unallocated:
-    R26, // global pointer
-    R27, // frame pointer
+    RGP, // global pointer
+    RFP, // frame pointer
     R0,  // always zero
-    R28, // stack pointer
-    R29, // return address
-    R30, // return address for exceptions
-    R31  // return address for breakpoints
+    RSP, // stack pointer
+    RRA, // return address
+    REA, // return address for exceptions
+    RBA  // return address for breakpoints
     ]>
 {
-//FIXME: do we need to reserve R26 (global pointer) and R27 (frame pointer)?
+//FIXME: do we need to reserve RGP (global pointer) and RFP (frame pointer)?
   let MethodProtos = [{
     iterator allocation_order_end(const MachineFunction &MF) const;
   }];
