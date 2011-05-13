@@ -70,6 +70,10 @@ namespace {
     bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
                                unsigned AsmVariant, const char *ExtraCode,
                                raw_ostream &O);
+    void printSymbolLo(const MachineInstr *MI, unsigned OpNo, raw_ostream &O);
+    void printSymbolHi(const MachineInstr *MI, unsigned OpNo, raw_ostream &O);
+    void printS16ImmOperand(const MachineInstr *MI,
+                            unsigned OpNo, raw_ostream &O);
   };
 } // end of anonymous namespace
 
@@ -80,7 +84,8 @@ extern "C" void LLVMInitializeMico32AsmPrinter() {
 }
 
 void Mico32AsmPrinter::printUnsignedImm(const MachineInstr *MI, int opNum,
-                                        raw_ostream &O) {
+                                        raw_ostream &O)
+{
   const MachineOperand &MO = MI->getOperand(opNum);
   if (MO.isImm())
     O << (uint32_t)MO.getImm();
@@ -97,15 +102,19 @@ void Mico32AsmPrinter::printUnsignedImm(const MachineInstr *MI, int opNum,
 // See SPARC for example.
 void Mico32AsmPrinter::
 printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
-                const char *Modifier) {
+                const char *Modifier)
+{
+  O << "(";
   printOperand(MI, opNum, O);
-  O << ", ";
+  O << "+";
   printOperand(MI, opNum+1, O);
+  O << ")";
 }
 
 
-void Mico32AsmPrinter::printOperand(const MachineInstr *MI, int opNum,
-                                      raw_ostream &O) {
+void Mico32AsmPrinter::
+printOperand(const MachineInstr *MI, int opNum, raw_ostream &O)
+{
   const MachineOperand &MO = MI->getOperand(opNum);
   switch (MO.getType()) {
   case MachineOperand::MO_Register:
@@ -141,12 +150,20 @@ void Mico32AsmPrinter::printOperand(const MachineInstr *MI, int opNum,
   }
 }
 
+void Mico32AsmPrinter::
+printS16ImmOperand(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
+{
+  O << (short) MI->getOperand(OpNo).getImm();
+}
+
+
+
 /// PrintAsmOperand - Print out an operand for an inline asm expression.
 ///
-bool Mico32AsmPrinter::PrintAsmOperand(const MachineInstr *MI,
-                                         unsigned OpNo, unsigned AsmVariant,
-                                         const char *ExtraCode,
-                                         raw_ostream &O) {
+bool Mico32AsmPrinter::
+PrintAsmOperand(const MachineInstr *MI, unsigned OpNo, unsigned AsmVariant,
+                const char *ExtraCode, raw_ostream &O)
+{
   if (ExtraCode && ExtraCode[0]) {
     if (ExtraCode[1] != 0) return true; // Unknown modifier.
 
@@ -162,11 +179,11 @@ bool Mico32AsmPrinter::PrintAsmOperand(const MachineInstr *MI,
   return false;
 }
 
-bool Mico32AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
-                                               unsigned OpNo,
-                                               unsigned AsmVariant,
-                                               const char *ExtraCode,
-                                               raw_ostream &O) {
+bool Mico32AsmPrinter::
+PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                      unsigned AsmVariant, const char *ExtraCode,
+                      raw_ostream &O)
+{
   if (ExtraCode && ExtraCode[0])
     return true;  // Unknown modifier
 
@@ -176,3 +193,30 @@ bool Mico32AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
 
   return false;
 }
+
+void Mico32AsmPrinter::
+printSymbolHi(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
+{
+  if (MI->getOperand(OpNo).isImm()) {
+    assert(0 && "Only symbols should be getting to this point");
+    printS16ImmOperand(MI, OpNo, O);
+  } else {
+    O << "hi(";
+    printOperand(MI, OpNo, O);
+    O << ")";
+  }
+}
+
+void Mico32AsmPrinter::
+printSymbolLo(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
+{
+  if (MI->getOperand(OpNo).isImm()) {
+    assert(0 && "Only symbols should be getting to this point");
+    printS16ImmOperand(MI, OpNo, O);
+  } else {
+    O << "lo(";
+    printOperand(MI, OpNo, O);
+    O << ")";
+  }
+}
+

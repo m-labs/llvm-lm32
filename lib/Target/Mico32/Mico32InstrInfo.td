@@ -41,6 +41,12 @@ def Mico32Call    : SDNode<"Mico32ISD::JmpLink", SDT_Mico32Call,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
                             SDNPVariadic]>;
 
+// Hi and Lo nodes are used to handle global addresses. Used in 
+// Mico32ISelLowering to lower stuff like GlobalAddress, ExternalSymbol 
+// static model.
+// These are generated in LowerConstantPool and LowerGLobalAddress.
+def Mico32Hi    : SDNode<"Mico32ISD::Hi", SDTIntUnaryOp>;
+def Mico32Lo    : SDNode<"Mico32ISD::Lo", SDTIntUnaryOp>;
 
 
 //===----------------------------------------------------------------------===//
@@ -82,8 +88,20 @@ def Mico32MemAsmOperand : AsmOperandClass {
 // Instruction operand types
 def brtarget    : Operand<OtherVT>;
 def calltarget  : Operand<i32>;
-def simm16      : Operand<i32>;
+def simm16      : Operand<i32> {
+  let PrintMethod = "printS16ImmOperand";
+}
 def uimm5       : Operand<i32>;
+
+// From SPU:
+def symbolHi    : Operand<i32> {
+  let PrintMethod = "printSymbolHi";
+}
+def symbolLo    : Operand<i32> {
+  let PrintMethod = "printSymbolLo";
+}
+
+
 
 // Unsigned Operand
 def uimm16      : Operand<i32> {
@@ -135,7 +153,7 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 
 
 // Addressing modes.
-// Note SelectAddrRegImm is defined in MonarchISelDAGToDAG.cpp.
+// Note SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp.
 // See the maillist thread "Using frameindex in a pattern",
 // "ComplexPattern in child ISel nodes",
 // SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp
@@ -209,49 +227,55 @@ def ADJCALLSTACKUP   : Mico32Pseudo<(outs),
 class ArithRR<bits<6> op, string instr_asm, SDNode OpNode,
               InstrItinClass itin> :
              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
-                 !strconcat(instr_asm, "   $dst, $b, $c"),
+                 !strconcat(instr_asm, " $dst, $b, $c"),
                  [(set GPR:$dst, (OpNode GPR:$b, GPR:$c))], itin>;
 
 // Fragmant version of RR instruction
 class ArithFRR<bits<6> op, string instr_asm, PatFrag OpNode,
                InstrItinClass itin> :
               TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
-                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  !strconcat(instr_asm, " $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, GPR:$c))], itin>;
 
 // RR instruction with not in pattern.
 class ArithNRR<bits<6> op, string instr_asm, SDNode OpNode,
               InstrItinClass itin> :
              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
-                 !strconcat(instr_asm, "   $dst, $b, $c"),
+                 !strconcat(instr_asm, " $dst, $b, $c"),
                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
 
 // Fragment version of RR instruction with not in pattern.
 class ArithFNRR<bits<6> op, string instr_asm, PatFrag OpNode,
                InstrItinClass itin> :
               TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
-                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  !strconcat(instr_asm, " $dst, $b, $c"),
                   [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
 
 // RI instruction with 16bit zero extended immediate.
 class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
                InstrItinClass itin> :
               TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  !strconcat(instr_asm, " $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
+
+class ArithRIsym<bits<6> op, string instr_asm, SDNode OpNode,
+                 InstrItinClass itin> :
+                TRI<op, (outs GPR:$dst), (ins GPR:$b, symbolLo:$c),
+                    !strconcat(instr_asm, "   $dst, $b, $c"),
+                    [], itin>;
 
 // Fragment version of RI instruction with 16bit zero extended immediate.
 class ArithFRIz<bits<6> op, string instr_asm, PatFrag OpNode,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                   !strconcat(instr_asm, "   $dst, $b, $c"),
+                   !strconcat(instr_asm, " $dst, $b, $c"),
                    [(set GPR:$dst, (OpNode GPR:$b, immZExt16:$c))], itin>;
 
 // ArithRIz with not in pattern.
 class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                   !strconcat(instr_asm, "   $dst, $b, $c"),
+                   !strconcat(instr_asm, " $dst, $b, $c"),
                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
                    itin>;
 
@@ -259,7 +283,7 @@ class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode,
 class ArithFNRIz<bits<6> op, string instr_asm, PatFrag OpNode,
                  InstrItinClass itin> :
                 TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                    !strconcat(instr_asm, "   $dst, $b, $c"),
+                    !strconcat(instr_asm, " $dst, $b, $c"),
                     [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
                     itin>;
 
@@ -267,28 +291,28 @@ class ArithFNRIz<bits<6> op, string instr_asm, PatFrag OpNode,
 class ArithRIs<bits<6> op, string instr_asm, SDNode OpNode,
                InstrItinClass itin> :
               TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
-                  !strconcat(instr_asm, "   $dst, $b, $c"),
+                  !strconcat(instr_asm, " $dst, $b, $c"),
                   [(set GPR:$dst, (OpNode GPR:$b, immSExt16:$c))], itin>;
 
 // Fragment version of RI instruction with 16bit sign extended immediate.
 class ArithFRIs<bits<6> op, string instr_asm, PatFrag OpNode,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
-                   !strconcat(instr_asm, "   $dst, $b, $c"),
+                   !strconcat(instr_asm, " $dst, $b, $c"),
                    [(set GPR:$dst, (OpNode GPR:$b, immSExt16:$c))], itin>;
 
 // ArithRIs instruction with not in pattern.
 class ArithNRIs<bits<6> op, string instr_asm, SDNode OpNode,
                 InstrItinClass itin> :
                TRI<op, (outs GPR:$dst), (ins GPR:$b, simm16:$c),
-                !strconcat(instr_asm, "   $dst, $b, $c"),
+                !strconcat(instr_asm, " $dst, $b, $c"),
                 [(set GPR:$dst, (not (OpNode GPR:$b, immSExt16:$c)))], itin>;
 
 // Shift instruction with 5bit zero extended immediate.
 class ShiftI<bits<6> op, string instr_asm, SDNode OpNode,
                 InstrItinClass itin> :
             TRIS<op, (outs GPR:$dst), (ins GPR:$b, uimm5:$c),
-                 !strconcat(instr_asm, "   $dst, $b, $c"),
+                 !strconcat(instr_asm, " $dst, $b, $c"),
                  [(set GPR:$dst, (OpNode GPR:$b, immZExt5:$c))], itin>;
 
 
@@ -298,12 +322,12 @@ class ShiftI<bits<6> op, string instr_asm, SDNode OpNode,
 
 class LoadM<bits<6> op, string instr_asm, PatFrag OpNode> :
            TRI<op, (outs GPR:$dst), (ins MEMri:$addr),
-               !strconcat(instr_asm, "   $dst, $addr"),
+               !strconcat(instr_asm, " $dst, $addr"),
                [(set (i32 GPR:$dst), (OpNode ADDRri:$addr))], IILoad>;
 
 class StoreM<bits<6> op, string instr_asm, PatFrag OpNode> :
-            TRI<op, (outs), (ins GPR:$dst, MEMri:$addr),
-                !strconcat(instr_asm, "   $dst, $addr"),
+            TRI<op, (outs), (ins MEMri:$addr, GPR:$dst),
+                !strconcat(instr_asm, " $addr, $dst"),
                 [(OpNode (i32 GPR:$dst), ADDRri:$addr)], IIStore>;
 
 //===----------------------------------------------------------------------===//
@@ -361,10 +385,10 @@ let isCall=1,
     Uses = [RSP] in {
 
   def CALLI : TI<0x3e, (outs), (ins calltarget:$target, variable_ops),
-                 "calli   $target", [], IICall>;
+                 "calli    $target", [], IICall>;
 
   def CALL : TBR<0x36, (outs), (ins GPR:$dst, variable_ops),
-                 "call    $dst", [(Mico32Call GPR:$dst)], IICall>;
+                 "call     $dst", [(Mico32Call GPR:$dst)], IICall>;
 }
 
 // I think the linker should relax these as needed.
@@ -464,14 +488,25 @@ let Predicates=[HasSDIV] in {
 //===----------------------------------------------------------------------===//
 
 let isAsCheapAsAMove = 1 in {
+  def ORHI    :  TRI<0x1e, (outs GPR:$dst), (ins GPR:$b, i32imm:$c),
+                     "orhi     $dst, $b, $c",
+                     [(set GPR:$dst, (or GPR:$b, imm16ShiftedZExt:$c))], 
+                     IIAlu>;
+  def ORHIsym :  TRI<0x1e, (outs GPR:$dst), (ins GPR:$b, symbolHi:$c),
+                     "orhi     $dst, $b, $c",
+                     [(set GPR:$dst, (or GPR:$b, imm16ShiftedZExt:$c))], 
+                     IIAlu>;
+
   def ANDI    :  ArithRIz<0x08, "andi    ", and, IIAlu>;
   def ORI     :  ArithRIz<0x0e, "ori     ", or, IIAlu>;
+  def ORIsym  :  ArithRIsym<0x0e, "ori     ", or, IIAlu>;
   def XORI    :  ArithRIz<0x06, "xori    ", xor, IIAlu>;
 
   def NORI    :  ArithNRIz<0x01, "nori     ", or, IIAlu>;  // (not (ori ...))
   def XNORI   :  ArithNRIz<0x09, "xnori    ", xor, IIAlu>; // (not (xori ...))
 
   def ADDI    :  ArithRIs<0x0d, "addi    ", add, IIAlu>;
+  def ADDIsym :  ArithRIsym<0x0d, "addi    ", add, IIAlu>;
 }
 
 let Predicates=[HasMUL] in {
@@ -503,14 +538,14 @@ def CMPGI   : ArithFRIs<0x1a, "cmpgi   ", setgt, IICmp>;
 def CMPGEI  : ArithFRIs<0x1b, "cmpgei  ", setge, IICmp>;
 def CMPGEUI : ArithFRIz<0x1c, "cmpgeui ", setuge, IICmp>;
 def CMPGUI  : ArithFRIz<0x1d, "cmpgui  ", setugt, IICmp>;
-def CMPNEI  : ArithFNRIz<0x1f, "cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
+def CMPNEI  : ArithFNRIz<0x1f,"cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
 
 def CMPE    : ArithFRR<0x39, "cmpe    ", seteq, IICmp>;
 def CMPG    : ArithFRR<0x3a, "cmpg    ", setgt, IICmp>;
 def CMPGE   : ArithFRR<0x3b, "cmpge   ", setge, IICmp>;
 def CMPGEU  : ArithFRR<0x3c, "cmpgeu  ", setuge, IICmp>;
 def CMPGU   : ArithFRR<0x3d, "cmpgu   ", setugt, IICmp>;
-def CMPNE   : ArithFNRR<0x1f, "cmpne   ", seteq, IICmp>;  // (not (seteq ...))
+def CMPNE   : ArithFNRR<0x1f,"cmpne   ", seteq, IICmp>;  // (not (seteq ...))
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions
@@ -552,4 +587,16 @@ def : Pat<(i32 immSExt16:$val),
 // Small (16 bit) unsigned immediates.
 def : Pat<(i32 immZExt16:$val),
           (ORI R0, imm:$val)>;
+
+// Arbitrary immediate support.
+def : Pat<(i32 imm:$val),
+          (ORI (ORHI R0, (HI16 imm:$val)), (LO16 imm:$val))>;
+
+// hi/lo relocs (from Mips and SPU)
+// ISel custom lowering generates (Mico32Hi tglobaladdr:$in) and
+// (Mico32Lo tglobaladdr:$in).  We further lower them here:
+def : Pat<(Mico32Hi tglobaladdr:$in), (ORHIsym R0, tglobaladdr:$in)>;
+def : Pat<(Mico32Lo tglobaladdr:$in), (ORIsym R0, tglobaladdr:$in)>;
+def : Pat<(add GPR:$hi, (Mico32Lo tglobaladdr:$lo)),
+          (ADDIsym GPR:$hi, tglobaladdr:$lo)>;
 

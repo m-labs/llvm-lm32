@@ -23,9 +23,9 @@ namespace llvm {
   class Mico32Subtarget;
 
   class Mico32FrameLowering: public TargetFrameLowering {
-    const Mico32Subtarget &STI;
+    const Mico32Subtarget &Subtarget;
   public:
-    Mico32FrameLowering(const Mico32Subtarget &STI);
+    Mico32FrameLowering(const Mico32Subtarget &subtarget);
 
     /// Determine the frame's layout
     void determineFrameLayout(MachineFunction &MF) const;

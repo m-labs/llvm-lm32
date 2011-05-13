@@ -39,10 +39,11 @@ const char *Mico32TargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
     case Mico32ISD::JmpLink    : return "Mico32ISD::JmpLink";
     case Mico32ISD::GPRel      : return "Mico32ISD::GPRel";
-    case Mico32ISD::Wrap       : return "Mico32ISD::Wrap";
     case Mico32ISD::ICmp       : return "Mico32ISD::ICmp";
     case Mico32ISD::RetFlag    : return "Mico32ISD::RetFlag";
     case Mico32ISD::Select_CC  : return "Mico32ISD::Select_CC";
+    case Mico32ISD::Hi         : return "Mico32ISD::Hi";
+    case Mico32ISD::Lo         : return "Mico32ISD::Lo";
     default                    : return NULL;
   }
 }
@@ -84,8 +85,9 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setLoadExtAction(ISD::SEXTLOAD, MVT::i1,  Promote);
 
   // Sign extended loads must be expanded
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i8, Expand);
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, Expand);
+// FIXME: FIXED: are supported
+//  setLoadExtAction(ISD::SEXTLOAD, MVT::i8, Expand);
+//  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, Expand);
 
   // Check if unsigned div/mod are enabled.
   if (!Subtarget->hasDIV()) {
@@ -348,46 +350,73 @@ SDValue Mico32TargetLowering::LowerSELECT_CC(SDValue Op,
                      CompareFlag);
 }
 
+// Modeled on Sparc LowerGlobalAddress.
 SDValue Mico32TargetLowering::
-LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const {
-  // FIXME there isn't actually debug info here
-  DebugLoc dl = Op.getDebugLoc();
+LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
+{
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
+  DebugLoc dl = Op.getDebugLoc();
   SDValue GA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32);
-
-  return DAG.getNode(Mico32ISD::Wrap, dl, MVT::i32, GA);
+  // From XCore: If it's a debug information descriptor, don't mess with it.
+//FIXME:  The following is from xcore but doesn't appear to work there either.
+// Once that is fixed we can uncomment this:
+// the following can trigger this:
+//   int puts(const char * format);
+//   int main(int argc, char ** argv) { puts("hello world\n"); return(5); }
+#if 0
+  if (DAG.isVerifiedDebugInfoDesc(Op))
+    return GA;
+#endif
+  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, GA);
+  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, GA);
+  /* FIXME: revisit this and see if it gets optimized:
+  // The goal here was to incorporate the "ADD" into the
+  // LD but it doesn't work since Monarch:Lo is unsigned
+  // and ADDI expectes a signed operand.
+  // See MonarchISelDAGToDAG.cpp (MonarchDAGToDAGISel::SelectADDRri)
+  // for a similar ADD optimiztion.
+  //// I believe the order of Hi/Lo is important.  I think
+  //// the Hi should be done first, then the Lo can be added in
+  //// as an offset in a future ST or LD (or other) instruction
+  //// and the ADD node we're creating here removed.
+  //// Therefore the Hi part should be loaded arithmetically (@ha)
+  //// to allow the offset to be added (instead of or'ed).
+  //// SelectADDRri it looks for MonarchISD::Lo and makes
+  //// this optimization (although it looks in both operands).
+  //
+  // Note that Mico32 assembler does not have an @ha equivalent.
+  // The M32R "shigh" GAS directive is what we need.
+  */
+  //return DAG.getNode(ISD::ADD, dl, MVT::i32, Lo, Hi);
+  return DAG.getNode(ISD::OR, dl, MVT::i32, Lo, Hi);
 }
+
 
 SDValue Mico32TargetLowering::
 LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {
-  llvm_unreachable("TLS not implemented for MicroBlaze.");
+  llvm_unreachable("TLS not implemented for Mico32.");
   return SDValue(); // Not reached
 }
 
 SDValue Mico32TargetLowering::
 LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
-  SDValue ResNode;
-  SDValue HiPart;
-  // FIXME there isn't actually debug info here
-  DebugLoc dl = Op.getDebugLoc();
-
-  EVT PtrVT = Op.getValueType();
-  JumpTableSDNode *JT  = cast<JumpTableSDNode>(Op);
-
-  SDValue JTI = DAG.getTargetJumpTable(JT->getIndex(), PtrVT, 0);
-  return DAG.getNode(Mico32ISD::Wrap, dl, MVT::i32, JTI);
+  llvm_unreachable("JumpTables  not implemented for Mico32.");
+  return SDValue(); // Not reached
 }
 
 SDValue Mico32TargetLowering::
-LowerConstantPool(SDValue Op, SelectionDAG &DAG) const {
-  SDValue ResNode;
+LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
+{
   ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
-  const Constant *C = N->getConstVal();
+  // FIXME: there isn't really any debug info here
   DebugLoc dl = Op.getDebugLoc();
-
-  SDValue CP = DAG.getTargetConstantPool(C, MVT::i32, N->getAlignment(),
-                                         N->getOffset(), 0);
-  return DAG.getNode(Mico32ISD::Wrap, dl, MVT::i32, CP);
+  const Constant *C = N->getConstVal();
+  SDValue CP = DAG.getTargetConstantPool(C, MVT::i32, N->getAlignment());
+  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, CP);
+  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, CP);
+  // See note above in LowerGlobalAddress about operands.
+  return DAG.getNode(ISD::OR, dl, MVT::i32, Lo, Hi);
+  //return DAG.getNode(ISD::ADD, dl, MVT::i32, Lo, Hi);
 }
 
 SDValue Mico32TargetLowering::LowerVASTART(SDValue Op,

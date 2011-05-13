@@ -36,6 +36,30 @@ struct Mico32RegisterInfo : public Mico32GenRegisterInfo {
 
   BitVector getReservedRegs(const MachineFunction &MF) const;
 
+
+  /// hasReservedCallFrame - Under normal circumstances, when a frame pointer is
+  /// not required, we reserve argument space for call sites in the function
+  /// immediately on entry to the current function. This eliminates the need for
+  /// add/sub sp brackets around call sites. Returns true if the call frame is
+  /// included as part of the stack frame.
+  /// Mico32 always reserves call frames. eliminateCallFramePseudoInstr() may
+  /// need to change if this does.  See ARM for example.
+  ///
+  /// PEI::calculateFrameObjectOffsets() adds maxCallFrameSize if 
+  /// hasReservedCallFrame() is true.  The stack alignment is set
+  /// in Mico32TargetMachine::Mico32TargetMachine().
+  /// Some targets (e.g. SPU, PPC) add in the maxCallFrameSize to the
+  /// stacksize manually due to special alignment requirements or other issues.
+  bool hasReservedCallFrame(const MachineFunction &MF) const {
+    // Why wouldn't you do this:
+    // It's not always a good idea to include the call frame as part of the
+    // stack frame. ARM (especially Thumb) has small immediate offset to
+    // address the stack frame. So a large call frame can cause poor codegen
+    // and may even makes it impossible to scavenge a register.
+    //
+    return true;
+  }
+
   /// eliminateCallFramePseudoInstr - This method is called during prolog/epilog
   /// code insertion to eliminate call frame setup and destroy pseudo
   /// instructions (but only if the Target is using them).  It is responsible

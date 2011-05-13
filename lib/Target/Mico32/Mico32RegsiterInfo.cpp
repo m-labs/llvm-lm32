@@ -92,37 +92,12 @@ getReservedRegs(const MachineFunction &MF) const {
 void Mico32RegisterInfo::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
-
-  if (!TFI->hasReservedCallFrame(MF)) {
-    // If we have a frame pointer, turn the adjcallstackup instruction into a
-    // 'addi r1, r1, -<amt>' and the adjcallstackdown instruction into
-    // 'addi r1, r1, <amt>'
-    MachineInstr *Old = I;
-    int Amount = Old->getOperand(0).getImm() + 4;
-    if (Amount != 0) {
-      // We need to keep the stack aligned properly.  To do this, we round the
-      // amount of space needed for the outgoing arguments up to the next
-      // alignment boundary.
-      unsigned Align = TFI->getStackAlignment();
-      Amount = (Amount+Align-1)/Align*Align;
-
-      MachineInstr *New;
-      if (Old->getOpcode() == Mico32::ADJCALLSTACKDOWN) {
-        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::RSP)
-                .addReg(Mico32::RSP).addImm(-Amount);
-      } else {
-        assert(Old->getOpcode() == Mico32::ADJCALLSTACKUP);
-        New = BuildMI(MF,Old->getDebugLoc(),TII.get(Mico32::ADDI),Mico32::RSP)
-                .addReg(Mico32::RSP).addImm(Amount);
-      }
-
-      // Replace the pseudo instruction with a new instruction...
-      MBB.insert(I, New);
-    }
-  }
-
-  // Simply discard ADJCALLSTACKDOWN, ADJCALLSTACKUP instructions.
+  // We're assuming a fixed call frame. hasReservedCallFrame==true
+  // Since we are using reserved call frames and we don't need to adjust
+  // the stack pointer outside of the prologue/epilogue we'll just erase
+  // the ADJCALLSTACKDOWN, ADJCALLSTACKUP instructions.
+  // Normally these would bracket calls and be used for dynamic call frames.
+  // Note alloca() is handled in the prologue.
   MBB.erase(I);
 }
 
@@ -132,7 +107,12 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 /// eliminated by this method.  This method may modify or replace the
 /// specified instruction, as long as it keeps the iterator pointing the the
 /// finished product. SPAdj is the SP adjustment due to call frame setup
-/// instruction.
+/// instruction. The call frame setup instructions is defined in the 
+/// TargetRegisterInfo constructor (e.g. ADJCALLSTACKUP/ADJCALLSTACKDOWN).
+/// The call frame setup instructions are processed by
+/// eliminateCallFramePseudoInstr()
+///
+//  FIXME: So what is SPAdj?
 /// This is where stack pointer or frame pointer encoding is done.
 ///
 /// Typically the FrameIndex operands are added by storeRegToStackSlot() and
@@ -143,53 +123,99 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 /// frame index amongst most of the targets, hence the 
 /// MI.getOperand(i+1).getImm() added to the frame index. For most targets, 
 /// and specifically Monarch, this immediate value is zero.
-
-// From MBlaze:
-// FrameIndex represent objects inside a abstract stack.
-// We must replace FrameIndex with an stack/frame pointer
-// direct reference.
 void Mico32RegisterInfo::
-eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
-                    RegScavenger *RS) const {
-  MachineInstr &MI = *II;
-  MachineFunction &MF = *MI.getParent()->getParent();
-  MachineFrameInfo *MFI = MF.getFrameInfo();
+eliminateFrameIndex(MachineBasicBlock::iterator II,
+                    int SPAdj, RegScavenger *RS) const {
+  assert(SPAdj == 0 && "Unexpected");
 
+  MachineInstr &MI = *II;
+  MachineBasicBlock &MBB = *MI.getParent();
+  MachineFunction &MF = *MBB.getParent();
+  MachineFrameInfo *MFrmInf = MF.getFrameInfo();
+  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  bool FP = TFI->hasFP(MF);
+
+  // SP points to the top of stack, FP points between outgoing params (or
+  // alloca) and local variables. Calculate the offset of the FP from the
+  // SP. Use this offset to bias frame indices when using an FP instead of SP.
+  // Alloca allocations are done dynamically later on so we just offset FPBias
+  // by the size of the outgoing arguments.
+  unsigned FPReg = Mico32::RSP;
+  unsigned FPbias = 0;
+  if (FP) {
+    FPbias = MFrmInf->getMaxCallFrameSize();
+    FPReg = Mico32::RFP;
+    assert((FPbias % 4) == 0 && 
+           "The outgoing arguments section should be 4 byte aligned.");
+  }
+
+  // Find the frame index operand.
   unsigned i = 0;
   while (!MI.getOperand(i).isFI()) {
     ++i;
-    assert(i < MI.getNumOperands() &&
-           "Instr doesn't have FrameIndex operand!");
+    assert(i < MI.getNumOperands() && "Instr doesn't have FrameIndex operand!");
   }
+  MachineOperand &FrameOp = MI.getOperand(i);
+  int FrameIndex = FrameOp.getIndex();
 
-  unsigned oi = i == 2 ? 1 : 2;
+  int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
+  DEBUG(dbgs() << "getObjectOffset()  : " << Offset << "\n");
+  assert(Offset%4 == 0 && "Object has misaligned stack offset");
 
-  DEBUG(dbgs() << "\nFunction : " << MF.getFunction()->getName() << "\n";
-        dbgs() << "<--------->\n" << MI);
+  int StackSize = MF.getFrameInfo()->getStackSize();
+//  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
+  
+#ifndef NDEBUG
+  DEBUG(dbgs() << "\nFunction         : "
+               << MF.getFunction()->getName() << "\n");
+  DEBUG(dbgs() << "<--------->\n");
+  DEBUG(MI.print(dbgs()));
+  DEBUG(dbgs() << "FrameIndex         : " << FrameIndex << "\n");
+  DEBUG(dbgs() << "FrameOffset        : " << Offset << "\n");
+  DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
+  DEBUG(dbgs() << "FPreg              : " << FPReg << "\n");
+  DEBUG(dbgs() << "FPbias             : " << FPbias << "\n");
+  DEBUG(dbgs() << "getImm()           : "
+               <<  MI.getOperand(i + 1).getImm() << "\n");
+  DEBUG(dbgs() << "isFixed            : "
+               << MFrmInf->isFixedObjectIndex(FrameIndex) << "\n");
+// DEBUG(dbgs() << "isLiveIn           : "
+//               << MFuncInf->isLiveIn(FrameIndex) << "\n");
+  DEBUG(dbgs() << "isSpill            : "
+               << MFrmInf->isSpillSlotObjectIndex(FrameIndex));
+#endif
 
-  int FrameIndex = MI.getOperand(i).getIndex();
-  int stackSize  = MFI->getStackSize();
-  int spOffset   = MFI->getObjectOffset(FrameIndex);
+  Offset += StackSize - FPbias;
+  assert(Offset%4 == 0 && "Misaligned stack offset");
 
-  DEBUG(//Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
-        dbgs() << "FrameIndex : " << FrameIndex << "\n"
-               << "spOffset   : " << spOffset << "\n"
-               << "stackSize  : " << stackSize << "\n"
-               << "isFixed    : " << MFI->isFixedObjectIndex(FrameIndex) << "\n"
-//               << "isLiveIn   : " << Mico32FI->isLiveIn(FrameIndex) << "\n"
-               << "isSpill    : " << MFI->isSpillSlotObjectIndex(FrameIndex)
-               << "\n" );
+  // Fold constant into offset.
+  // Currently the constant offset is always zero, but this may 
+  // change with wideword.
+  Offset += MI.getOperand(i + 1).getImm();
+  MI.getOperand(i + 1).ChangeToImmediate(0);
 
-  // as explained on LowerFormalArguments, detect negative offsets
-  // and adjust SPOffsets considering the final stack size.
-  int Offset = (spOffset < 0) ? (stackSize - spOffset) : spOffset;
-  Offset += MI.getOperand(oi).getImm();
+  // This shows up in vector code:
+  //  assert(Offset%4 == 0 && "Misaligned stack offset");
 
-  DEBUG(dbgs() << "Offset     : " << Offset << "\n" << "<--------->\n");
+#ifndef NDEBUG
+  DEBUG(dbgs() << "Offset             : " << Offset << "\n");
+  DEBUG(dbgs() << "<--------->\n");
+#endif
 
-  MI.getOperand(oi).ChangeToImmediate(Offset);
-  MI.getOperand(i).ChangeToRegister(getFrameRegister(MF), false);
+  // Replace frame index with a stack/frame pointer reference.
+  if (Offset >= -32768 && Offset <= 32767) {
+    // If the offset is small enough to fit in the immediate field, directly
+    // encode it.
+    // Use the appropriate frame pointer register R1 (SP) or R30 (FP).
+    FrameOp.ChangeToRegister(FPReg, false);
+    //MI.getOperand(i).ChangeToRegister(Monarch::R1, false);
+    MI.getOperand(i+1).ChangeToImmediate(Offset);
+  } else {
+    assert( 0 && "Unimplemented - frame index limited to 32767 byte offset.");
+  }
+  return;
 }
+
 
 /// From MBlaze:
 /// processFunctionBeforeFrameFinalized - This method is called immediately

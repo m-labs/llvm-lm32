@@ -78,16 +78,17 @@ insertNoop(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const {
   DebugLoc DL;
   BuildMI(MBB, MI, DL, get(Mico32::NOP));
 }
+#endif
 
 void Mico32InstrInfo::
 copyPhysReg(MachineBasicBlock &MBB,
             MachineBasicBlock::iterator I, DebugLoc DL,
             unsigned DestReg, unsigned SrcReg,
             bool KillSrc) const {
-  llvm::BuildMI(MBB, I, DL, get(Mico32::ADDK), DestReg)
+  llvm::BuildMI(MBB, I, DL, get(Mico32::ADD), DestReg)
     .addReg(SrcReg, getKillRegState(KillSrc)).addReg(Mico32::R0);
 }
-#endif
+
 
 void Mico32InstrInfo::
 storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,

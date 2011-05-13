@@ -18,7 +18,8 @@ Mico32ELFMCAsmInfo::Mico32ELFMCAsmInfo(const Target &T, const StringRef &TT)
 {
 // These are from MBlaze.
   SupportsDebugInformation    = true;
-  AlignmentIsInBytes          = false;
+//  AlignmentIsInBytes          = false;
+  AlignmentIsInBytes          = true;
   PrivateGlobalPrefix         = "$";
   GPRel32Directive            = "\t.gpword\t";
 

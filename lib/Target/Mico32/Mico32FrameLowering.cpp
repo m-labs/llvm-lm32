@@ -28,9 +28,11 @@
 
 using namespace llvm;
 
-Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &sti)
-  : TargetFrameLowering(TargetFrameLowering::StackGrowsDown, 4, 0),
-    STI(sti) {
+Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &subtarget)
+  : TargetFrameLowering(TargetFrameLowering::StackGrowsDown,
+                        4 /*StackAlignment*/, 
+                        0 /*LocalAreaOffset*/),
+      Subtarget(subtarget) {
   // Do nothing
 }
 
@@ -50,31 +52,32 @@ getInitialFrameState(std::vector<MachineMove> &Moves) const {
 /// updated the sizes. Copied from SPU.
 void Mico32FrameLowering::
 determineFrameLayout(MachineFunction &MF) const {
-  unsigned AlignMask = 32 - 1;  
-  MachineFrameInfo *MFI = MF.getFrameInfo();
+  unsigned AlignMask = 4 - 1;  
+  MachineFrameInfo *MFrmInf = MF.getFrameInfo();
 
   // Get the maximum call frame size of all the calls.
-  unsigned maxCallFrameSize = MFI->getMaxCallFrameSize();
+  unsigned maxCallFrameSize = MFrmInf->getMaxCallFrameSize();
 
-  // If we have maxCallFrameSize needs to be 32 byte aligned so
+  // If we have maxCallFrameSize needs to be 4 byte aligned so
   // that allocations will be aligned.
   maxCallFrameSize = (maxCallFrameSize + AlignMask) & ~AlignMask;
   
   // Update maximum call frame size.
-  MFI->setMaxCallFrameSize(maxCallFrameSize);
+  MFrmInf->setMaxCallFrameSize(maxCallFrameSize);
+  assert((maxCallFrameSize % 4) == 0 && "The stack should be 4 byte aligned.");
   
   // Get the number of bytes to allocate from the FrameInfo
-  unsigned FrameSize = MFI->getStackSize();
-  //assert((FrameSize % 32) == 0 && "The stack should be 32 byte aligned.");
+  unsigned FrameSize = MFrmInf->getStackSize();
+  assert((FrameSize % 4) == 0 && "The stack should be 4 byte aligned.");
 
-  // Make sure the stack is 32 byte aligned.
+  // Make sure the stack is 4 byte aligned.
   FrameSize = (FrameSize + AlignMask) & ~AlignMask;
 
   // Include call frame size in total.
   FrameSize += maxCallFrameSize;
   
   // Update frame info.
-  MFI->setStackSize(FrameSize);
+  MFrmInf->setStackSize(FrameSize);
 }
 
 
@@ -98,7 +101,7 @@ emitPrologue(MachineFunction &MF) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   MachineModuleInfo *MMI = &MF.getMMI();
 
-  Mico32FunctionInfo *MonFI = MF.getInfo<Mico32FunctionInfo>();
+  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
   const Mico32InstrInfo &TII =
     *static_cast<const Mico32InstrInfo*>(MF.getTarget().getInstrInfo());
 
@@ -107,28 +110,28 @@ emitPrologue(MachineFunction &MF) const {
   // determineFrameLayout() sets some stack related sizes so do it first.
   determineFrameLayout(MF);
 
-  // Get the maximum call frame size of all the calls.
-  unsigned maxCallFrameSize = MFrmInf->getMaxCallFrameSize();
-  assert(maxCallFrameSize%32 == 0 && "Misaligned call frame size");
+  // Check the maximum call frame size of all the calls is sensible.
+  assert(MFrmInf->getMaxCallFrameSize()%4 == 0 && "Misaligned call frame size");
 
   bool FP = hasFP(MF);
 
   // Get the frame size.
   int FrameSize = MFrmInf->getStackSize();
-  assert(FrameSize%32 == 0 && 
+  assert(FrameSize%4 == 0 && 
          "Mico32FrameLowering::emitPrologue Misaligned frame size");
   
   bool emitFrameMoves = MMI->hasDebugInfo() ||
                           !MF.getFunction()->doesNotThrow() || 
                           UnwindTablesMandatory;
 
-  assert(((MonFI->getUsesLR() && FrameSize) || !MonFI->getUsesLR()) && 
+  assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
          "we should have a frame if LR is used.");
   assert(((FP && FrameSize) || !FP) && "we should have a frame if FP is used.");
+  assert(FrameSize != 0 && "Need to check FrameSize = 0 code path");
 
   // Do we need to allocate space on the stack?
   if (FrameSize) {
-    // adjust the stack pointer: RSP -= numbytes
+    // adjust the stack pointer: RSP -= FrameSize
     // Note we can only add 32767 offset in emitEpilogue()
     // so we don't use 32768. See SPU for model of how to implement larger
     // stack frames.
@@ -171,9 +174,9 @@ emitPrologue(MachineFunction &MF) const {
       Moves.push_back(MachineMove(FrameLabel, SPDst, SPSrc));
     }
     
-    if (MonFI->getUsesLR()) {
+    if (MFuncInf->getUsesLR()) {
       // Save the LR (RRA) to the preallocated stack slot.
-      int LRSpillOffset = MFrmInf->getObjectOffset(MonFI->getLRSpillSlot())
+      int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
         +FrameSize;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
         .addReg(Mico32::RSP).addImm(LRSpillOffset).addReg(Mico32::RRA);
@@ -188,52 +191,52 @@ emitPrologue(MachineFunction &MF) const {
         MMI->getFrameMoves().push_back(MachineMove(SaveLRLabel, CSDst, CSSrc));
       }
     }
-  } 
   
-  if (FP) {
-    // Save FP (R27) to the stack.
-    int FPSpillOffset = 
-      MFrmInf->getObjectOffset(MonFI->getFPSpillSlot())+FrameSize;
-
-    BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
-      .addReg(Mico32::RSP).addImm(FPSpillOffset).addReg(Mico32::RFP);
-
-    // RFP is live-in. It is killed at the spill.
-    MBB.addLiveIn(Mico32::RFP);
-    if (emitFrameMoves) {
-      MCSymbol *SaveRFPLabel = MMI->getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
-              .addSym(SaveRFPLabel);
-      MachineLocation CSDst(MachineLocation::VirtualFP, FPSpillOffset);
-      MachineLocation CSSrc(Mico32::RFP);
-      MMI->getFrameMoves().push_back(MachineMove(SaveRFPLabel, CSDst, CSSrc));
+    if (FP) {
+      // Save FP (R27) to the stack.
+      int FPSpillOffset = 
+        MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
+  
+      BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
+        .addReg(Mico32::RSP).addImm(FPSpillOffset).addReg(Mico32::RFP);
+  
+      // RFP is live-in. It is killed at the spill.
+      MBB.addLiveIn(Mico32::RFP);
+      if (emitFrameMoves) {
+        MCSymbol *SaveRFPLabel = MMI->getContext().CreateTempSymbol();
+        BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
+                .addSym(SaveRFPLabel);
+        MachineLocation CSDst(MachineLocation::VirtualFP, FPSpillOffset);
+        MachineLocation CSSrc(Mico32::RFP);
+        MMI->getFrameMoves().push_back(MachineMove(SaveRFPLabel, CSDst, CSSrc));
+      }
+      // Set the FP from the SP.
+      unsigned FramePtr = Mico32::RFP;
+      // The FP points to the beginning of the frame ( = SP on entry), 
+      // hence we add in the FrameSize.
+      BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),FramePtr)
+        .addReg(Mico32::RSP).addImm(FrameSize);
+      if (emitFrameMoves) {
+        // Show FP is now valid.
+        MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
+        BuildMI(MBB, MBBI, dl,TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
+        MachineLocation SPDst(FramePtr);
+        MachineLocation SPSrc(MachineLocation::VirtualFP);
+        MMI->getFrameMoves().push_back(MachineMove(FrameLabel, SPDst, SPSrc));
+      }
     }
-    // Set the FP from the SP.
-    unsigned FramePtr = Mico32::RFP;
-    // The FP points to the beginning of the preallocated outgoing arguments, 
-    // hence the maxCallFrameSize.
-    BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),FramePtr)
-      .addReg(Mico32::RSP).addImm(maxCallFrameSize);
-    if (emitFrameMoves) {
-      // Show FP is now valid.
-      MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
-      MachineLocation SPDst(FramePtr);
-      MachineLocation SPSrc(MachineLocation::VirtualFP);
-      MMI->getFrameMoves().push_back(MachineMove(FrameLabel, SPDst, SPSrc));
-    }
-  }
+  } 
   
 #if 0
   if (emitFrameMoves) {
     // Frame moves for callee saved.
     std::vector<MachineMove> &Moves = MMI->getFrameMoves();
     std::vector<std::pair<MCSymbol*, CalleeSavedInfo> >&SpillLabels =
-        MonFI->getSpillLabels();
+        MFuncInf->getSpillLabels();
     for (unsigned I = 0, E = SpillLabels.size(); I != E; ++I) {
       MCSymbol *SpillLabel = SpillLabels[I].first;
       CalleeSavedInfo &CSI = SpillLabels[I].second;
-      int Offset = MFI->getObjectOffset(CSI.getFrameIdx());
+      int Offset = MFrmInf->getObjectOffset(CSI.getFrameIdx());
       unsigned Reg = CSI.getReg();
       MachineLocation CSDst(MachineLocation::VirtualFP, Offset);
       MachineLocation CSSrc(Reg);
@@ -266,57 +269,41 @@ emitPrologue(MachineFunction &MF) const {
 
 void Mico32FrameLowering::
 emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
-  MachineFrameInfo *MFI = MF.getFrameInfo();
+  MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   MachineBasicBlock::iterator MBBI = prior(MBB.end());
   const Mico32InstrInfo &TII =
     *static_cast<const Mico32InstrInfo*>(MF.getTarget().getInstrInfo());
-  Mico32FunctionInfo *MonFI = MF.getInfo<Mico32FunctionInfo>();
+  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
   assert(MBBI->getOpcode() == Mico32::RET &&
          "Can only put epilog before 'ret' instruction!");
   DebugLoc dl = MBBI->getDebugLoc();
-  unsigned FramePtr = Mico32::RFP;
   
   bool FP = hasFP(MF);
 
-  // Get the number of bytes to allocate from the FrameInfo
-  int NumBytes = MFI->getStackSize();
+  // Get the number of bytes allocated from the FrameInfo
+  int FrameSize = MFrmInf->getStackSize();
 
-  if (MonFI->getUsesLR()) {
-    // Restore the LR (RRA) from the preallocated stack slot.
-    int LRSpillOffset = MFI->getObjectOffset(MonFI->getLRSpillSlot())
-      +NumBytes;
-    BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
-      .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
-  }
-      
-  // if using allocas
-  // FP -> SP,   Note the FP is biased by MFI->getMaxCallFrameSize()
-  // restore FP
-  // SP +=  MFI->getStackSize() - MFI->getMaxCallFrameSize();
-  if (FP) {
-    // FP -> SP.
-    BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),Mico32::RSP)
-      .addReg(FramePtr).addImm(0);
-    // account for the FP bias from the SP
-    NumBytes -= MFI->getMaxCallFrameSize();
-    assert(NumBytes != 0 && "Should always have a frame if there is an FP use.");
-  }
-
-  if (NumBytes) {
-
+  if (FrameSize) {
     if (FP) {
-      // Restore FP from the stack, note SP has been biased by
-      // getMaxCallFrameSize() earlier.
-      int FPSpillOffset = MFI->getObjectOffset(MonFI->getFPSpillSlot()) + NumBytes;
-
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW)).addReg(Mico32::RFP)
-        .addReg(Mico32::RSP).addImm(FPSpillOffset);
+      // Restore FP (R27) from the stack.
+      int FPSpillOffset = 
+        MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
+      BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
+        .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
+    }
+  
+    if (MFuncInf->getUsesLR()) {
+      // Restore the LR (RRA) from the preallocated stack slot.
+      int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
+          +FrameSize;
+      BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
+        .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
     }
 
-    // SP +=  MFI->getStackSize() - MFI->getMaxCallFrameSize();
-    if (NumBytes < 32768) {
+    // SP +=  MFrmInf->getStackSize()
+    if (FrameSize < 32768) {
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI), Mico32::RSP)
-        .addReg(Mico32::RSP).addImm(NumBytes);
+        .addReg(Mico32::RSP).addImm(FrameSize);
     } else {
       assert( 0 && "Unimplemented - per function stack size limited to 32767 bytes.");
     }
@@ -339,18 +326,20 @@ processFunctionBeforeFrameFinalized(MachineFunction &MF) const {}
 void Mico32FrameLowering::
 processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
-  MachineFrameInfo *MFI = MF.getFrameInfo();
+  MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
   bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
   const TargetRegisterClass *RC = Mico32::GPRRegisterClass;
-  Mico32FunctionInfo *MonFI = MF.getInfo<Mico32FunctionInfo>();
+  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
 
-//   MFI->dump(MF);
+//   MFrmInf->dump(MF);
 
 // FIXME:  I think the ret always marks RA used - in which case this is wrong.
   assert(LRUsed && "See if LR is always used.  If this is a leaf I assume it will not be used.");
 	
   if (LRUsed) {
+//FIXME: check this
+//	  assert(0 && "I think offset of -4 below is wrong");
     MF.getRegInfo().setPhysRegUnused(Mico32::RRA);
     
     bool isVarArg = MF.getFunction()->isVarArg();
@@ -359,20 +348,20 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
       // CreateFixedObject allocates space relative to the SP on entry to
       // the function.  Since SP(0) is occupied by incoming arguments (or
       // whatever) we need to allocate the next slot on the stack (e.g. -4).
-      FrameIdx = MFI->CreateFixedObject(RC->getSize(), -4, true);
+      FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), -4, true);
     } else {
       assert(0 && "Test Vararg frames.");
-      FrameIdx = MFI->CreateStackObject(RC->getSize(),
+      FrameIdx = MFrmInf->CreateStackObject(RC->getSize(),
                                         RC->getAlignment(),
                                         false);
     }
-    MonFI->setUsesLR(FrameIdx);
-    MonFI->setLRSpillSlot(FrameIdx);
+    MFuncInf->setUsesLR(FrameIdx);
+    MFuncInf->setLRSpillSlot(FrameIdx);
   }
   if (RegInfo->requiresRegisterScavenging(MF)) {
     assert(0 && "Test register scavenging.");
     // Reserve a slot close to SP or frame pointer.
-    RS->setScavengingFrameIndex(MFI->CreateStackObject(RC->getSize(),
+    RS->setScavengingFrameIndex(MFrmInf->CreateStackObject(RC->getSize(),
                                                        RC->getAlignment(),
                                                        false));
   }
@@ -384,8 +373,8 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     // don't bother marking it unused.
     //MF.getRegInfo().setPhysRegUnused(Mico32::RFP);
     // FIXME: shouldn't isSS be true?  XCore says no...
-    MonFI->setFPSpillSlot(MFI->CreateFixedObject(RC->getSize(),(LRUsed)?-8:-4,
-                                                 true));
+    MFuncInf->setFPSpillSlot(MFrmInf->CreateFixedObject(RC->getSize(),
+                                                        (LRUsed)?-8:-4, true));
   }
 }
 

@@ -63,6 +63,14 @@ namespace llvm {
       // Start the numbering from where ISD NodeType finishes.
       FIRST_NUMBER = ISD::BUILTIN_OP_END,
 
+      // Get the Higher 16 bits from a 32-bit immediate.
+      // typically on a global address.
+      Hi,
+
+      // Get the Lower 16 bits from a 32-bit immediate.
+      // typically on a global address.
+      Lo,
+
       // Jump and link (call)
       JmpLink,
 
@@ -71,9 +79,6 @@ namespace llvm {
 
       // Select CC Pseudo Instruction
       Select_CC,
-
-      // Wrap up multiple types of instructions
-      Wrap,
 
       // Integer Compare
       ICmp,
