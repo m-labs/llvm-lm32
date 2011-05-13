@@ -40,7 +40,6 @@ using namespace llvm;
 
 namespace {
   class GCOVProfiler : public ModulePass {
-    bool runOnModule(Module &M);
   public:
     static char ID;
     GCOVProfiler()
@@ -57,6 +56,8 @@ namespace {
     }
 
   private:
+    bool runOnModule(Module &M);
+
     // Create the GCNO files for the Module based on DebugInfo.
     void emitGCNO(DebugInfoFinder &DIF);
 
@@ -86,7 +87,9 @@ namespace {
     // list.
     void insertCounterWriteout(DebugInfoFinder &,
                                SmallVector<std::pair<GlobalVariable *,
-                                                     uint32_t>, 8> &);
+                                                     MDNode *>, 8> &);
+
+    std::string mangleName(DICompileUnit CU, std::string NewStem);
 
     bool EmitNotes;
     bool EmitData;
@@ -137,7 +140,7 @@ namespace {
       // A GCOV string is a length, followed by a NUL, then between 0 and 3 NULs
       // padding out to the next 4-byte word. The length is measured in 4-byte
       // words including padding, not bytes of actual string.
-      return (s.size() + 5) / 4;
+      return (s.size() / 4) + 1;
     }
 
     void writeGCOVString(StringRef s) {
@@ -146,9 +149,9 @@ namespace {
       writeBytes(s.data(), s.size());
 
       // Write 1 to 4 bytes of NUL padding.
-      assert((unsigned)(5 - ((s.size() + 1) % 4)) > 0);
-      assert((unsigned)(5 - ((s.size() + 1) % 4)) <= 4);
-      writeBytes("\0\0\0\0", 5 - ((s.size() + 1) % 4));
+      assert((unsigned)(4 - (s.size() % 4)) > 0);
+      assert((unsigned)(4 - (s.size() % 4)) <= 4);
+      writeBytes("\0\0\0\0", 4 - (s.size() % 4));
     }
 
     raw_ostream *os;
@@ -258,12 +261,13 @@ namespace {
       ReturnBlock = new GCOVBlock(i++, os);
 
       writeBytes(FunctionTag, 4);
-      uint32_t BlockLen = 1 + 1 + 1 + lengthOfGCOVString(SP.getName()) +
+      uint32_t BlockLen = 1 + 1 + 1 + 1 + lengthOfGCOVString(SP.getName()) +
           1 + lengthOfGCOVString(SP.getFilename()) + 1;
       write(BlockLen);
       uint32_t Ident = reinterpret_cast<intptr_t>((MDNode*)SP);
       write(Ident);
-      write(0); // checksum
+      write(0);  // checksum #1
+      write(0);  // checksum #2
       writeGCOVString(SP.getName());
       writeGCOVString(SP.getFilename());
       write(SP.getLineNumber());
@@ -318,9 +322,25 @@ namespace {
   };
 }
 
-// Replace the stem of a file, or add one if missing.
-static std::string replaceStem(std::string OrigFilename, std::string NewStem) {
-  return (sys::path::stem(OrigFilename) + "." + NewStem).str();
+std::string GCOVProfiler::mangleName(DICompileUnit CU, std::string NewStem) {
+  if (NamedMDNode *GCov = M->getNamedMetadata("llvm.gcov")) {
+    for (int i = 0, e = GCov->getNumOperands(); i != e; ++i) {
+      MDNode *N = GCov->getOperand(i);
+      if (N->getNumOperands() != 2) continue;
+      MDString *GCovFile = dyn_cast<MDString>(N->getOperand(0));
+      MDNode *CompileUnit = dyn_cast<MDNode>(N->getOperand(1));
+      if (!GCovFile || !CompileUnit) continue;
+      if (CompileUnit == CU) {
+        SmallString<128> Filename = GCovFile->getString();
+        sys::path::replace_extension(Filename, NewStem);
+        return Filename.str();
+      }
+    }
+  }
+
+  SmallString<128> Filename = CU.getFilename();
+  sys::path::replace_extension(Filename, NewStem);
+  return sys::path::filename(Filename.str());
 }
 
 bool GCOVProfiler::runOnModule(Module &M) {
@@ -346,8 +366,8 @@ void GCOVProfiler::emitGCNO(DebugInfoFinder &DIF) {
     DICompileUnit CU(*I);
     raw_fd_ostream *&out = GcnoFiles[CU];
     std::string ErrorInfo;
-    out = new raw_fd_ostream(replaceStem(CU.getFilename(), "gcno").c_str(),
-                             ErrorInfo, raw_fd_ostream::F_Binary);
+    out = new raw_fd_ostream(mangleName(CU, "gcno").c_str(), ErrorInfo,
+                             raw_fd_ostream::F_Binary);
     out->write("oncg*404MVLL", 12);
   }
 
@@ -356,8 +376,10 @@ void GCOVProfiler::emitGCNO(DebugInfoFinder &DIF) {
     DISubprogram SP(*SPI);
     raw_fd_ostream *&os = GcnoFiles[SP.getCompileUnit()];
 
-    GCOVFunction Func(SP, os);
     Function *F = SP.getFunction();
+    if (!F) continue;
+    GCOVFunction Func(SP, os);
+
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       GCOVBlock &Block = Func.getBlock(BB);
       TerminatorInst *TI = BB->getTerminator();
@@ -397,11 +419,12 @@ bool GCOVProfiler::emitProfileArcs(DebugInfoFinder &DIF) {
   if (DIF.subprogram_begin() == DIF.subprogram_end())
     return false;
 
-  SmallVector<std::pair<GlobalVariable *, uint32_t>, 8> CountersByIdent;
+  SmallVector<std::pair<GlobalVariable *, MDNode *>, 8> CountersBySP;
   for (DebugInfoFinder::iterator SPI = DIF.subprogram_begin(),
            SPE = DIF.subprogram_end(); SPI != SPE; ++SPI) {
     DISubprogram SP(*SPI);
     Function *F = SP.getFunction();
+    if (!F) continue;
 
     unsigned Edges = 0;
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
@@ -419,8 +442,7 @@ bool GCOVProfiler::emitProfileArcs(DebugInfoFinder &DIF) {
                            GlobalValue::InternalLinkage,
                            Constant::getNullValue(CounterTy),
                            "__llvm_gcov_ctr", 0, false, 0);
-    CountersByIdent.push_back(
-        std::make_pair(Counters, reinterpret_cast<intptr_t>((MDNode*)SP)));
+    CountersBySP.push_back(std::make_pair(Counters, (MDNode*)SP));
 
     UniqueVector<BasicBlock *> ComplexEdgePreds;
     UniqueVector<BasicBlock *> ComplexEdgeSuccs;
@@ -471,7 +493,7 @@ bool GCOVProfiler::emitProfileArcs(DebugInfoFinder &DIF) {
       const Type *Int32Ty = Type::getInt32Ty(*Ctx);
       for (int i = 0, e = ComplexEdgePreds.size(); i != e; ++i) {
         IRBuilder<> Builder(ComplexEdgePreds[i+1]->getTerminator());
-        Builder.CreateStore(ConstantInt::get(Int32Ty, i+1), EdgeState);
+        Builder.CreateStore(ConstantInt::get(Int32Ty, i), EdgeState);
       }
       for (int i = 0, e = ComplexEdgeSuccs.size(); i != e; ++i) {
         // call runtime to perform increment
@@ -487,7 +509,7 @@ bool GCOVProfiler::emitProfileArcs(DebugInfoFinder &DIF) {
     }
   }
 
-  insertCounterWriteout(DIF, CountersByIdent);
+  insertCounterWriteout(DIF, CountersBySP);
 
   return true;
 }
@@ -517,7 +539,7 @@ GlobalVariable *GCOVProfiler::buildEdgeLookupTable(
   for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
     TerminatorInst *TI = BB->getTerminator();
     int Successors = isa<ReturnInst>(TI) ? 1 : TI->getNumSuccessors();
-    if (Successors && !isa<BranchInst>(TI) && !isa<ReturnInst>(TI)) {
+    if (Successors > 1 && !isa<BranchInst>(TI) && !isa<ReturnInst>(TI)) {
       for (int i = 0; i != Successors; ++i) {
         BasicBlock *Succ = TI->getSuccessor(i);
         IRBuilder<> builder(Succ);
@@ -558,7 +580,10 @@ Constant *GCOVProfiler::getIncrementIndirectCounterFunc() {
 }
 
 Constant *GCOVProfiler::getEmitFunctionFunc() {
-  const Type *Args[] = { Type::getInt32Ty(*Ctx) };
+  const Type *Args[2] = {
+    Type::getInt32Ty(*Ctx),    // uint32_t ident
+    Type::getInt8PtrTy(*Ctx),  // const char *function_name
+  };
   const FunctionType *FTy = FunctionType::get(Type::getVoidTy(*Ctx),
                                               Args, false);
   return M->getOrInsertFunction("llvm_gcda_emit_function", FTy);
@@ -594,7 +619,7 @@ GlobalVariable *GCOVProfiler::getEdgeStateValue() {
 
 void GCOVProfiler::insertCounterWriteout(
     DebugInfoFinder &DIF,
-    SmallVector<std::pair<GlobalVariable *, uint32_t>, 8> &CountersByIdent) {
+    SmallVector<std::pair<GlobalVariable *, MDNode *>, 8> &CountersBySP) {
   const FunctionType *WriteoutFTy =
       FunctionType::get(Type::getVoidTy(*Ctx), false);
   Function *WriteoutF = Function::Create(WriteoutFTy,
@@ -612,14 +637,18 @@ void GCOVProfiler::insertCounterWriteout(
   for (DebugInfoFinder::iterator CUI = DIF.compile_unit_begin(),
            CUE = DIF.compile_unit_end(); CUI != CUE; ++CUI) {
     DICompileUnit compile_unit(*CUI);
-    std::string FilenameGcda = replaceStem(compile_unit.getFilename(), "gcda");
+    std::string FilenameGcda = mangleName(compile_unit, "gcda");
     Builder.CreateCall(StartFile,
                        Builder.CreateGlobalStringPtr(FilenameGcda));
-    for (SmallVector<std::pair<GlobalVariable *, uint32_t>, 8>::iterator
-             I = CountersByIdent.begin(), E = CountersByIdent.end();
+    for (SmallVector<std::pair<GlobalVariable *, MDNode *>, 8>::iterator
+             I = CountersBySP.begin(), E = CountersBySP.end();
          I != E; ++I) {
-      Builder.CreateCall(EmitFunction, ConstantInt::get(Type::getInt32Ty(*Ctx),
-                                                        I->second));
+      DISubprogram SP(I->second);
+      intptr_t ident = reinterpret_cast<intptr_t>(I->second);
+      Builder.CreateCall2(EmitFunction,
+                          ConstantInt::get(Type::getInt32Ty(*Ctx), ident),
+                          Builder.CreateGlobalStringPtr(SP.getName()));
+                                                        
       GlobalVariable *GV = I->first;
       unsigned Arcs =
           cast<ArrayType>(GV->getType()->getElementType())->getNumElements();

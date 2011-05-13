@@ -185,6 +185,13 @@ namespace llvm {
 
     void emitPrologLabel(const MachineInstr &MI);
 
+    enum CFIMoveType {
+      CFI_M_None,
+      CFI_M_EH,
+      CFI_M_Debug
+    };
+    CFIMoveType needsCFIMoves();
+
     /// EmitConstantPool - Print to the current output stream assembly
     /// representations of the constants in the constant pool MCP. This is
     /// used to print out constants which have been "spilled to memory" by
@@ -379,6 +386,10 @@ namespace llvm {
     /// operands.
     virtual MachineLocation getDebugValueLocation(const MachineInstr *MI) const;
 
+    /// getDwarfRegOpSize - get size required to emit given machine location
+    /// using dwarf encoding.
+    virtual unsigned getDwarfRegOpSize(const MachineLocation &MLoc) const;
+
     /// getISAEncoding - Get the value for DW_AT_APPLE_isa. Zero if no isa
     /// encoding specified.
     virtual unsigned getISAEncoding() { return 0; }
@@ -390,12 +401,9 @@ namespace llvm {
     // Dwarf Lowering Routines
     //===------------------------------------------------------------------===//
 
-    /// EmitFrameMoves - Emit frame instructions to describe the layout of the
+    /// EmitCFIFrameMove - Emit frame instruction to describe the layout of the
     /// frame.
-    void EmitFrameMoves(const std::vector<MachineMove> &Moves,
-                        MCSymbol *BaseLabel, bool isEH) const;
     void EmitCFIFrameMove(const MachineMove &Move) const;
-    void EmitCFIFrameMoves(const std::vector<MachineMove> &Moves) const;
 
     //===------------------------------------------------------------------===//
     // Inline Asm Support

@@ -72,6 +72,7 @@ class RAGreedy : public MachineFunctionPass,
   MachineLoopRanges *LoopRanges;
   EdgeBundles *Bundles;
   SpillPlacement *SpillPlacer;
+  LiveDebugVariables *DebugVars;
 
   // state
   std::auto_ptr<Spiller> SpillerInstance;
@@ -920,6 +921,8 @@ void RAGreedy::splitAroundRegion(LiveInterval &VirtReg,
 
   SmallVector<unsigned, 8> IntvMap;
   SE->finish(&IntvMap);
+  DebugVars->splitRegister(VirtReg.reg, LREdit.regs());
+
   LRStage.resize(MRI->getNumVirtRegs());
   unsigned OrigBlocks = SA->getNumThroughBlocks() + SA->getUseBlocks().size();
 
@@ -1225,13 +1228,13 @@ unsigned RAGreedy::tryLocalSplit(LiveInterval &VirtReg, AllocationOrder &Order,
                               PrevSlot[SplitBefore].distance(Uses[SplitAfter]));
         // Would this split be possible to allocate?
         // Never allocate all gaps, we wouldn't be making progress.
-        float Diff = EstWeight - MaxGap;
-        DEBUG(dbgs() << " w=" << EstWeight << " d=" << Diff);
-        if (Diff > 0) {
+        DEBUG(dbgs() << " w=" << EstWeight);
+        if (EstWeight * Hysteresis >= MaxGap) {
           Shrink = false;
+          float Diff = EstWeight - MaxGap;
           if (Diff > BestDiff) {
             DEBUG(dbgs() << " (best)");
-            BestDiff = Diff;
+            BestDiff = Hysteresis * Diff;
             BestBefore = SplitBefore;
             BestAfter = SplitAfter;
           }
@@ -1284,6 +1287,7 @@ unsigned RAGreedy::tryLocalSplit(LiveInterval &VirtReg, AllocationOrder &Order,
   SlotIndex SegStop  = SE->leaveIntvAfter(Uses[BestAfter]);
   SE->useIntv(SegStart, SegStop);
   SE->finish();
+  DebugVars->splitRegister(VirtReg.reg, LREdit.regs());
   setStage(NewVRegs.begin(), NewVRegs.end(), RS_Local);
   ++NumLocalSplits;
 
@@ -1314,6 +1318,17 @@ unsigned RAGreedy::trySplit(LiveInterval &VirtReg, AllocationOrder &Order,
     return 0;
 
   SA->analyze(&VirtReg);
+
+  // FIXME: SplitAnalysis may repair broken live ranges coming from the
+  // coalescer. That may cause the range to become allocatable which means that
+  // tryRegionSplit won't be making progress. This check should be replaced with
+  // an assertion when the coalescer is fixed.
+  if (SA->didRepairRange()) {
+    // VirtReg has changed, so all cached queries are invalid.
+    invalidateVirtRegs();
+    if (unsigned PhysReg = tryAssign(VirtReg, Order, NewVRegs))
+      return PhysReg;
+  }
 
   // First try to split around a region spanning multiple blocks.
   unsigned PhysReg = tryRegionSplit(VirtReg, Order, NewVRegs);
@@ -1363,7 +1378,10 @@ unsigned RAGreedy::selectOrSplit(LiveInterval &VirtReg,
     return 0;
   }
 
-  assert(Stage < RS_Spill && "Cannot allocate after spilling");
+  // If we couldn't allocate a register from spilling, there is probably some
+  // invalid inline assembly. The base class wil report it.
+  if (Stage >= RS_Spill)
+    return ~0u;
 
   // Try splitting VirtReg or interferences.
   unsigned PhysReg = trySplit(VirtReg, Order, NewVRegs);
@@ -1402,6 +1420,7 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
   LoopRanges = &getAnalysis<MachineLoopRanges>();
   Bundles = &getAnalysis<EdgeBundles>();
   SpillPlacer = &getAnalysis<SpillPlacement>();
+  DebugVars = &getAnalysis<LiveDebugVariables>();
 
   SA.reset(new SplitAnalysis(*VRM, *LIS, *Loops));
   SE.reset(new SplitEditor(*SA, *LIS, *VRM, *DomTree));
@@ -1420,7 +1439,7 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
   }
 
   // Write out new DBG_VALUE instructions.
-  getAnalysis<LiveDebugVariables>().emitDebugValues(VRM);
+  DebugVars->emitDebugValues(VRM);
 
   // The pass output is in VirtRegMap. Release all the transient data.
   releaseMemory();

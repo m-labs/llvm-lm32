@@ -90,7 +90,7 @@ const MCExpr *MCObjectStreamer::AddValueSymbols(const MCExpr *Value) {
 }
 
 void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
-                                     bool isPCRel, unsigned AddrSpace) {
+                                     unsigned AddrSpace) {
   assert(AddrSpace == 0 && "Address space must be 0!");
   MCDataFragment *DF = getOrCreateDataFragment();
 
@@ -102,7 +102,7 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
   }
   DF->addFixup(MCFixup::Create(DF->getContents().size(),
                                Value,
-                               MCFixup::getKindForSize(Size, isPCRel)));
+                               MCFixup::getKindForSize(Size, false)));
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
@@ -119,16 +119,6 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(!SD.getFragment() && "Unexpected fragment on symbol data!");
   SD.setFragment(F);
   SD.setOffset(F->getContents().size());
-}
-
-static const MCExpr *ForceExpAbs(MCObjectStreamer *Streamer,
-                                  MCContext &Context, const MCExpr* Expr) {
- if (Context.getAsmInfo().hasAggressiveSymbolFolding())
-   return Expr;
-
- MCSymbol *ABS = Context.CreateTempSymbol();
- Streamer->EmitAssignment(ABS, Expr);
- return MCSymbolRefExpr::Create(ABS, Context);
 }
 
 void MCObjectStreamer::EmitULEB128Value(const MCExpr *Value) {
@@ -203,18 +193,6 @@ void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst) {
   getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, IF->getFixups());
   VecOS.flush();
   IF->getCode().append(Code.begin(), Code.end());
-}
-
-static const MCExpr *BuildSymbolDiff(MCContext &Context,
-                                     const MCSymbol *A, const MCSymbol *B) {
-  MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
-  const MCExpr *ARef =
-    MCSymbolRefExpr::Create(A, Variant, Context);
-  const MCExpr *BRef =
-    MCSymbolRefExpr::Create(B, Variant, Context);
-  const MCExpr *AddrDelta =
-    MCBinaryExpr::Create(MCBinaryExpr::Sub, ARef, BRef, Context);
-  return AddrDelta;
 }
 
 void MCObjectStreamer::EmitDwarfAdvanceLineAddr(int64_t LineDelta,

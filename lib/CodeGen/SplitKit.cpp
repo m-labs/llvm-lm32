@@ -30,6 +30,9 @@ using namespace llvm;
 
 STATISTIC(NumFinished, "Number of splits finished");
 STATISTIC(NumSimple,   "Number of splits that were simple");
+STATISTIC(NumCopies,   "Number of copies inserted for splitting");
+STATISTIC(NumRemats,   "Number of rematerialized defs for splitting");
+STATISTIC(NumRepairs,  "Number of invalid live ranges repaired");
 
 //===----------------------------------------------------------------------===//
 //                                 Split Analysis
@@ -51,6 +54,7 @@ void SplitAnalysis::clear() {
   UseBlocks.clear();
   ThroughBlocks.clear();
   CurLI = 0;
+  DidRepairRange = false;
 }
 
 SlotIndex SplitAnalysis::computeLastSplitPoint(unsigned Num) {
@@ -119,6 +123,8 @@ void SplitAnalysis::analyzeUses() {
   if (!calcLiveBlockInfo()) {
     // FIXME: calcLiveBlockInfo found inconsistencies in the live range.
     // I am looking at you, SimpleRegisterCoalescing!
+    DidRepairRange = true;
+    ++NumRepairs;
     DEBUG(dbgs() << "*** Fixing inconsistent live interval! ***\n");
     const_cast<LiveIntervals&>(LIS)
       .shrinkToUses(const_cast<LiveInterval*>(CurLI));
@@ -579,15 +585,22 @@ VNInfo *SplitEditor::defFromParent(unsigned RegIdx,
   SlotIndex Def;
   LiveInterval *LI = Edit->get(RegIdx);
 
+  // We may be trying to avoid interference that ends at a deleted instruction,
+  // so always begin RegIdx 0 early and all others late.
+  bool Late = RegIdx != 0;
+
   // Attempt cheap-as-a-copy rematerialization.
   LiveRangeEdit::Remat RM(ParentVNI);
   if (Edit->canRematerializeAt(RM, UseIdx, true, LIS)) {
-    Def = Edit->rematerializeAt(MBB, I, LI->reg, RM, LIS, TII, TRI);
+    Def = Edit->rematerializeAt(MBB, I, LI->reg, RM, LIS, TII, TRI, Late);
+    ++NumRemats;
   } else {
     // Can't remat, just insert a copy from parent.
     CopyMI = BuildMI(MBB, I, DebugLoc(), TII.get(TargetOpcode::COPY), LI->reg)
                .addReg(Edit->getReg());
-    Def = LIS.InsertMachineInstrInMaps(CopyMI).getDefIndex();
+    Def = LIS.getSlotIndexes()->insertMachineInstrInMaps(CopyMI, Late)
+            .getDefIndex();
+    ++NumCopies;
   }
 
   // Define the value in Reg.

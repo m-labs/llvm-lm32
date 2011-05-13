@@ -38,6 +38,12 @@ getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
     getExprForDwarfGlobalReference(GV, Mang, MMI, Encoding, Streamer);
 }
 
+MCSymbol *X8664_MachoTargetObjectFile::
+getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
+                        MachineModuleInfo *MMI) const {
+  return Mang->getSymbol(GV);
+}
+
 unsigned X8632_ELFTargetObjectFile::getPersonalityEncoding() const {
   if (TM.getRelocationModel() == Reloc::PIC_)
     return DW_EH_PE_indirect | DW_EH_PE_pcrel | DW_EH_PE_sdata4;
@@ -52,7 +58,7 @@ unsigned X8632_ELFTargetObjectFile::getLSDAEncoding() const {
     return DW_EH_PE_absptr;
 }
 
-unsigned X8632_ELFTargetObjectFile::getFDEEncoding() const {
+unsigned X8632_ELFTargetObjectFile::getFDEEncoding(bool FDE) const {
   if (TM.getRelocationModel() == Reloc::PIC_)
     return DW_EH_PE_pcrel | DW_EH_PE_sdata4;
   else
@@ -91,8 +97,14 @@ unsigned X8664_ELFTargetObjectFile::getLSDAEncoding() const {
   return DW_EH_PE_absptr;
 }
 
-unsigned X8664_ELFTargetObjectFile::getFDEEncoding() const {
-  return DW_EH_PE_pcrel | DW_EH_PE_sdata4;
+unsigned X8664_ELFTargetObjectFile::getFDEEncoding(bool CFI) const {
+  if (CFI)
+    return DW_EH_PE_pcrel | DW_EH_PE_sdata4;
+
+  if (TM.getRelocationModel() == Reloc::PIC_)
+    return DW_EH_PE_pcrel | DW_EH_PE_sdata4;
+
+  return DW_EH_PE_udata4;
 }
 
 unsigned X8664_ELFTargetObjectFile::getTTypeEncoding() const {

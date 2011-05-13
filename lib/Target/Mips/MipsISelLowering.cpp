@@ -171,17 +171,14 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setTargetDAGCombine(ISD::UDIVREM);
   setTargetDAGCombine(ISD::SETCC);
 
+  setMinFunctionAlignment(2);
+
   setStackPointerRegisterToSaveRestore(Mips::SP);
   computeRegisterProperties();
 }
 
 MVT::SimpleValueType MipsTargetLowering::getSetCCResultType(EVT VT) const {
   return MVT::i32;
-}
-
-/// getFunctionAlignment - Return the Log2 alignment of this function.
-unsigned MipsTargetLowering::getFunctionAlignment(const Function *) const {
-  return 2;
 }
 
 // SelectMadd -
@@ -1298,17 +1295,6 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
         }
         MipsFI->setGPStackOffset(LastArgStackLoc);
       }
-
-      // Reload GP value.
-      FI = MipsFI->getGPFI();
-      SDValue FIN = DAG.getFrameIndex(FI, getPointerTy());
-      SDValue GPLoad = DAG.getLoad(MVT::i32, dl, Chain, FIN,
-                                   MachinePointerInfo::getFixedStack(FI),
-                                   false, false, 0);
-      Chain = GPLoad.getValue(1);
-      Chain = DAG.getCopyToReg(Chain, dl, DAG.getRegister(Mips::GP, MVT::i32),
-                               GPLoad, SDValue(0,0));
-      InFlag = Chain.getValue(1);
   }
 
   // Create the CALLSEQ_END node.

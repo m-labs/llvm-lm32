@@ -37,7 +37,8 @@ namespace llvm {
       enum PTXVersionEnum {
         PTX_VERSION_2_0,  /*< PTX Version 2.0 */
         PTX_VERSION_2_1,  /*< PTX Version 2.1 */
-        PTX_VERSION_2_2   /*< PTX Version 2.2 */
+        PTX_VERSION_2_2,  /*< PTX Version 2.2 */
+        PTX_VERSION_2_3   /*< PTX Version 2.3 */
       };
 
       /// Shader Model supported on the target GPU.
@@ -70,6 +71,8 @@ namespace llvm {
       bool supportsPTX21() const { return PTXVersion >= PTX_VERSION_2_1; }
 
       bool supportsPTX22() const { return PTXVersion >= PTX_VERSION_2_2; }
+
+      bool supportsPTX23() const { return PTXVersion >= PTX_VERSION_2_3; }
 
       std::string ParseSubtargetFeatures(const std::string &FS,
                                          const std::string &CPU);

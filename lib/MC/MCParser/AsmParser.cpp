@@ -243,6 +243,8 @@ public:
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveStabs>(".stabs");
 
     // CFI directives.
+    AddDirectiveHandler<&GenericAsmParser::ParseDirectiveCFISections>(
+                                                               ".cfi_sections");
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveCFIStartProc>(
                                                               ".cfi_startproc");
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveCFIEndProc>(
@@ -289,6 +291,7 @@ public:
   bool ParseDirectiveLine(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveLoc(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveStabs(StringRef, SMLoc DirectiveLoc);
+  bool ParseDirectiveCFISections(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveCFIStartProc(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveCFIEndProc(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveCFIDefCfa(StringRef, SMLoc DirectiveLoc);
@@ -1348,7 +1351,7 @@ bool AsmParser::ParseAssignment(StringRef Name, bool allow_redef) {
     // FIXME: Diagnose assignment to protected identifier (e.g., register name).
     if (Sym->isUndefined() && !Sym->isUsed() && !Sym->isVariable())
       ; // Allow redefinitions of undefined symbols only used in directives.
-    else if (!Sym->isUndefined() && (!Sym->isAbsolute() || !allow_redef))
+    else if (!Sym->isUndefined() && (!Sym->isVariable() || !allow_redef))
       return Error(EqualLoc, "redefinition of '" + Name + "'");
     else if (!Sym->isVariable())
       return Error(EqualLoc, "invalid assignment to '" + Name + "'");
@@ -2263,6 +2266,39 @@ bool GenericAsmParser::ParseDirectiveLoc(StringRef, SMLoc DirectiveLoc) {
 bool GenericAsmParser::ParseDirectiveStabs(StringRef Directive,
                                            SMLoc DirectiveLoc) {
   return TokError("unsupported directive '" + Directive + "'");
+}
+
+/// ParseDirectiveCFISections
+/// ::= .cfi_sections section [, section]
+bool GenericAsmParser::ParseDirectiveCFISections(StringRef,
+                                                 SMLoc DirectiveLoc) {
+  StringRef Name;
+  bool EH = false;
+  bool Debug = false;
+
+  if (getParser().ParseIdentifier(Name))
+    return TokError("Expected an identifier");
+
+  if (Name == ".eh_frame")
+    EH = true;
+  else if (Name == ".debug_frame")
+    Debug = true;
+
+  if (getLexer().is(AsmToken::Comma)) {
+    Lex();
+
+    if (getParser().ParseIdentifier(Name))
+      return TokError("Expected an identifier");
+
+    if (Name == ".eh_frame")
+      EH = true;
+    else if (Name == ".debug_frame")
+      Debug = true;
+  }
+
+  getStreamer().EmitCFISections(EH, Debug);
+
+  return false;
 }
 
 /// ParseDirectiveCFIStartProc

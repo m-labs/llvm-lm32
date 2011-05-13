@@ -50,8 +50,8 @@ namespace llvm {
     MCStreamer(const MCStreamer&); // DO NOT IMPLEMENT
     MCStreamer &operator=(const MCStreamer&); // DO NOT IMPLEMENT
 
-    void EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
-                         bool isPCRel, unsigned AddrSpace);
+    bool EmitEHFrame;
+    bool EmitDebugFrame;
 
     std::vector<MCDwarfFrameInfo> FrameInfos;
     MCDwarfFrameInfo *getCurrentFrameInfo();
@@ -66,6 +66,14 @@ namespace llvm {
 
   protected:
     MCStreamer(MCContext &Ctx);
+
+    const MCExpr *BuildSymbolDiff(MCContext &Context, const MCSymbol *A,
+                                  const MCSymbol *B);
+
+    const MCExpr *ForceExpAbs(MCStreamer *Streamer, MCContext &Context,
+                              const MCExpr* Expr);
+
+    void EmitFrames(bool usingCFI);
 
   public:
     virtual ~MCStreamer();
@@ -183,6 +191,9 @@ namespace llvm {
     /// emitted as a label once, and symbols emitted as a label should never be
     /// used in an assignment.
     virtual void EmitLabel(MCSymbol *Symbol);
+
+    virtual void EmitEHSymAttributes(const MCSymbol *Symbol,
+                                     MCSymbol *EHSymbol);
 
     /// EmitAssemblerFlag - Note in the output the specified @p Flag
     virtual void EmitAssemblerFlag(MCAssemblerFlag Flag) = 0;
@@ -302,12 +313,9 @@ namespace llvm {
     /// @param Size - The size of the integer (in bytes) to emit. This must
     /// match a native machine width.
     virtual void EmitValueImpl(const MCExpr *Value, unsigned Size,
-                               bool isPCRel, unsigned AddrSpace) = 0;
+                               unsigned AddrSpace) = 0;
 
     void EmitValue(const MCExpr *Value, unsigned Size, unsigned AddrSpace = 0);
-
-    void EmitPCRelValue(const MCExpr *Value, unsigned Size,
-                        unsigned AddrSpace = 0);
 
     /// EmitIntValue - Special case of EmitValue that avoids the client having
     /// to pass in a MCExpr for constant integers.
@@ -337,9 +345,6 @@ namespace llvm {
     /// having to pass in a MCExpr for MCSymbols.
     void EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
                          unsigned AddrSpace = 0);
-
-    void EmitPCRelSymbolValue(const MCSymbol *Sym, unsigned Size,
-                              unsigned AddrSpace = 0);
 
     /// EmitGPRel32Value - Emit the expression @p Value into the output as a
     /// gprel32 (32-bit GP relative) value.
@@ -436,6 +441,7 @@ namespace llvm {
     void EmitDwarfSetLineAddr(int64_t LineDelta, const MCSymbol *Label,
                               int PointerSize);
 
+    virtual void EmitCFISections(bool EH, bool Debug);
     virtual void EmitCFIStartProc();
     virtual void EmitCFIEndProc();
     virtual void EmitCFIDefCfa(int64_t Register, int64_t Offset);
@@ -501,6 +507,7 @@ namespace llvm {
   MCStreamer *createAsmStreamer(MCContext &Ctx, formatted_raw_ostream &OS,
                                 bool isVerboseAsm,
                                 bool useLoc,
+                                bool useCFI,
                                 MCInstPrinter *InstPrint = 0,
                                 MCCodeEmitter *CE = 0,
                                 TargetAsmBackend *TAB = 0,

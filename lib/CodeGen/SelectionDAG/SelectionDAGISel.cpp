@@ -225,9 +225,8 @@ static bool FunctionCallsSetJmp(const Function *F) {
     "vfork",
     "getcontext"
   };
-#define NUM_RETURNS_TWICE_FNS sizeof(ReturnsTwiceFns) / sizeof(const char *)
 
-  for (unsigned I = 0; I < NUM_RETURNS_TWICE_FNS; ++I)
+  for (unsigned I = 0; I < array_lengthof(ReturnsTwiceFns); ++I)
     if (const Function *Callee = M->getFunction(ReturnsTwiceFns[I])) {
       if (!Callee->use_empty())
         for (Value::const_use_iterator
@@ -239,7 +238,6 @@ static bool FunctionCallsSetJmp(const Function *F) {
     }
 
   return false;
-#undef NUM_RETURNS_TWICE_FNS
 }
 
 /// SplitCriticalSideEffectEdges - Look for critical edges with a PHI value that

@@ -149,6 +149,7 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
     MCStreamer *S = getTarget().createAsmStreamer(*Context, Out,
                                                   getVerboseAsm(),
                                                   hasMCUseLoc(),
+                                                  hasMCUseCFI(),
                                                   InstPrinter,
                                                   MCE, TAB,
                                                   ShowMCInst);
@@ -323,7 +324,6 @@ bool LLVMTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
     PM.add(createSjLjEHPass(getTargetLowering()));
     // FALLTHROUGH
   case ExceptionHandling::DwarfCFI:
-  case ExceptionHandling::DwarfTable:
   case ExceptionHandling::ARM:
     PM.add(createDwarfEHPass(this));
     break;

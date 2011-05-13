@@ -97,10 +97,6 @@ protected:
   /// weak_definition of constant 0 for an omitted EH frame.
   bool SupportsWeakOmittedEHFrame;
   
-  /// IsFunctionEHSymbolGlobal - This flag is set to true if the ".eh" symbol
-  /// for a function should be marked .globl.
-  bool IsFunctionEHSymbolGlobal;
-  
   /// IsFunctionEHFrameSymbolPrivate - This flag is set to true if the
   /// "EH_frame" symbol for EH information should be an assembler temporary (aka
   /// private linkage, aka an L or .L label) or false if it should be a normal
@@ -119,9 +115,6 @@ public:
     Ctx = &ctx;
   }
   
-  bool isFunctionEHSymbolGlobal() const {
-    return IsFunctionEHSymbolGlobal;
-  }
   bool isFunctionEHFrameSymbolPrivate() const {
     return IsFunctionEHFrameSymbolPrivate;
   }
@@ -140,7 +133,6 @@ public:
   const MCSection *getStaticDtorSection() const { return StaticDtorSection; }
   const MCSection *getLSDASection() const { return LSDASection; }
   virtual const MCSection *getEHFrameSection() const = 0;
-  virtual MCSymbol *getPersonalityPICSymbol(StringRef Name) const;
   virtual void emitPersonalityValue(MCStreamer &Streamer,
                                     const TargetMachine &TM,
                                     const MCSymbol *Sym) const;
@@ -222,6 +214,11 @@ public:
                                  MachineModuleInfo *MMI, unsigned Encoding,
                                  MCStreamer &Streamer) const;
 
+  // getCFIPersonalitySymbol - The symbol that gets passed to .cfi_personality.
+  virtual MCSymbol *
+  getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
+                          MachineModuleInfo *MMI) const;
+
   /// 
   const MCExpr *
   getExprForDwarfReference(const MCSymbol *Sym, unsigned Encoding,
@@ -229,7 +226,7 @@ public:
   
   virtual unsigned getPersonalityEncoding() const;
   virtual unsigned getLSDAEncoding() const;
-  virtual unsigned getFDEEncoding() const;
+  virtual unsigned getFDEEncoding(bool CFI) const;
   virtual unsigned getTTypeEncoding() const;
 
 protected:

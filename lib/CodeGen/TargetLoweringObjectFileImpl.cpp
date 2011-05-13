@@ -178,15 +178,29 @@ const MCSection *TargetLoweringObjectFileELF::getEHFrameSection() const {
 }
 
 MCSymbol *
-TargetLoweringObjectFileELF::getPersonalityPICSymbol(StringRef Name) const {
-  Twine FullName = StringRef("DW.ref.") + Name;
-  return getContext().GetOrCreateSymbol(FullName);
+TargetLoweringObjectFileELF::getCFIPersonalitySymbol(const GlobalValue *GV,
+                                                     Mangler *Mang,
+                                                MachineModuleInfo *MMI) const {
+  unsigned Encoding = getPersonalityEncoding();
+  switch (Encoding & 0x70) {
+  default:
+    report_fatal_error("We do not support this DWARF encoding yet!");
+  case dwarf::DW_EH_PE_absptr:
+    return  Mang->getSymbol(GV);
+    break;
+  case dwarf::DW_EH_PE_pcrel: {
+    Twine FullName = StringRef("DW.ref.") + Mang->getSymbol(GV)->getName();
+    return getContext().GetOrCreateSymbol(FullName);
+    break;
+  }
+  }
 }
 
 void TargetLoweringObjectFileELF::emitPersonalityValue(MCStreamer &Streamer,
                                                        const TargetMachine &TM,
-                                                   const MCSymbol *Sym) const {
-  MCSymbol *Label = getPersonalityPICSymbol(Sym->getName());
+                                                       const MCSymbol *Sym) const {
+  Twine FullName = StringRef("DW.ref.") + Sym->getName();
+  MCSymbol *Label = getContext().GetOrCreateSymbol(FullName);
   Streamer.EmitSymbolAttribute(Label, MCSA_Hidden);
   Streamer.EmitSymbolAttribute(Label, MCSA_Weak);
   Twine SectionName = StringRef(".data.") + Label->getName();
@@ -470,11 +484,6 @@ getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
 
 void TargetLoweringObjectFileMachO::Initialize(MCContext &Ctx,
                                                const TargetMachine &TM) {
-  // _foo.eh symbols are currently always exported so that the linker knows
-  // about them.  This is not necessary on 10.6 and later, but it
-  // doesn't hurt anything.
-  // FIXME: I need to get this from Triple.
-  IsFunctionEHSymbolGlobal = true;
   IsFunctionEHFrameSymbolPrivate = false;
   SupportsWeakOmittedEHFrame = false;
 
@@ -834,6 +843,29 @@ getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
     getExprForDwarfGlobalReference(GV, Mang, MMI, Encoding, Streamer);
 }
 
+MCSymbol *TargetLoweringObjectFileMachO::
+getCFIPersonalitySymbol(const GlobalValue *GV, Mangler *Mang,
+                        MachineModuleInfo *MMI) const {
+  // The mach-o version of this method defaults to returning a stub reference.
+  MachineModuleInfoMachO &MachOMMI =
+    MMI->getObjFileInfo<MachineModuleInfoMachO>();
+
+  SmallString<128> Name;
+  Mang->getNameWithPrefix(Name, GV, true);
+  Name += "$non_lazy_ptr";
+
+  // Add information about the stub reference to MachOMMI so that the stub
+  // gets emitted by the asmprinter.
+  MCSymbol *SSym = getContext().GetOrCreateSymbol(Name.str());
+  MachineModuleInfoImpl::StubValueTy &StubSym = MachOMMI.getGVStubEntry(SSym);
+  if (StubSym.getPointer() == 0) {
+    MCSymbol *Sym = Mang->getSymbol(GV);
+    StubSym = MachineModuleInfoImpl::StubValueTy(Sym, !GV->hasLocalLinkage());
+  }
+
+  return SSym;
+}
+
 unsigned TargetLoweringObjectFileMachO::getPersonalityEncoding() const {
   return DW_EH_PE_indirect | DW_EH_PE_pcrel | DW_EH_PE_sdata4;
 }
@@ -842,7 +874,7 @@ unsigned TargetLoweringObjectFileMachO::getLSDAEncoding() const {
   return DW_EH_PE_pcrel;
 }
 
-unsigned TargetLoweringObjectFileMachO::getFDEEncoding() const {
+unsigned TargetLoweringObjectFileMachO::getFDEEncoding(bool CFI) const {
   return DW_EH_PE_pcrel;
 }
 

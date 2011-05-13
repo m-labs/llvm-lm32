@@ -258,15 +258,22 @@ void CompileUnit::addComplexAddress(DbgVariable *&DV, DIE *Die,
                                     unsigned Attribute,
                                     const MachineLocation &Location) {
   DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
-
-  if (Location.isReg())
-    addRegisterOp(Block, Location.getReg());
+  unsigned N = DV->getNumAddrElements();
+  unsigned i = 0;
+  if (Location.isReg()) {
+    if (N >= 2 && DV->getAddrElement(0) == DIBuilder::OpPlus) {
+      // If first address element is OpPlus then emit
+      // DW_OP_breg + Offset instead of DW_OP_reg + Offset.
+      addRegisterOffset(Block, Location.getReg(), DV->getAddrElement(1));
+      i = 2;
+    } else
+      addRegisterOp(Block, Location.getReg());
+  }
   else
     addRegisterOffset(Block, Location.getReg(), Location.getOffset());
 
-  for (unsigned i = 0, N = DV->getNumAddrElements(); i < N; ++i) {
+  for (;i < N; ++i) {
     uint64_t Element = DV->getAddrElement(i);
-
     if (Element == DIBuilder::OpPlus) {
       addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
       addUInt(Block, 0, dwarf::DW_FORM_udata, DV->getAddrElement(++i));
@@ -578,6 +585,27 @@ void CompileUnit::addType(DIE *Entity, DIType Ty) {
   Entity->addValue(dwarf::DW_AT_type, dwarf::DW_FORM_ref4, Entry);
 }
 
+/// addPubTypes - Add type for pubtypes section.
+void CompileUnit::addPubTypes(DISubprogram SP) {
+  DICompositeType SPTy = SP.getType();
+  unsigned SPTag = SPTy.getTag();
+  if (SPTag != dwarf::DW_TAG_subroutine_type)
+    return;
+
+  DIArray Args = SPTy.getTypeArray();
+  for (unsigned i = 0, e = Args.getNumElements(); i != e; ++i) {
+    DIType ATy(Args.getElement(i));
+    if (!ATy.Verify())
+      continue;
+    DICompositeType CATy = getDICompositeType(ATy);
+    if (DIDescriptor(CATy).Verify() && !CATy.getName().empty()
+        && !CATy.isForwardDecl()) {
+      if (DIEEntry *Entry = getDIEEntry(CATy))
+        addGlobalType(CATy.getName(), Entry->getEntry());
+    }
+  }
+}
+
 /// constructTypeDIE - Construct basic type die from DIBasicType.
 void CompileUnit::constructTypeDIE(DIE &Buffer, DIBasicType BTy) {
   // Get core information.
@@ -738,6 +766,10 @@ void CompileUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
       addToContextOwner(&Buffer, Context);
     }
 
+    if (CTy.isObjcClassComplete())
+      addUInt(&Buffer, dwarf::DW_AT_APPLE_objc_complete_type,
+              dwarf::DW_FORM_flag, 1);
+
     if (Tag == dwarf::DW_TAG_class_type) 
       addTemplateParams(Buffer, CTy.getTemplateParams());
 
@@ -800,6 +832,20 @@ CompileUnit::getOrCreateTemplateValueParameterDIE(DITemplateValueParameter TPV) 
   addUInt(ParamDIE, dwarf::DW_AT_const_value, dwarf::DW_FORM_udata, 
           TPV.getValue());
   return ParamDIE;
+}
+
+/// getOrCreateNameSpace - Create a DIE for DINameSpace.
+DIE *CompileUnit::getOrCreateNameSpace(DINameSpace NS) {
+  DIE *NDie = getDIE(NS);
+  if (NDie)
+    return NDie;
+  NDie = new DIE(dwarf::DW_TAG_namespace);
+  insertDIE(NS, NDie);
+  if (!NS.getName().empty())
+    addString(NDie, dwarf::DW_AT_name, dwarf::DW_FORM_string, NS.getName());
+  addSourceLine(NDie, NS);
+  addToContextOwner(NDie, NS.getContext());
+  return NDie;
 }
 
 /// constructSubrangeDIE - Construct subrange DIE from DISubrange.

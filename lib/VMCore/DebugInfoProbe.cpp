@@ -51,44 +51,27 @@ namespace llvm {
     unsigned NumDbgLineLost, NumDbgValueLost;
     std::string PassName;
     Function *TheFn;
-    std::set<unsigned> LineNos;
     std::set<MDNode *> DbgVariables;
+    std::set<Instruction *> MissingDebugLoc;
   };
 }
 
 //===----------------------------------------------------------------------===//
 // DebugInfoProbeImpl
 
-static void collect(Function &F, std::set<unsigned> &Lines) {
-  for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
-    for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); 
-         BI != BE; ++BI) {
-      const DebugLoc &DL = BI->getDebugLoc();
-      unsigned LineNo = 0;
-      if (!DL.isUnknown()) {
-        if (MDNode *N = DL.getInlinedAt(F.getContext()))
-          LineNo = DebugLoc::getFromDILocation(N).getLine();
-        else
-          LineNo = DL.getLine();
-
-        Lines.insert(LineNo);
-      }
-    }
-}
-
 /// initialize - Collect information before running an optimization pass.
 void DebugInfoProbeImpl::initialize(StringRef PName, Function &F) {
   if (!EnableDebugInfoProbe) return;
   PassName = PName;
 
-  LineNos.clear();
   DbgVariables.clear();
   TheFn = &F;
-  collect(F, LineNos);
 
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); 
          BI != BE; ++BI) {
+      if (BI->getDebugLoc().isUnknown())
+        MissingDebugLoc.insert(BI);
       if (!isa<DbgInfoIntrinsic>(BI)) continue;
       Value *Addr = NULL;
       MDNode *Node = NULL;
@@ -127,25 +110,19 @@ void DebugInfoProbeImpl::report() {
 /// must be used after initialization.
 void DebugInfoProbeImpl::finalize(Function &F) {
   if (!EnableDebugInfoProbe) return;
-  std::set<unsigned> LineNos2;
-  collect(F, LineNos2);
   assert (TheFn == &F && "Invalid function to measure!");
-
-  for (std::set<unsigned>::iterator I = LineNos.begin(),
-         E = LineNos.end(); I != E; ++I) {
-    unsigned LineNo = *I;
-    if (LineNos2.count(LineNo) == 0) {
-      DEBUG(dbgs() 
-            << "DebugInfoProbe: Losing dbg info for source line " 
-            << LineNo << "\n");
-      ++NumDbgLineLost;
-    }
-  }
 
   std::set<MDNode *>DbgVariables2;
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); 
          BI != BE; ++BI) {
+      if (BI->getDebugLoc().isUnknown() &&
+          MissingDebugLoc.count(BI) == 0) {
+        ++NumDbgLineLost;
+        DEBUG(dbgs() << "DebugInfoProbe (" << PassName << "): --- ");
+        DEBUG(BI->print(dbgs()));
+        DEBUG(dbgs() << "\n");
+      }
       if (!isa<DbgInfoIntrinsic>(BI)) continue;
       Value *Addr = NULL;
       MDNode *Node = NULL;
@@ -162,9 +139,17 @@ void DebugInfoProbeImpl::finalize(Function &F) {
 
   for (std::set<MDNode *>::iterator I = DbgVariables.begin(), 
          E = DbgVariables.end(); I != E; ++I) {
-    if (DbgVariables2.count(*I) == 0) {
-      DEBUG(dbgs() << "DebugInfoProbe: Losing dbg info for variable: ");
-      DEBUG((*I)->print(dbgs()));
+    if (DbgVariables2.count(*I) == 0 && (*I)->getNumOperands() >= 2) {
+      DEBUG(dbgs() 
+            << "DebugInfoProbe("
+            << PassName
+            << "): Losing dbg info for variable: ";
+            if (MDString *MDS = dyn_cast_or_null<MDString>(
+                (*I)->getOperand(2)))
+              dbgs() << MDS->getString();
+            else
+              dbgs() << "...";
+            dbgs() << "\n");
       ++NumDbgValueLost;
     }
   }

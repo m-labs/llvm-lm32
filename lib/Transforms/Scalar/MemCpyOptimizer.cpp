@@ -28,6 +28,7 @@
 #include "llvm/Support/IRBuilder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include <list>
 using namespace llvm;
 
@@ -299,12 +300,15 @@ void MemsetRanges::addRange(int64_t Start, int64_t Size, Value *Ptr,
 namespace {
   class MemCpyOpt : public FunctionPass {
     MemoryDependenceAnalysis *MD;
+    TargetLibraryInfo *TLI;
     const TargetData *TD;
   public:
     static char ID; // Pass identification, replacement for typeid
     MemCpyOpt() : FunctionPass(ID) {
       initializeMemCpyOptPass(*PassRegistry::getPassRegistry());
       MD = 0;
+      TLI = 0;
+      TD = 0;
     }
 
     bool runOnFunction(Function &F);
@@ -316,6 +320,7 @@ namespace {
       AU.addRequired<DominatorTree>();
       AU.addRequired<MemoryDependenceAnalysis>();
       AU.addRequired<AliasAnalysis>();
+      AU.addRequired<TargetLibraryInfo>();
       AU.addPreserved<AliasAnalysis>();
       AU.addPreserved<MemoryDependenceAnalysis>();
     }
@@ -346,6 +351,7 @@ INITIALIZE_PASS_BEGIN(MemCpyOpt, "memcpyopt", "MemCpy Optimization",
                       false, false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTree)
 INITIALIZE_PASS_DEPENDENCY(MemoryDependenceAnalysis)
+INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(MemCpyOpt, "memcpyopt", "MemCpy Optimization",
                     false, false)
@@ -453,7 +459,10 @@ Instruction *MemCpyOpt::tryMergingIntoMemset(Instruction *StartInst,
           for (unsigned i = 0, e = Range.TheStores.size(); i != e; ++i)
             dbgs() << *Range.TheStores[i] << '\n';
           dbgs() << "With: " << *AMemSet << '\n');
-    
+
+    if (!Range.TheStores.empty())
+      AMemSet->setDebugLoc(Range.TheStores[0]->getDebugLoc());
+
     // Zap all the stores.
     for (SmallVector<Instruction*, 16>::const_iterator
          SI = Range.TheStores.begin(),
@@ -804,6 +813,9 @@ bool MemCpyOpt::processMemCpy(MemCpyInst *M) {
 bool MemCpyOpt::processMemMove(MemMoveInst *M) {
   AliasAnalysis &AA = getAnalysis<AliasAnalysis>();
 
+  if (!TLI->has(LibFunc::memmove))
+    return false;
+  
   // See if the pointers alias.
   if (!AA.isNoAlias(AA.getLocationForDest(M), AA.getLocationForSource(M)))
     return false;
@@ -935,6 +947,14 @@ bool MemCpyOpt::runOnFunction(Function &F) {
   bool MadeChange = false;
   MD = &getAnalysis<MemoryDependenceAnalysis>();
   TD = getAnalysisIfAvailable<TargetData>();
+  TLI = &getAnalysis<TargetLibraryInfo>();
+  
+  // If we don't have at least memset and memcpy, there is little point of doing
+  // anything here.  These are required by a freestanding implementation, so if
+  // even they are disabled, there is no point in trying hard.
+  if (!TLI->has(LibFunc::memset) || !TLI->has(LibFunc::memcpy))
+    return false;
+  
   while (1) {
     if (!iterateOnFunction(F))
       break;

@@ -20,12 +20,36 @@
 #include <cstdlib>
 using namespace llvm;
 
-MCStreamer::MCStreamer(MCContext &Ctx) : Context(Ctx) {
+MCStreamer::MCStreamer(MCContext &Ctx) : Context(Ctx), EmitEHFrame(true),
+                                         EmitDebugFrame(false) {
   const MCSection *section = NULL;
   SectionStack.push_back(std::make_pair(section, section));
 }
 
 MCStreamer::~MCStreamer() {
+}
+
+const MCExpr *MCStreamer::BuildSymbolDiff(MCContext &Context,
+                                          const MCSymbol *A,
+                                          const MCSymbol *B) {
+  MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
+  const MCExpr *ARef =
+    MCSymbolRefExpr::Create(A, Variant, Context);
+  const MCExpr *BRef =
+    MCSymbolRefExpr::Create(B, Variant, Context);
+  const MCExpr *AddrDelta =
+    MCBinaryExpr::Create(MCBinaryExpr::Sub, ARef, BRef, Context);
+  return AddrDelta;
+}
+
+const MCExpr *MCStreamer::ForceExpAbs(MCStreamer *Streamer,
+                                      MCContext &Context, const MCExpr* Expr) {
+ if (Context.getAsmInfo().hasAggressiveSymbolFolding())
+   return Expr;
+
+ MCSymbol *ABS = Context.CreateTempSymbol();
+ Streamer->EmitAssignment(ABS, Expr);
+ return MCSymbolRefExpr::Create(ABS, Context);
 }
 
 raw_ostream &MCStreamer::GetCommentOS() {
@@ -91,28 +115,13 @@ void MCStreamer::EmitAbsValue(const MCExpr *Value, unsigned Size,
 
 void MCStreamer::EmitValue(const MCExpr *Value, unsigned Size,
                            unsigned AddrSpace) {
-  EmitValueImpl(Value, Size, false, AddrSpace);
-}
-
-void MCStreamer::EmitPCRelValue(const MCExpr *Value, unsigned Size,
-                                unsigned AddrSpace) {
-  EmitValueImpl(Value, Size, true, AddrSpace);
+  EmitValueImpl(Value, Size, AddrSpace);
 }
 
 void MCStreamer::EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
-                                 bool isPCRel, unsigned AddrSpace) {
-  EmitValueImpl(MCSymbolRefExpr::Create(Sym, getContext()), Size, isPCRel,
+                                  unsigned AddrSpace) {
+  EmitValueImpl(MCSymbolRefExpr::Create(Sym, getContext()), Size,
                 AddrSpace);
-}
-
-void MCStreamer::EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
-                                 unsigned AddrSpace) {
-  EmitSymbolValue(Sym, Size, false, AddrSpace);
-}
-
-void MCStreamer::EmitPCRelSymbolValue(const MCSymbol *Sym, unsigned Size,
-                                      unsigned AddrSpace) {
-  EmitSymbolValue(Sym, Size, true, AddrSpace);
 }
 
 void MCStreamer::EmitGPRel32Value(const MCExpr *Value) {
@@ -154,6 +163,10 @@ void MCStreamer::EnsureValidFrame() {
     report_fatal_error("No open frame");
 }
 
+void MCStreamer::EmitEHSymAttributes(const MCSymbol *Symbol,
+                                     MCSymbol *EHSymbol) {
+}
+
 void MCStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
   assert(getCurrentSection() && "Cannot emit before setting section!");
@@ -162,6 +175,12 @@ void MCStreamer::EmitLabel(MCSymbol *Symbol) {
   StringRef Prefix = getContext().getAsmInfo().getPrivateGlobalPrefix();
   if (!Symbol->getName().startswith(Prefix))
     LastNonPrivate = Symbol;
+}
+
+void MCStreamer::EmitCFISections(bool EH, bool Debug) {
+  assert(EH || Debug);
+  EmitEHFrame = EH;
+  EmitDebugFrame = Debug;
 }
 
 void MCStreamer::EmitCFIStartProc() {
@@ -344,4 +363,15 @@ void MCStreamer::EmitRawText(const Twine &T) {
   SmallString<128> Str;
   T.toVector(Str);
   EmitRawText(Str.str());
+}
+
+void MCStreamer::EmitFrames(bool usingCFI) {
+  if (!getNumFrameInfos())
+    return;
+
+  if (EmitEHFrame)
+    MCDwarfFrameEmitter::Emit(*this, usingCFI, true);
+
+  if (EmitDebugFrame)
+    MCDwarfFrameEmitter::Emit(*this, usingCFI, false);
 }

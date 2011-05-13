@@ -27,22 +27,22 @@ def imm_comp_XFORM : SDNodeXForm<imm, [{
 }]>;
 
 /// imm0_7 predicate - True if the 32-bit immediate is in the range [0,7].
-def imm0_7 : PatLeaf<(i32 imm), [{
-  return (uint32_t)N->getZExtValue() < 8;
+def imm0_7 : ImmLeaf<i32, [{
+  return Imm >= 0 && Imm < 8;
 }]>;
 def imm0_7_neg : PatLeaf<(i32 imm), [{
   return (uint32_t)-N->getZExtValue() < 8;
 }], imm_neg_XFORM>;
 
-def imm0_255 : PatLeaf<(i32 imm), [{
-  return (uint32_t)N->getZExtValue() < 256;
+def imm0_255 : ImmLeaf<i32, [{
+  return Imm >= 0 && Imm < 256;
 }]>;
 def imm0_255_comp : PatLeaf<(i32 imm), [{
   return ~((uint32_t)N->getZExtValue()) < 256;
 }]>;
 
-def imm8_255 : PatLeaf<(i32 imm), [{
-  return (uint32_t)N->getZExtValue() >= 8 && (uint32_t)N->getZExtValue() < 256;
+def imm8_255 : ImmLeaf<i32, [{
+  return Imm >= 8 && Imm < 256;
 }]>;
 def imm8_255_neg : PatLeaf<(i32 imm), [{
   unsigned Val = -N->getZExtValue();
@@ -423,10 +423,7 @@ def tPOP_RET : T1I<(outs), (ins pred:$p, reglist:$regs, variable_ops),
 // potentially appearing dead.
 let isCall = 1,
   // On non-Darwin platforms R9 is callee-saved.
-  Defs = [R0,  R1,  R2,  R3,  R12, LR,
-          D0,  D1,  D2,  D3,  D4,  D5,  D6,  D7,
-          D16, D17, D18, D19, D20, D21, D22, D23,
-          D24, D25, D26, D27, D28, D29, D30, D31, CPSR, FPSCR],
+  Defs = [R0,  R1,  R2,  R3,  R12, LR, QQQQ0, QQQQ2, QQQQ3, CPSR, FPSCR],
   Uses = [SP] in {
   // Also used for Thumb2
   def tBL  : TIx2<0b11110, 0b11, 1,
@@ -460,7 +457,11 @@ let isCall = 1,
                   "blx\t$func",
                   [(ARMtcall GPR:$func)]>,
               Requires<[IsThumb, HasV5T, IsNotDarwin]>,
-              T1Special<{1,1,1,?}>; // A6.2.3 & A8.6.24;
+              T1Special<{1,1,1,?}> { // A6.2.3 & A8.6.24;
+    bits<4> func;
+    let Inst{6-3} = func;
+    let Inst{2-0} = 0b000;
+  }
 
   // ARMv4T
   // FIXME: Should be a pseudo.
@@ -476,10 +477,7 @@ let isCall = 1,
   // On Darwin R9 is call-clobbered.
   // R7 is marked as a use to prevent frame-pointer assignments from being
   // moved above / below calls.
-  Defs = [R0,  R1,  R2,  R3,  R9,  R12, LR,
-          D0,  D1,  D2,  D3,  D4,  D5,  D6,  D7,
-          D16, D17, D18, D19, D20, D21, D22, D23,
-          D24, D25, D26, D27, D28, D29, D30, D31, CPSR, FPSCR],
+  Defs = [R0,  R1,  R2,  R3,  R9,  R12, LR, QQQQ0, QQQQ2, QQQQ3, CPSR, FPSCR],
   Uses = [R7, SP] in {
   // Also used for Thumb2
   def tBLr9 : TIx2<0b11110, 0b11, 1,
@@ -606,7 +604,7 @@ def tSVC : T1pI<(outs), (ins i32imm:$imm), IIC_Br,
 
 // The assembler uses 0xDEFE for a trap instruction.
 let isBarrier = 1, isTerminator = 1 in
-def tTRAP : TI<(outs), (ins), IIC_Br, 
+def tTRAP : TI<(outs), (ins), IIC_Br,
                "trap", [(trap)]>, Encoding16 {
   let Inst = 0xdefe;
 }
@@ -813,7 +811,7 @@ defm tLDM : thumb_ldst_mult<"ldm", IIC_iLoad_m, IIC_iLoad_mu,
 let mayStore = 1, hasExtraSrcRegAllocReq = 1 in
 defm tSTM : thumb_ldst_mult<"stm", IIC_iStore_m, IIC_iStore_mu,
                             {1,1,0,0,0,?}, 0>;
- 
+
 } // neverHasSideEffects
 
 let mayLoad = 1, Uses = [SP], Defs = [SP], hasExtraDefRegAllocReq = 1 in
@@ -1352,9 +1350,10 @@ def tLEApcrelJT : tPseudoInst<(outs tGPR:$Rd),
 // Move between coprocessor and ARM core register -- for disassembly only
 //
 
-class tMovRCopro<string opc, bit direction, dag oops, dag iops>
+class tMovRCopro<string opc, bit direction, dag oops, dag iops,
+                 list<dag> pattern>
   : T1Cop<oops, iops, !strconcat(opc, "\t$cop, $opc1, $Rt, $CRn, $CRm, $opc2"),
-          [/* For disassembly only; pattern left blank */]> {
+          pattern> {
   let Inst{27-24} = 0b1110;
   let Inst{20} = direction;
   let Inst{4} = 1;
@@ -1375,16 +1374,24 @@ class tMovRCopro<string opc, bit direction, dag oops, dag iops>
 }
 
 def tMCR : tMovRCopro<"mcr", 0 /* from ARM core register to coprocessor */,
-           (outs), (ins p_imm:$cop, i32imm:$opc1, GPR:$Rt, c_imm:$CRn,
-                        c_imm:$CRm, i32imm:$opc2)>;
+           (outs),
+           (ins p_imm:$cop, i32imm:$opc1, GPR:$Rt, c_imm:$CRn,
+                c_imm:$CRm, i32imm:$opc2),
+           [(int_arm_mcr imm:$cop, imm:$opc1, GPR:$Rt, imm:$CRn,
+                         imm:$CRm, imm:$opc2)]>;
 def tMRC : tMovRCopro<"mrc", 1 /* from coprocessor to ARM core register */,
-           (outs GPR:$Rt), (ins p_imm:$cop, i32imm:$opc1, c_imm:$CRn,
-                                c_imm:$CRm, i32imm:$opc2)>;
+           (outs GPR:$Rt),
+           (ins p_imm:$cop, i32imm:$opc1, c_imm:$CRn, c_imm:$CRm, i32imm:$opc2),
+           []>;
 
-class tMovRRCopro<string opc, bit direction>
+def : Pat<(int_arm_mrc imm:$cop, imm:$opc1, imm:$CRn, imm:$CRm, imm:$opc2),
+          (tMRC imm:$cop, imm:$opc1, imm:$CRn, imm:$CRm, imm:$opc2)>,
+          Requires<[IsThumb, HasV6T2]>;
+
+class tMovRRCopro<string opc, bit direction,
+                  list<dag> pattern = [/* For disassembly only */]>
   : T1Cop<(outs), (ins p_imm:$cop, i32imm:$opc1, GPR:$Rt, GPR:$Rt2, c_imm:$CRm),
-          !strconcat(opc, "\t$cop, $opc1, $Rt, $Rt2, $CRm"),
-          [/* For disassembly only; pattern left blank */]> {
+          !strconcat(opc, "\t$cop, $opc1, $Rt, $Rt2, $CRm"), pattern> {
   let Inst{27-24} = 0b1100;
   let Inst{23-21} = 0b010;
   let Inst{20} = direction;
@@ -1402,7 +1409,9 @@ class tMovRRCopro<string opc, bit direction>
   let Inst{3-0}   = CRm;
 }
 
-def tMCRR : tMovRRCopro<"mcrr", 0 /* from ARM core register to coprocessor */>;
+def tMCRR : tMovRRCopro<"mcrr", 0 /* from ARM core register to coprocessor */,
+                        [(int_arm_mcrr imm:$cop, imm:$opc1, GPR:$Rt, GPR:$Rt2,
+                                       imm:$CRm)]>;
 def tMRRC : tMovRRCopro<"mrrc", 1 /* from coprocessor to ARM core register */>;
 
 //===----------------------------------------------------------------------===//
@@ -1411,7 +1420,8 @@ def tMRRC : tMovRRCopro<"mrrc", 1 /* from coprocessor to ARM core register */>;
 def tCDP : T1Cop<(outs), (ins p_imm:$cop, i32imm:$opc1,
                  c_imm:$CRd, c_imm:$CRn, c_imm:$CRm, i32imm:$opc2),
                  "cdp\t$cop, $opc1, $CRd, $CRn, $CRm, $opc2",
-                 [/* For disassembly only; pattern left blank */]> {
+                 [(int_arm_cdp imm:$cop, imm:$opc1, imm:$CRd, imm:$CRn,
+                               imm:$CRm, imm:$opc2)]> {
   let Inst{27-24} = 0b1110;
 
   bits<4> opc1;
@@ -1445,7 +1455,7 @@ def tTPsoft : TIx2<0b11110, 0b11, 1, (outs), (ins), IIC_Br,
 
 //===----------------------------------------------------------------------===//
 // SJLJ Exception handling intrinsics
-// 
+//
 
 // eh_sjlj_setjmp() is an instruction sequence to store the return address and
 // save #0 in R0 for the non-longjmp case.  Since by its nature we may be coming

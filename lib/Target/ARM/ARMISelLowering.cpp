@@ -398,12 +398,6 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setLibcallCallingConv(RTLIB::UDIV_I32, CallingConv::ARM_AAPCS);
   }
 
-  // Use divmod iOS compiler-rt calls.
-  if (Subtarget->getTargetTriple().getOS() == Triple::IOS) {
-    setLibcallName(RTLIB::SDIVREM_I32, "__divmodsi4");
-    setLibcallName(RTLIB::UDIVREM_I32, "__udivmodsi4");
-  }
-
   if (Subtarget->isThumb1Only())
     addRegisterClass(MVT::i32, ARM::tGPRRegisterClass);
   else
@@ -730,6 +724,8 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   setMinStackArgumentAlignment(4);
 
   benefitFromCodePlacementOpt = true;
+
+  setMinFunctionAlignment(Subtarget->isThumb() ? 1 : 2);
 }
 
 // FIXME: It might make sense to define the representative register class as the
@@ -929,11 +925,6 @@ TargetRegisterClass *ARMTargetLowering::getRegClassFor(EVT VT) const {
 FastISel *
 ARMTargetLowering::createFastISel(FunctionLoweringInfo &funcInfo) const {
   return ARM::createFastISel(funcInfo);
-}
-
-/// getFunctionAlignment - Return the Log2 alignment of this function.
-unsigned ARMTargetLowering::getFunctionAlignment(const Function *F) const {
-  return getTargetMachine().getSubtarget<ARMSubtarget>().isThumb() ? 1 : 2;
 }
 
 /// getMaximalGlobalOffset - Returns the maximal possible offset which can
@@ -2160,7 +2151,7 @@ ARMTargetLowering::LowerEH_SJLJ_DISPATCHSETUP(SDValue Op, SelectionDAG &DAG)
   const {
   DebugLoc dl = Op.getDebugLoc();
   return DAG.getNode(ARMISD::EH_SJLJ_DISPATCHSETUP, dl, MVT::Other,
-                     Op.getOperand(0));
+                     Op.getOperand(0), Op.getOperand(1));
 }
 
 SDValue
@@ -2377,9 +2368,9 @@ ARMTargetLowering::VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
     // to their spots on the stack so that they may be loaded by deferencing
     // the result of va_next.
     AFI->setVarArgsRegSaveSize(VARegSaveSize);
-    AFI->setVarArgsFrameIndex(
-                              MFI->CreateFixedObject(VARegSaveSize,
-                                                     ArgOffset + VARegSaveSize - VARegSize,
+    AFI->setVarArgsFrameIndex(MFI->CreateFixedObject(VARegSaveSize,
+                                                     ArgOffset + VARegSaveSize
+                                                     - VARegSize,
                                                      false));
     SDValue FIN = DAG.getFrameIndex(AFI->getVarArgsFrameIndex(),
                                     getPointerTy());
@@ -2396,7 +2387,7 @@ ARMTargetLowering::VarArgStyleRegisters(CCState &CCInfo, SelectionDAG &DAG,
       SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i32);
       SDValue Store =
         DAG.getStore(Val.getValue(1), dl, Val, FIN,
-                     MachinePointerInfo::getFixedStack(AFI->getVarArgsFrameIndex()),
+                 MachinePointerInfo::getFixedStack(AFI->getVarArgsFrameIndex()),
                      false, false, 0);
       MemOps.push_back(Store);
       FIN = DAG.getNode(ISD::ADD, dl, getPointerTy(), FIN,
@@ -2525,10 +2516,11 @@ ARMTargetLowering::LowerFormalArguments(SDValue Chain,
       if (index != lastInsIndex)
         {
           ISD::ArgFlagsTy Flags = Ins[index].Flags;
-          // FIXME: For now, all byval parameter objects are marked mutable. This can be
-          // changed with more analysis.
-          // In case of tail call optimization mark all arguments mutable. Since they
-          // could be overwritten by lowering of arguments in case of a tail call.
+          // FIXME: For now, all byval parameter objects are marked mutable. 
+          // This can be changed with more analysis.
+          // In case of tail call optimization mark all arguments mutable.
+          // Since they could be overwritten by lowering of arguments in case of
+          // a tail call.
           if (Flags.isByVal()) {
             unsigned VARegSize, VARegSaveSize;
             computeRegArea(CCInfo, MF, VARegSize, VARegSaveSize);
@@ -6981,6 +6973,14 @@ bool ARMTargetLowering::isLegalICmpImmediate(int64_t Imm) const {
   if (Subtarget->isThumb2())
     return ARM_AM::getT2SOImmVal(Imm) != -1;
   return Imm >= 0 && Imm <= 255;
+}
+
+/// isLegalAddImmediate - Return true if the specified immediate is legal
+/// add immediate, that is the target has add instructions which can add
+/// a register with the immediate without having to materialize the
+/// immediate into a register.
+bool ARMTargetLowering::isLegalAddImmediate(int64_t Imm) const {
+  return ARM_AM::getSOImmVal(Imm) != -1;
 }
 
 static bool getARMIndexedAddressParts(SDNode *Ptr, EVT VT,

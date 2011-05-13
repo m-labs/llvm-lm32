@@ -164,7 +164,7 @@ unsigned FastISel::materializeRegForValue(const Value *V, MVT VT) {
     Reg =
       getRegForValue(Constant::getNullValue(TD.getIntPtrType(V->getContext())));
   } else if (const ConstantFP *CF = dyn_cast<ConstantFP>(V)) {
-    if (CF->isZero()) {
+    if (CF->isNullValue()) {
       Reg = TargetMaterializeFloatZero(CF);
     } else {
       // Try to emit the constant directly.
@@ -1032,8 +1032,13 @@ unsigned FastISel::FastEmit_ri_(MVT VT, unsigned Opcode,
   if (ResultReg != 0)
     return ResultReg;
   unsigned MaterialReg = FastEmit_i(ImmType, ImmType, ISD::Constant, Imm);
-  if (MaterialReg == 0)
-    return 0;
+  if (MaterialReg == 0) {
+    // This is a bit ugly/slow, but failing here means falling out of
+    // fast-isel, which would be very slow.
+    const IntegerType *ITy = IntegerType::get(FuncInfo.Fn->getContext(),
+                                              VT.getSizeInBits());
+    MaterialReg = getRegForValue(ConstantInt::get(ITy, Imm));
+  }
   return FastEmit_rr(VT, VT, Opcode,
                      Op0, Op0IsKill,
                      MaterialReg, /*Kill=*/true);
@@ -1086,6 +1091,30 @@ unsigned FastISel::FastEmitInst_rr(unsigned MachineInstOpcode,
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, II)
       .addReg(Op0, Op0IsKill * RegState::Kill)
       .addReg(Op1, Op1IsKill * RegState::Kill);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
+            ResultReg).addReg(II.ImplicitDefs[0]);
+  }
+  return ResultReg;
+}
+
+unsigned FastISel::FastEmitInst_rrr(unsigned MachineInstOpcode,
+                                   const TargetRegisterClass *RC,
+                                   unsigned Op0, bool Op0IsKill,
+                                   unsigned Op1, bool Op1IsKill,
+                                   unsigned Op2, bool Op2IsKill) {
+  unsigned ResultReg = createResultReg(RC);
+  const TargetInstrDesc &II = TII.get(MachineInstOpcode);
+
+  if (II.getNumDefs() >= 1)
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, II, ResultReg)
+      .addReg(Op0, Op0IsKill * RegState::Kill)
+      .addReg(Op1, Op1IsKill * RegState::Kill)
+      .addReg(Op2, Op2IsKill * RegState::Kill);
+  else {
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, II)
+      .addReg(Op0, Op0IsKill * RegState::Kill)
+      .addReg(Op1, Op1IsKill * RegState::Kill)
+      .addReg(Op2, Op2IsKill * RegState::Kill);
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
             ResultReg).addReg(II.ImplicitDefs[0]);
   }

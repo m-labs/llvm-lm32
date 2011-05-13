@@ -58,8 +58,16 @@ public:
     return TLOF->getEHFrameSection();
   }
 
-  unsigned getFDEEncoding() const {
-    return TLOF->getFDEEncoding();
+  const MCSection *getDwarfFrameSection() const {
+    return TLOF->getDwarfFrameSection();
+  }
+
+  unsigned getFDEEncoding(bool CFI) const {
+    return TLOF->getFDEEncoding(CFI);
+  }
+
+  bool isFunctionEHFrameSymbolPrivate() const {
+    return TLOF->isFunctionEHFrameSymbolPrivate();
   }
 
   unsigned getDwarfRARegNum(bool isEH) const {
