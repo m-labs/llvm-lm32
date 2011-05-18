@@ -70,8 +70,8 @@ def div4_xform : SDNodeXForm<imm, [{
   return getI32Imm(N->getZExtValue()/4);
 }]>;
 
-// A 28bit sign extened offset that is used in the instructions
-// as a 26 bit word offset. Used with the div4_xform SDNodeXForm
+// A 28 bit sign extened offset that is used in the instructions
+// as a 26 bit _word_ offset. Used with the div4_xform SDNodeXForm
 // it is converted to a 26 bit word offset. (Also modeled after XCore.)
 // isInt() is from MathExtras.h.
 def immSExt26ShftOff : PatLeaf<(imm),
@@ -153,10 +153,9 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 
 
 // Addressing modes.
-// Note SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp.
+// Note: SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp.
 // See the maillist thread "Using frameindex in a pattern",
 // "ComplexPattern in child ISel nodes",
-// SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp
 //
 // From TargetSelectionDAG.td:
 // Complex patterns, e.g. X86 addressing mode, requires pattern matching code in
@@ -177,7 +176,6 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 // select in addition to the ADDRri operands.  If it's removed the LEA doesn't
 // work because no select is generated for frameindex.
 //
-//  The following I think is not quite right:
 // If the node is of the type [frameindex] and "SelectAddrRegImm" returns true
 // then the pattern is matched.  SelectAddrRegImm returns the number of operands
 // specified, 2 in this case, these 2 operands are then passed as the arguments
@@ -187,7 +185,6 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 // since load and store instructions from stack used it.
 // From MBlaze:
 def ADDRri : ComplexPattern<i32, 2, "SelectAddrRegImm", [frameindex], []>;
-def ADDRrr : ComplexPattern<i32, 2, "SelectAddrRegReg", [], []>;
 
 // Address operand
 // ADDRri addressing _mode_ corresponds to MEMri _operands_.
@@ -244,13 +241,6 @@ class ArithNRR<bits<6> op, string instr_asm, SDNode OpNode,
                  !strconcat(instr_asm, " $dst, $b, $c"),
                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
 
-// Fragment version of RR instruction with not in pattern.
-class ArithFNRR<bits<6> op, string instr_asm, PatFrag OpNode,
-               InstrItinClass itin> :
-              TRR<op, (outs GPR:$dst), (ins GPR:$b, GPR:$c),
-                  !strconcat(instr_asm, " $dst, $b, $c"),
-                  [(set GPR:$dst, (not (OpNode GPR:$b, GPR:$c)))], itin>;
-
 // RI instruction with 16bit zero extended immediate.
 class ArithRIz<bits<6> op, string instr_asm, SDNode OpNode,
                InstrItinClass itin> :
@@ -278,14 +268,6 @@ class ArithNRIz<bits<6> op, string instr_asm, SDNode OpNode,
                    !strconcat(instr_asm, " $dst, $b, $c"),
                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
                    itin>;
-
-// Fragment version of ArithRIz with not in pattern.
-class ArithFNRIz<bits<6> op, string instr_asm, PatFrag OpNode,
-                 InstrItinClass itin> :
-                TRI<op, (outs GPR:$dst), (ins GPR:$b, uimm16:$c),
-                    !strconcat(instr_asm, " $dst, $b, $c"),
-                    [(set GPR:$dst, (not (OpNode GPR:$b, immZExt16:$c)))], 
-                    itin>;
 
 // RI instruction with 16bit sign extended immediate.
 class ArithRIs<bits<6> op, string instr_asm, SDNode OpNode,
@@ -326,50 +308,13 @@ class LoadM<bits<6> op, string instr_asm, PatFrag OpNode> :
                [(set (i32 GPR:$dst), (OpNode ADDRri:$addr))], IILoad>;
 
 class StoreM<bits<6> op, string instr_asm, PatFrag OpNode> :
-            TRI<op, (outs), (ins MEMri:$addr, GPR:$dst),
-                !strconcat(instr_asm, " $addr, $dst"),
-                [(OpNode (i32 GPR:$dst), ADDRri:$addr)], IIStore>;
+            TRI<op, (outs), (ins GPR:$src, MEMri:$addr),
+                !strconcat(instr_asm, " $addr, $src"),
+                [(OpNode (i32 GPR:$src), ADDRri:$addr)], IIStore>;
 
 //===----------------------------------------------------------------------===//
-// Branch Instruction Formats
+// Call (Branch and Link) Instructions and Patterns
 //===----------------------------------------------------------------------===//
-//class Branch<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-//             TA<op, flags, (outs), (ins GPR:$target),
-//                !strconcat(instr_asm, "   $target"),
-//                [], IIBranch> {
-//  let rd = 0x0;
-//  let ra = br;
-//  let Form = FCCR;
-//}
-//
-//class BranchI<bits<6> op, bits<5> br, string instr_asm> :
-//              TB<op, (outs), (ins brtarget:$target),
-//                 !strconcat(instr_asm, "   $target"),
-//                 [], IIBranch> {
-//  let rd = 0;
-//  let ra = br;
-//  let Form = FCCI;
-//}
-//
-////===----------------------------------------------------------------------===//
-//// Branch and Link Instruction Formats
-////===----------------------------------------------------------------------===//
-
-// The is actually an alias for "b r29".
-let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [RRA] in {
-  let ra = RRA.Num in
-    def RET: TBR<0x30, (outs), (ins), 
-		"ret", [(RetFlag)], IICall>;
-}
-
-// Treat this as call intinerary since it's always 4 cycles.
-// FIXME: Is hasCtrlDep needed? Not sure what it does...
-// Note the GPR can not be r30(ea) or R31(ba) aka ERET/BRET but since 
-// the allocator is not allowed to use r30 or r31 we don't do anything special.
-let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
-  def B : TBR<0x30, (outs), (ins GPR:$dst),
-              "b       $dst", [(brind GPR:$dst)], IICall>;
-}
 
 // FIXME: Note that Monarch adds registers to the end
 // of the CALL operand list so they are known live into the call.
@@ -399,44 +344,53 @@ def : Pat<(Mico32Call immSExt26ShftOff:$target),
             (CALLI (div4_xform immSExt26ShftOff:$target))>;
 
 
+//===----------------------------------------------------------------------===//
+// Branch and Return Instructions and Patterns
+//===----------------------------------------------------------------------===//
 
+// Treat this as call intinerary since it's always 4 cycles.
+// FIXME: Is hasCtrlDep needed? Not sure what it does...
+// Note the GPR can not be r30(ea) or R31(ba) aka ERET/BRET but since 
+// the allocator is not allowed to use r30 or r31 we don't do anything special.
+let isBranch = 1, isIndirectBranch=1,
+    isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
+  def B : TBR<0x30, (outs), (ins GPR:$dst),
+              "b       $dst",
+              [(brind GPR:$dst)], IICall>;
+}
 
-//class BranchL<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-//              TA<op, flags, (outs), (ins GPR:$link, GPR:$target, variable_ops),
-//                 !strconcat(instr_asm, "   $link, $target"),
-//                 [], IIBranch> {
-//  let ra = br;
-//  let Form = FRCR;
-//}
-//
-//class BranchLI<bits<6> op, bits<5> br, string instr_asm> :
-//               TB<op, (outs), (ins GPR:$link, calltarget:$target, variable_ops),
-//                  !strconcat(instr_asm, "   $link, $target"),
-//                  [], IIBranch> {
-//  let ra = br;
-//  let Form = FRCI;
-//}
-//
-////===----------------------------------------------------------------------===//
-//// Conditional Branch Instruction Formats
-////===----------------------------------------------------------------------===//
-//class BranchC<bits<6> op, bits<5> br, bits<11> flags, string instr_asm> :
-//              TA<op, flags, (outs),
-//                 (ins GPR:$a, GPR:$b),
-//                 !strconcat(instr_asm, "   $a, $b"),
-//                 [], IIBranch> {
-//  let rd = br;
-//  let Form = FCRR;
-//}
-//
-//class BranchCI<bits<6> op, bits<5> br, string instr_asm> :
-//               TB<op, (outs), (ins GPR:$a, brtarget:$offset),
-//                  !strconcat(instr_asm, "   $a, $offset"),
-//                  [], IIBranch> {
-//  let rd = br;
-//  let Form = FCRI;
-//}
-//
+// The is actually an alias for "b r29".
+let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [RRA] in {
+  let ra = RRA.Num in
+    def RET: TBR<0x30, (outs), (ins), 
+		 "ret",
+                 [(RetFlag)], IICall>;
+}
+
+// FIXME: Is hasCtrlDep needed? Not sure what it does...
+let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
+
+  def BI : TI<0x38, (outs), (ins brtarget:$target),
+              "bi       $target",
+              [(br bb:$target)], IICall>;
+
+  // RI instruction with 16 bit sign extended immediate. The
+  //FIXME: Need to account for shift?
+  // 16 bit immediate is shifted left 2 bits to form a 16 bit word offset.
+  // This is based on Mips.
+  class CBranch<bits<6> op, string instr_asm, PatFrag cond_op> : 
+                TRI<op, (outs), (ins GPR:$a, GPR:$b, brtarget:$offset),
+                    !strconcat(instr_asm, " $a, $b, $offset"),
+                    [(brcond (cond_op GPR:$a, GPR:$b), bb:$offset)],
+                    IIBranch>;
+}
+
+def BE     : CBranch<0x11, "be      ", seteq>;
+def BG     : CBranch<0x12, "bg      ", setgt>;
+def BGE    : CBranch<0x13, "bg      ", setge>;
+def BGEU   : CBranch<0x14, "bgeu    ", setuge>;
+def BGU    : CBranch<0x15, "bgu     ", setugt>;
+def BNE    : CBranch<0x17, "bne     ", setne>;
 
 //===----------------------------------------------------------------------===//
 // Mico32 arithmetic instructions
@@ -538,14 +492,14 @@ def CMPGI   : ArithFRIs<0x1a, "cmpgi   ", setgt, IICmp>;
 def CMPGEI  : ArithFRIs<0x1b, "cmpgei  ", setge, IICmp>;
 def CMPGEUI : ArithFRIz<0x1c, "cmpgeui ", setuge, IICmp>;
 def CMPGUI  : ArithFRIz<0x1d, "cmpgui  ", setugt, IICmp>;
-def CMPNEI  : ArithFNRIz<0x1f,"cmpnei  ", seteq, IICmp>;  // (not (seteq ...))
+def CMPNEI  : ArithFRIs<0x1f, "cmpnei  ", setne, IICmp>;
 
 def CMPE    : ArithFRR<0x39, "cmpe    ", seteq, IICmp>;
 def CMPG    : ArithFRR<0x3a, "cmpg    ", setgt, IICmp>;
 def CMPGE   : ArithFRR<0x3b, "cmpge   ", setge, IICmp>;
 def CMPGEU  : ArithFRR<0x3c, "cmpgeu  ", setuge, IICmp>;
 def CMPGU   : ArithFRR<0x3d, "cmpgu   ", setugt, IICmp>;
-def CMPNE   : ArithFNRR<0x1f,"cmpne   ", seteq, IICmp>;  // (not (seteq ...))
+def CMPNE   : ArithFRR<0x3f, "cmpne   ", setne, IICmp>;
 
 //===----------------------------------------------------------------------===//
 // MBlaze branch instructions

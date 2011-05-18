@@ -179,7 +179,7 @@ emitPrologue(MachineFunction &MF) const {
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
         +FrameSize;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
-        .addReg(Mico32::RSP).addImm(LRSpillOffset).addReg(Mico32::RRA);
+        .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
       MBB.addLiveIn(Mico32::RRA);
       
       if (emitFrameMoves) {
@@ -198,7 +198,7 @@ emitPrologue(MachineFunction &MF) const {
         MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
   
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
-        .addReg(Mico32::RSP).addImm(FPSpillOffset).addReg(Mico32::RFP);
+        .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
   
       // RFP is live-in. It is killed at the spill.
       MBB.addLiveIn(Mico32::RFP);
@@ -328,15 +328,27 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
-  bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
   const TargetRegisterClass *RC = Mico32::GPRRegisterClass;
   Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
+  const bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
+  const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);
 
-//   MFrmInf->dump(MF);
 
-// FIXME:  I think the ret always marks RA used - in which case this is wrong.
-  assert(LRUsed && "See if LR is always used.  If this is a leaf I assume it will not be used.");
+#ifndef NDEBUG
+  // MFrmInf->dump(MF);
+  // Get the frame size.
+  int FrameSize = MFrmInf->getStackSize();
+  assert(FrameSize%4 == 0 && 
+         "MonarchFrameLowering::emitPrologue Misaligned frame size");
+
+  assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
+         "we should have a frame if LR is used.");
+  assert((DisableFramePointerElim(MF) || (hasFP && FrameSize) || !hasFP) &&
+         "we should have a frame if FP is used.");
+#endif
+
 	
+  // LR can be optimized out prior to now:
   if (LRUsed) {
 //FIXME: check this
 //	  assert(0 && "I think offset of -4 below is wrong");
@@ -365,8 +377,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                                        RC->getAlignment(),
                                                        false));
   }
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
-  if (TFI->hasFP(MF)) {
+  if (hasFP) {
     // FP is a callee save register.
     // This needs saving / restoring in the epilogue / prologue.
     // Supposedly FP is marked live-in and is killed at the spill. So

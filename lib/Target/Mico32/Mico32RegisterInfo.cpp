@@ -173,7 +173,8 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "FrameIndex         : " << FrameIndex << "\n");
   DEBUG(dbgs() << "FrameOffset        : " << Offset << "\n");
   DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
-  DEBUG(dbgs() << "FPreg              : " << FPReg << "\n");
+  DEBUG(dbgs() << "FPreg              : "
+               << ((Mico32::RFP == FPReg) ? "FP" : "SP") << "\n");
   DEBUG(dbgs() << "FPbias             : " << FPbias << "\n");
   DEBUG(dbgs() << "getImm()           : "
                <<  MI.getOperand(i + 1).getImm() << "\n");
@@ -182,7 +183,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
 // DEBUG(dbgs() << "isLiveIn           : "
 //               << MFuncInf->isLiveIn(FrameIndex) << "\n");
   DEBUG(dbgs() << "isSpill            : "
-               << MFrmInf->isSpillSlotObjectIndex(FrameIndex));
+               << MFrmInf->isSpillSlotObjectIndex(FrameIndex) << "\n");
 #endif
 
   Offset += StackSize - FPbias;
@@ -213,6 +214,12 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   } else {
     assert( 0 && "Unimplemented - frame index limited to 32767 byte offset.");
   }
+  DEBUG(errs() << "<--------->\n");
+  DEBUG(errs() << "<--RESULT->\n");
+DEBUG(MI.print(errs()));
+  DEBUG(errs() << "<--------->\n");
+  DEBUG(errs() << "<--------->\n");
+
   return;
 }
 

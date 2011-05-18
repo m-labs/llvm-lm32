@@ -92,13 +92,13 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   // Check if unsigned div/mod are enabled.
   if (!Subtarget->hasDIV()) {
     setOperationAction(ISD::UDIV, MVT::i32, Expand);
-    setOperationAction(ISD::UREM,    MVT::i32, Expand);
+    setOperationAction(ISD::UREM, MVT::i32, Expand);
   }
 
   // Check if signed div/mod are enabled.
   if (!Subtarget->hasSDIV()) {
     setOperationAction(ISD::SDIV, MVT::i32, Expand);
-    setOperationAction(ISD::SREM,    MVT::i32, Expand);
+    setOperationAction(ISD::SREM, MVT::i32, Expand);
   }
 
   // Mico32 doesn't have a DIV with REM instruction.
@@ -130,14 +130,19 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
 
-  // Used by legalize types to correctly generate the setcc result.
+//FIXME: WHAT is this?
+  // MBlaze: Used by legalize types to correctly generate the setcc result.
   // Without this, every float setcc comes with a AND/OR with the result,
   // we don't want this, since the fpcmp result goes to a flag register,
   // which is used implicitly by brcond and select operations.
-//FIXME: WHAT is this?
   AddPromotedToType(ISD::SETCC, MVT::i1, MVT::i32);
-  AddPromotedToType(ISD::SELECT, MVT::i1, MVT::i32);
-  AddPromotedToType(ISD::SELECT_CC, MVT::i1, MVT::i32);
+//  AddPromotedToType(ISD::SELECT, MVT::i1, MVT::i32);
+//  AddPromotedToType(ISD::SELECT_CC, MVT::i1, MVT::i32);
+
+  setOperationAction(ISD::SETCC,            MVT::i64, Expand);
+  setOperationAction(ISD::SETCC,            MVT::f32, Expand);
+  setOperationAction(ISD::SETCC,            MVT::f64, Expand);
+
 
   // Mico32 Custom Operations
   // Custom legalize GlobalAddress nodes into LO/HI parts.
@@ -159,7 +164,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   // Operations not directly supported by Mico32.
 // FIXME: need to handle branches
 //  setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
-//  setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
+  setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
   // Operations not directly supported by Mico32.
   setOperationAction(ISD::SIGN_EXTEND_INREG,  MVT::i1,    Expand);
   setOperationAction(ISD::ROTL,               MVT::i32,   Expand);
@@ -742,6 +747,11 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     // MERGE_VALUES node is processed it causes the load to get reprocessed.
     // So we ensure the alignment is valid here instead of hanging.
     assert(((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->getAlignment() == 4) && "invalid memory access alignment");
+  DEBUG(errs() << "<-LowerFormalArguments-------->\n");
+  DEBUG(errs() << "<--RESULT->\n");
+DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
+  DEBUG(errs() << "<--------->\n");
+  DEBUG(errs() << "<--------->\n");
 
       InVals.push_back(lod);
     }
