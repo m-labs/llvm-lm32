@@ -310,7 +310,7 @@ protected:
   /// the CFG.
   void FastEmitBranch(MachineBasicBlock *MBB, DebugLoc DL);
 
-  unsigned UpdateValueMap(const Value* I, unsigned Reg);
+  void UpdateValueMap(const Value* I, unsigned Reg, unsigned NumRegs = 1);
 
   unsigned createResultReg(const TargetRegisterClass *RC);
 
@@ -342,6 +342,8 @@ private:
   bool SelectBitCast(const User *I);
 
   bool SelectCast(const User *I, unsigned Opcode);
+
+  bool SelectExtractValue(const User *I);
 
   /// HandlePHINodesInSuccessorBlocks - Handle PHI nodes in successor blocks.
   /// Emit code to ensure constants are copied into registers when needed.

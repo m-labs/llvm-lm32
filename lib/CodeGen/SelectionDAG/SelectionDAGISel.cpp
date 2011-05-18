@@ -55,6 +55,7 @@
 using namespace llvm;
 
 STATISTIC(NumFastIselFailures, "Number of instructions fast isel failed on");
+STATISTIC(NumFastIselSuccess, "Number of instructions fast isel selected");
 STATISTIC(NumFastIselBlocks, "Number of blocks selected entirely by fast isel");
 STATISTIC(NumDAGBlocks, "Number of blocks selected using DAG");
 STATISTIC(NumDAGIselRetries,"Number of times dag isel has to try another path");
@@ -208,38 +209,6 @@ void SelectionDAGISel::getAnalysisUsage(AnalysisUsage &AU) const {
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 
-/// FunctionCallsSetJmp - Return true if the function has a call to setjmp or
-/// other function that gcc recognizes as "returning twice". This is used to
-/// limit code-gen optimizations on the machine function.
-///
-/// FIXME: Remove after <rdar://problem/8031714> is fixed.
-static bool FunctionCallsSetJmp(const Function *F) {
-  const Module *M = F->getParent();
-  static const char *ReturnsTwiceFns[] = {
-    "_setjmp",
-    "setjmp",
-    "sigsetjmp",
-    "setjmp_syscall",
-    "savectx",
-    "qsetjmp",
-    "vfork",
-    "getcontext"
-  };
-
-  for (unsigned I = 0; I < array_lengthof(ReturnsTwiceFns); ++I)
-    if (const Function *Callee = M->getFunction(ReturnsTwiceFns[I])) {
-      if (!Callee->use_empty())
-        for (Value::const_use_iterator
-               I = Callee->use_begin(), E = Callee->use_end();
-             I != E; ++I)
-          if (const CallInst *CI = dyn_cast<CallInst>(*I))
-            if (CI->getParent()->getParent() == F)
-              return true;
-    }
-
-  return false;
-}
-
 /// SplitCriticalSideEffectEdges - Look for critical edges with a PHI value that
 /// may trap on it.  In this case we have to split the edge so that the path
 /// through the predecessor block that doesn't go to the phi block doesn't
@@ -390,7 +359,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   }
 
   // Determine if there is a call to setjmp in the machine function.
-  MF->setCallsSetJmp(FunctionCallsSetJmp(&Fn));
+  MF->setCallsSetJmp(Fn.callsFunctionThatReturnsTwice());
 
   // Replace forward-declared registers with the registers containing
   // the desired value.
@@ -568,7 +537,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
 
   {
     NamedRegionTimer T("DAG Legalization", GroupName, TimePassesIsEnabled);
-    CurDAG->Legalize(OptLevel);
+    CurDAG->Legalize();
   }
 
   DEBUG(dbgs() << "Legalized selection DAG: BB#" << BlockNumber
@@ -959,6 +928,7 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
 
         // Try to select the instruction with FastISel.
         if (FastIS->SelectInstruction(Inst)) {
+          ++NumFastIselSuccess;
           // If fast isel succeeded, skip over all the folded instructions, and
           // then see if there is a load right before the selected instructions.
           // Try to fold the load if so.
@@ -1002,9 +972,14 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
           continue;
         }
 
-        // Otherwise, give up on FastISel for the rest of the block.
-        // For now, be a little lenient about non-branch terminators.
-        if (!isa<TerminatorInst>(Inst) || isa<BranchInst>(Inst)) {
+        if (isa<TerminatorInst>(Inst) && !isa<BranchInst>(Inst)) {
+          // Don't abort, and use a different message for terminator misses.
+          ++NumFastIselFailures;
+          if (EnableFastISelVerbose || EnableFastISelAbort) {
+            dbgs() << "FastISel missed terminator: ";
+            Inst->dump();
+          }
+        } else {
           ++NumFastIselFailures;
           if (EnableFastISelVerbose || EnableFastISelAbort) {
             dbgs() << "FastISel miss: ";

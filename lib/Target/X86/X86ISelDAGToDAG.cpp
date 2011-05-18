@@ -189,7 +189,7 @@ namespace {
     SDNode *Select(SDNode *N);
     SDNode *SelectAtomic64(SDNode *Node, unsigned Opc);
     SDNode *SelectAtomicLoadAdd(SDNode *Node, EVT NVT);
-    SDNode *SelectAtomicLoadOr(SDNode *Node, EVT NVT);
+    SDNode *SelectAtomicLoadArith(SDNode *Node, EVT NVT);
 
     bool MatchLoadInAddress(LoadSDNode *N, X86ISelAddressMode &AM);
     bool MatchWrapper(SDValue N, X86ISelAddressMode &AM);
@@ -1482,7 +1482,29 @@ SDNode *X86DAGToDAGISel::SelectAtomicLoadAdd(SDNode *Node, EVT NVT) {
   }
 }
 
-static const unsigned int AtomicOpcTbl[1][11] = {
+enum AtomicOpc {
+  OR,
+  AND,
+  XOR,
+  AtomicOpcEnd
+};
+
+enum AtomicSz {
+  ConstantI8,
+  I8,
+  SextConstantI16,
+  ConstantI16,
+  I16,
+  SextConstantI32,
+  ConstantI32,
+  I32,
+  SextConstantI64,
+  ConstantI64,
+  I64,
+  AtomicSzEnd
+};
+
+static const unsigned int AtomicOpcTbl[AtomicOpcEnd][AtomicSzEnd] = {
   {
     X86::LOCK_OR8mi,
     X86::LOCK_OR8mr,
@@ -1495,17 +1517,43 @@ static const unsigned int AtomicOpcTbl[1][11] = {
     X86::LOCK_OR64mi8,
     X86::LOCK_OR64mi32,
     X86::LOCK_OR64mr
+  },
+  {
+    X86::LOCK_AND8mi,
+    X86::LOCK_AND8mr,
+    X86::LOCK_AND16mi8,
+    X86::LOCK_AND16mi,
+    X86::LOCK_AND16mr,
+    X86::LOCK_AND32mi8,
+    X86::LOCK_AND32mi,
+    X86::LOCK_AND32mr,
+    X86::LOCK_AND64mi8,
+    X86::LOCK_AND64mi32,
+    X86::LOCK_AND64mr
+  },
+  {
+    X86::LOCK_XOR8mi,
+    X86::LOCK_XOR8mr,
+    X86::LOCK_XOR16mi8,
+    X86::LOCK_XOR16mi,
+    X86::LOCK_XOR16mr,
+    X86::LOCK_XOR32mi8,
+    X86::LOCK_XOR32mi,
+    X86::LOCK_XOR32mr,
+    X86::LOCK_XOR64mi8,
+    X86::LOCK_XOR64mi32,
+    X86::LOCK_XOR64mr
   }
 };
 
-SDNode *X86DAGToDAGISel::SelectAtomicLoadOr(SDNode *Node, EVT NVT) {
+SDNode *X86DAGToDAGISel::SelectAtomicLoadArith(SDNode *Node, EVT NVT) {
   if (Node->hasAnyUseOfValue(0))
     return 0;
   
-  // Optimize common patterns for __sync_or_and_fetch  where the result
-  // is not used. This allows us to use the "lock" version of the or
-  // instruction.
-  // FIXME: Same as for 'add' and 'sub'.
+  // Optimize common patterns for __sync_or_and_fetch and similar arith
+  // operations where the result is not used. This allows us to use the "lock"
+  // version of the arithmetic instruction.
+  // FIXME: Same as for 'add' and 'sub', try to merge those down here.
   SDValue Chain = Node->getOperand(0);
   SDValue Ptr = Node->getOperand(1);
   SDValue Val = Node->getOperand(2);
@@ -1513,6 +1561,22 @@ SDNode *X86DAGToDAGISel::SelectAtomicLoadOr(SDNode *Node, EVT NVT) {
   if (!SelectAddr(Node, Ptr, Tmp0, Tmp1, Tmp2, Tmp3, Tmp4))
     return 0;
 
+  // Which index into the table.
+  enum AtomicOpc Op;
+  switch (Node->getOpcode()) {
+    case ISD::ATOMIC_LOAD_OR:
+      Op = OR;
+      break;
+    case ISD::ATOMIC_LOAD_AND:
+      Op = AND;
+      break;
+    case ISD::ATOMIC_LOAD_XOR:
+      Op = XOR;
+      break;
+    default:
+      return 0;
+  }
+  
   bool isCN = false;
   ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Val);
   if (CN) {
@@ -1520,43 +1584,41 @@ SDNode *X86DAGToDAGISel::SelectAtomicLoadOr(SDNode *Node, EVT NVT) {
     Val = CurDAG->getTargetConstant(CN->getSExtValue(), NVT);
   }
   
-  // Which index into the table.
-  unsigned index = 0;  
   unsigned Opc = 0;
   switch (NVT.getSimpleVT().SimpleTy) {
     default: return 0;
     case MVT::i8:
       if (isCN)
-        Opc = AtomicOpcTbl[index][0];
+        Opc = AtomicOpcTbl[Op][ConstantI8];
       else
-        Opc = AtomicOpcTbl[index][1];
+        Opc = AtomicOpcTbl[Op][I8];
       break;
     case MVT::i16:
       if (isCN) {
         if (immSext8(Val.getNode()))
-          Opc = AtomicOpcTbl[index][2];
+          Opc = AtomicOpcTbl[Op][SextConstantI16];
         else
-          Opc = AtomicOpcTbl[index][3];
+          Opc = AtomicOpcTbl[Op][ConstantI16];
       } else
-        Opc = AtomicOpcTbl[index][4];
+        Opc = AtomicOpcTbl[Op][I16];
       break;
     case MVT::i32:
       if (isCN) {
         if (immSext8(Val.getNode()))
-          Opc = AtomicOpcTbl[index][5];
+          Opc = AtomicOpcTbl[Op][SextConstantI32];
         else
-          Opc = AtomicOpcTbl[index][6];
+          Opc = AtomicOpcTbl[Op][ConstantI32];
       } else
-        Opc = AtomicOpcTbl[index][7];
+        Opc = AtomicOpcTbl[Op][I32];
       break;
     case MVT::i64:
       if (isCN) {
         if (immSext8(Val.getNode()))
-          Opc = AtomicOpcTbl[index][8];
+          Opc = AtomicOpcTbl[Op][SextConstantI64];
         else if (i64immSExt32(Val.getNode()))
-          Opc = AtomicOpcTbl[index][9];
+          Opc = AtomicOpcTbl[Op][ConstantI64];
       } else
-        Opc = AtomicOpcTbl[index][10];
+        Opc = AtomicOpcTbl[Op][I64];
       break;
   }
   
@@ -1673,8 +1735,10 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
       return RetVal;
     break;
   }
+  case ISD::ATOMIC_LOAD_XOR:
+  case ISD::ATOMIC_LOAD_AND:
   case ISD::ATOMIC_LOAD_OR: {
-    SDNode *RetVal = SelectAtomicLoadOr(Node, NVT);
+    SDNode *RetVal = SelectAtomicLoadArith(Node, NVT);
     if (RetVal)
       return RetVal;
     break;

@@ -1527,20 +1527,6 @@ X86TargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
         Val = DAG.getNode(ISD::FP_ROUND, dl, VA.getValVT(), Val,
                           // This truncation won't change the value.
                           DAG.getIntPtrConstant(1));
-    } else if (Is64Bit && CopyVT.isVector() && CopyVT.getSizeInBits() == 64) {
-      // For x86-64, MMX values are returned in XMM0 / XMM1 except for v1i64.
-      if (VA.getLocReg() == X86::XMM0 || VA.getLocReg() == X86::XMM1) {
-        Chain = DAG.getCopyFromReg(Chain, dl, VA.getLocReg(),
-                                   MVT::v2i64, InFlag).getValue(1);
-        Val = Chain.getValue(0);
-        Val = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::i64,
-                          Val, DAG.getConstant(0, MVT::i64));
-      } else {
-        Chain = DAG.getCopyFromReg(Chain, dl, VA.getLocReg(),
-                                   MVT::i64, InFlag).getValue(1);
-        Val = Chain.getValue(0);
-      }
-      Val = DAG.getNode(ISD::BITCAST, dl, CopyVT, Val);
     } else {
       Chain = DAG.getCopyFromReg(Chain, dl, VA.getLocReg(),
                                  CopyVT, InFlag).getValue(1);
@@ -2539,15 +2525,28 @@ X86TargetLowering::IsEligibleForTailCallOptimization(SDValue Callee,
   if (RegInfo->needsStackRealignment(MF))
     return false;
 
-  // Do not sibcall optimize vararg calls unless the call site is not passing
-  // any arguments.
-  if (isVarArg && !Outs.empty())
-    return false;
-
   // Also avoid sibcall optimization if either caller or callee uses struct
   // return semantics.
   if (isCalleeStructRet || isCallerStructRet)
     return false;
+
+  // Do not sibcall optimize vararg calls unless all arguments are passed via
+  // registers
+  if (isVarArg && !Outs.empty()) {
+    SmallVector<CCValAssign, 16> ArgLocs;
+    CCState CCInfo(CalleeCC, isVarArg, getTargetMachine(),
+                   ArgLocs, *DAG.getContext());
+
+    // Allocate shadow area for Win64
+    if (Subtarget->isTargetWin64()) {
+      CCInfo.AllocateStack(32, 8);
+    }
+
+    CCInfo.AnalyzeCallOperands(Outs, CC_X86);
+    for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i)
+      if (!ArgLocs[i].isRegLoc())
+        return false;
+  }
 
   // If the call result is in ST0 / ST1, it needs to be popped off the x87 stack.
   // Therefore if it's not used by the call it is not safe to optimize this into
@@ -11052,14 +11051,14 @@ static SDValue PerformEXTRACT_VECTOR_ELTCombine(SDNode *N, SelectionDAG &DAG,
        UE = Uses.end(); UI != UE; ++UI) {
     SDNode *Extract = *UI;
 
-    // Compute the element's address.
+    // cOMpute the element's address.
     SDValue Idx = Extract->getOperand(1);
     unsigned EltSize =
         InputVector.getValueType().getVectorElementType().getSizeInBits()/8;
     uint64_t Offset = EltSize * cast<ConstantSDNode>(Idx)->getZExtValue();
     SDValue OffsetVal = DAG.getConstant(Offset, TLI.getPointerTy());
 
-    SDValue ScalarAddr = DAG.getNode(ISD::ADD, dl, Idx.getValueType(),
+    SDValue ScalarAddr = DAG.getNode(ISD::ADD, dl, TLI.getPointerTy(),
                                      StackPtr, OffsetVal);
 
     // Load the scalar.

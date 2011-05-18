@@ -44,6 +44,7 @@
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Operator.h"
+#include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -234,10 +235,10 @@ unsigned FastISel::lookUpRegForValue(const Value *V) {
 /// NOTE: This is only necessary because we might select a block that uses
 /// a value before we select the block that defines the value.  It might be
 /// possible to fix this by selecting blocks in reverse postorder.
-unsigned FastISel::UpdateValueMap(const Value *I, unsigned Reg) {
+void FastISel::UpdateValueMap(const Value *I, unsigned Reg, unsigned NumRegs) {
   if (!isa<Instruction>(I)) {
     LocalValueMap[I] = Reg;
-    return Reg;
+    return;
   }
 
   unsigned &AssignedReg = FuncInfo.ValueMap[I];
@@ -246,12 +247,11 @@ unsigned FastISel::UpdateValueMap(const Value *I, unsigned Reg) {
     AssignedReg = Reg;
   else if (Reg != AssignedReg) {
     // Arrange for uses of AssignedReg to be replaced by uses of Reg.
-    FuncInfo.RegFixups[AssignedReg] = Reg;
+    for (unsigned i = 0; i < NumRegs; i++)
+      FuncInfo.RegFixups[AssignedReg+i] = Reg+i;
 
     AssignedReg = Reg;
   }
-
-  return AssignedReg;
 }
 
 std::pair<unsigned, bool> FastISel::getRegForGEPIndex(const Value *Idx) {
@@ -628,6 +628,16 @@ bool FastISel::SelectCall(const User *I) {
 
     return true;
   }
+  case Intrinsic::objectsize: {
+    ConstantInt *CI = cast<ConstantInt>(Call->getArgOperand(1));
+    unsigned long long Res = CI->isZero() ? -1ULL : 0;
+    Constant *ResCI = ConstantInt::get(Call->getType(), Res);
+    unsigned ResultReg = getRegForValue(ResCI);
+    if (ResultReg == 0)
+      return false;
+    UpdateValueMap(Call, ResultReg);
+    return true;
+  }
   }
 
   // An arbitrary call. Bail.
@@ -829,6 +839,45 @@ FastISel::SelectFNeg(const User *I) {
 }
 
 bool
+FastISel::SelectExtractValue(const User *U) {
+  const ExtractValueInst *EVI = dyn_cast<ExtractValueInst>(U);
+  if (!EVI)
+    return false;
+
+  // Make sure we only try to handle extracts with a legal result.  But also
+  // allow i1 because it's easy.
+  EVT RealVT = TLI.getValueType(EVI->getType(), /*AllowUnknown=*/true);
+  if (!RealVT.isSimple())
+    return false;
+  MVT VT = RealVT.getSimpleVT();
+  if (!TLI.isTypeLegal(VT) && VT != MVT::i1)
+    return false;
+
+  const Value *Op0 = EVI->getOperand(0);
+  const Type *AggTy = Op0->getType();
+
+  // Get the base result register.
+  unsigned ResultReg;
+  DenseMap<const Value *, unsigned>::iterator I = FuncInfo.ValueMap.find(Op0);
+  if (I != FuncInfo.ValueMap.end())
+    ResultReg = I->second;
+  else
+    ResultReg = FuncInfo.InitializeRegForValue(Op0);
+
+  // Get the actual result register, which is an offset from the base register.
+  unsigned VTIndex = ComputeLinearIndex(AggTy, EVI->idx_begin(), EVI->idx_end());
+
+  SmallVector<EVT, 4> AggValueVTs;
+  ComputeValueVTs(TLI, AggTy, AggValueVTs);
+
+  for (unsigned i = 0; i < VTIndex; i++)
+    ResultReg += TLI.getNumRegisters(FuncInfo.Fn->getContext(), AggValueVTs[i]);
+
+  UpdateValueMap(EVI, ResultReg);
+  return true;
+}
+
+bool
 FastISel::SelectOperator(const User *I, unsigned Opcode) {
   switch (Opcode) {
   case Instruction::Add:
@@ -931,6 +980,9 @@ FastISel::SelectOperator(const User *I, unsigned Opcode) {
     UpdateValueMap(I, Reg);
     return true;
   }
+
+  case Instruction::ExtractValue:
+    return SelectExtractValue(I);
 
   case Instruction::PHI:
     llvm_unreachable("FastISel shouldn't visit PHI nodes!");

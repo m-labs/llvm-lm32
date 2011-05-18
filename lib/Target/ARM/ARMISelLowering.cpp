@@ -2693,10 +2693,11 @@ SDValue ARMTargetLowering::LowerSELECT(SDValue Op, SelectionDAG &DAG) const {
       }
 
       if (True.getNode() && False.getNode()) {
-        EVT VT = Cond.getValueType();
+        EVT VT = Op.getValueType();
         SDValue ARMcc = Cond.getOperand(2);
         SDValue CCR = Cond.getOperand(3);
         SDValue Cmp = duplicateCmp(Cond.getOperand(4), DAG);
+        assert(True.getValueType() == VT);
         return DAG.getNode(ARMISD::CMOV, dl, VT, True, False, ARMcc, CCR, Cmp);
       }
     }
@@ -4182,7 +4183,16 @@ static SDValue GeneratePerfectShuffle(unsigned PFEntry, SDValue LHS,
   switch (OpNum) {
   default: llvm_unreachable("Unknown shuffle opcode!");
   case OP_VREV:
-    return DAG.getNode(ARMISD::VREV64, dl, VT, OpLHS);
+    // VREV divides the vector in half and swaps within the half.
+    if (VT.getVectorElementType() == MVT::i32 ||
+        VT.getVectorElementType() == MVT::f32)
+      return DAG.getNode(ARMISD::VREV64, dl, VT, OpLHS);
+    // vrev <4 x i16> -> VREV32
+    if (VT.getVectorElementType() == MVT::i16)
+      return DAG.getNode(ARMISD::VREV32, dl, VT, OpLHS);
+    // vrev <4 x i8> -> VREV16
+    assert(VT.getVectorElementType() == MVT::i8);
+    return DAG.getNode(ARMISD::VREV16, dl, VT, OpLHS);
   case OP_VDUP0:
   case OP_VDUP1:
   case OP_VDUP2:
@@ -4860,11 +4870,20 @@ ARMTargetLowering::EmitAtomicCmpSwap(MachineInstr *MI,
   unsigned ptr     = MI->getOperand(1).getReg();
   unsigned oldval  = MI->getOperand(2).getReg();
   unsigned newval  = MI->getOperand(3).getReg();
-  unsigned scratch = BB->getParent()->getRegInfo()
-    .createVirtualRegister(ARM::GPRRegisterClass);
   const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
   DebugLoc dl = MI->getDebugLoc();
   bool isThumb2 = Subtarget->isThumb2();
+
+  MachineRegisterInfo &MRI = BB->getParent()->getRegInfo();
+  unsigned scratch =
+    MRI.createVirtualRegister(isThumb2 ? ARM::rGPRRegisterClass
+                                       : ARM::GPRRegisterClass);
+
+  if (isThumb2) {
+    MRI.constrainRegClass(dest, ARM::rGPRRegisterClass);
+    MRI.constrainRegClass(oldval, ARM::rGPRRegisterClass);
+    MRI.constrainRegClass(newval, ARM::rGPRRegisterClass);
+  }
 
   unsigned ldrOpc, strOpc;
   switch (Size) {
