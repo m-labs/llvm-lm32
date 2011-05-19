@@ -25,6 +25,8 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+
 
 using namespace llvm;
 
@@ -127,7 +129,6 @@ emitPrologue(MachineFunction &MF) const {
   assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
          "we should have a frame if LR is used.");
   assert(((FP && FrameSize) || !FP) && "we should have a frame if FP is used.");
-  assert(FrameSize != 0 && "Need to check FrameSize = 0 code path");
 
   // Do we need to allocate space on the stack?
   if (FrameSize) {
@@ -335,6 +336,9 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
 
 
 #ifndef NDEBUG
+  DEBUG(dbgs() << "RRA Uses         : \n");
+  MF.getRegInfo().dumpUses(Mico32::RRA);
+
   // MFrmInf->dump(MF);
   // Get the frame size.
   int FrameSize = MFrmInf->getStackSize();

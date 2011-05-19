@@ -360,7 +360,11 @@ let isBranch = 1, isIndirectBranch=1,
 }
 
 // The is actually an alias for "b r29".
-let isReturn = 1, isBarrier = 1, isTerminator = 1, Uses = [RRA] in {
+// processFunctionBeforeFrameFinalized() scans for uses of RA.
+// If RA is found to be used in processFunctionBeforeFrameFinalized()
+// emitPrologue/emitEpilogue will do save/restore of RA. If RA is marked
+// used here it is always saved.
+let isReturn = 1, isBarrier = 1, isTerminator = 1 /*, Uses = [RRA]*/ in {
   let ra = RRA.Num in
     def RET: TBR<0x30, (outs), (ins), 
 		 "ret",
