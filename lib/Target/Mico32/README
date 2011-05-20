@@ -7,6 +7,7 @@ mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (fetch)
 mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (push)
 origin	http://llvm.org/git/llvm.git (fetch)
 origin	http://llvm.org/git/llvm.git (push)
+clang   http://llvm.org/git/clang.git
 
 To update while in mico32 branch:
 # git pull origin master
@@ -29,6 +30,10 @@ The general project layout will be:
 Check out the Mico32 LLVM port from the GIT repository: 
 ??
 
+Checkout Clang:
+//FIXME: update for mico32 repository:
+(cd $TOPDIR/llvm/tools ; git clone http://llvm.org/git/clang.git)
+
 Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below. 
 -------------------
 #!/bin/sh
@@ -42,6 +47,22 @@ mkdir $TOPDIR/build
 
 (cd $TOPDIR/build ; make check )
 -------------------
+
+LLVM MICO32 CODEGEN TESTS
+
+Do "make check" to run the LLVM tests:
+(cd $TOPDIR/build ; make check )
+
+After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
+
+(cd $TOPDIR/build ; make TESTSUITE=CodeGen/mico32 check)
+
+Initial results: 
+
+  Expected Passes    : 347
+  Expected Failures  : 19
+  Unexpected Passes  : 3
+  Unexpected Failures: 141
 
 
 Notes
