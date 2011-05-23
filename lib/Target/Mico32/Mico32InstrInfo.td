@@ -396,6 +396,15 @@ def BGEU   : CBranch<0x14, "bgeu    ", setuge>;
 def BGU    : CBranch<0x15, "bgu     ", setugt>;
 def BNE    : CBranch<0x17, "bne     ", setne>;
 
+// brcond patterns - also from MIPS
+def : Pat<(brcond GPR:$cond, bb:$dst),
+          (BNE GPR:$cond, R0, bb:$dst)>;
+
+def : Pat<(brcond (setne GPR:$lhs, 0), bb:$dst),
+          (BNE GPR:$lhs, R0, bb:$dst)>;
+def : Pat<(brcond (seteq GPR:$lhs, 0), bb:$dst),
+          (BE GPR:$lhs, R0, bb:$dst)>;
+
 //===----------------------------------------------------------------------===//
 // Mico32 arithmetic instructions
 //===----------------------------------------------------------------------===//
