@@ -122,9 +122,9 @@ emitPrologue(MachineFunction &MF) const {
   assert(FrameSize%4 == 0 && 
          "Mico32FrameLowering::emitPrologue Misaligned frame size");
   
+  
   bool emitFrameMoves = MMI->hasDebugInfo() ||
-                          !MF.getFunction()->doesNotThrow() || 
-                          UnwindTablesMandatory;
+                        MF.getFunction()->needsUnwindTableEntry();
 
   assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
          "we should have a frame if LR is used.");
