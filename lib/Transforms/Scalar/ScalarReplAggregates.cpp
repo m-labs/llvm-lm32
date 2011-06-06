@@ -30,6 +30,7 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Analysis/DIBuilder.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -1051,8 +1052,9 @@ namespace {
 class AllocaPromoter : public LoadAndStorePromoter {
   AllocaInst *AI;
 public:
-  AllocaPromoter(const SmallVectorImpl<Instruction*> &Insts, SSAUpdater &S)
-    : LoadAndStorePromoter(Insts, S), AI(0) {}
+  AllocaPromoter(const SmallVectorImpl<Instruction*> &Insts, SSAUpdater &S,
+                 DbgDeclareInst *DD, DIBuilder *&DB)
+    : LoadAndStorePromoter(Insts, S, DD, DB), AI(0) {}
   
   void run(AllocaInst *AI, const SmallVectorImpl<Instruction*> &Insts) {
     // Remember which alloca we're promoting (for isInstInList).
@@ -1329,7 +1331,6 @@ static bool tryToMakeAllocaBePromotable(AllocaInst *AI, const TargetData *TD) {
   return true;
 }
 
-
 bool SROA::performPromotion(Function &F) {
   std::vector<AllocaInst*> Allocas;
   DominatorTree *DT = 0;
@@ -1340,6 +1341,7 @@ bool SROA::performPromotion(Function &F) {
 
   bool Changed = false;
   SmallVector<Instruction*, 64> Insts;
+  DIBuilder *DIB = 0;
   while (1) {
     Allocas.clear();
 
@@ -1363,14 +1365,21 @@ bool SROA::performPromotion(Function &F) {
         for (Value::use_iterator UI = AI->use_begin(), E = AI->use_end();
              UI != E; ++UI)
           Insts.push_back(cast<Instruction>(*UI));
-        
-        AllocaPromoter(Insts, SSA).run(AI, Insts);
+
+        DbgDeclareInst *DDI = FindAllocaDbgDeclare(AI);
+        if (DDI && !DIB)
+          DIB = new DIBuilder(*AI->getParent()->getParent()->getParent());
+        AllocaPromoter(Insts, SSA, DDI, DIB).run(AI, Insts);
         Insts.clear();
       }
     }
     NumPromoted += Allocas.size();
     Changed = true;
   }
+
+  // FIXME: Is there a better way to handle the lazy initialization of DIB
+  // so that there doesn't need to be an explicit delete?
+  delete DIB;
 
   return Changed;
 }
@@ -1831,9 +1840,10 @@ void SROA::RewriteForScalarRepl(Instruction *I, AllocaInst *AI, uint64_t Offset,
         //   %insert = insertvalue { i32, i32 } %insert.0, i32 %load.1, 1
         // (Also works for arrays instead of structs)
         Value *Insert = UndefValue::get(LIType);
+        IRBuilder<> Builder(LI);
         for (unsigned i = 0, e = NewElts.size(); i != e; ++i) {
-          Value *Load = new LoadInst(NewElts[i], "load", LI);
-          Insert = InsertValueInst::Create(Insert, Load, i, "insert", LI);
+          Value *Load = Builder.CreateLoad(NewElts[i], "load");
+          Insert = Builder.CreateInsertValue(Insert, Load, i, "insert");
         }
         LI->replaceAllUsesWith(Insert);
         DeadInsts.push_back(LI);
@@ -1858,9 +1868,10 @@ void SROA::RewriteForScalarRepl(Instruction *I, AllocaInst *AI, uint64_t Offset,
         //   %val.1 = extractvalue { i32, i32 } %val, 1
         //   store i32 %val.1, i32* %alloc.1
         // (Also works for arrays instead of structs)
+        IRBuilder<> Builder(SI);
         for (unsigned i = 0, e = NewElts.size(); i != e; ++i) {
-          Value *Extract = ExtractValueInst::Create(Val, i, Val->getName(), SI);
-          new StoreInst(Extract, NewElts[i], SI);
+          Value *Extract = Builder.CreateExtractValue(Val, i, Val->getName());
+          Builder.CreateStore(Extract, NewElts[i]);
         }
         DeadInsts.push_back(SI);
       } else if (SIType->isIntegerTy() &&

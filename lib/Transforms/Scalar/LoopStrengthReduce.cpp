@@ -1804,7 +1804,8 @@ LSRInstance::OptimizeLoopTermCond() {
         ExitingBlock->getInstList().insert(TermBr, Cond);
 
         // Clone the IVUse, as the old use still exists!
-        CondUse = &IU.AddUser(Cond, CondUse->getOperandValToReplace());
+        CondUse = &IU.AddUser(Cond, CondUse->getOperandValToReplace(),
+                              CondUse->getPhi());
         TermBr->replaceUsesOfWith(OldCond, Cond);
       }
     }
@@ -2521,6 +2522,8 @@ void LSRInstance::GenerateICmpZeroScales(LSRUse &LU, unsigned LUIdx,
 
     // Check that multiplying with the unfolded offset doesn't overflow.
     if (F.UnfoldedOffset != 0) {
+      if (F.UnfoldedOffset == INT64_MIN && Factor == -1)
+        continue;
       F.UnfoldedOffset = (uint64_t)F.UnfoldedOffset * Factor;
       if (F.UnfoldedOffset / Factor != Base.UnfoldedOffset)
         continue;

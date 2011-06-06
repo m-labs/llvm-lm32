@@ -18,6 +18,7 @@
 #include "llvm/Support/DataTypes.h"
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCDwarf.h"
+#include "llvm/MC/MCWin64EH.h"
 
 namespace llvm {
   class MCAsmInfo;
@@ -57,6 +58,11 @@ namespace llvm {
     MCDwarfFrameInfo *getCurrentFrameInfo();
     void EnsureValidFrame();
 
+    std::vector<MCWin64EHUnwindInfo *> W64UnwindInfos;
+    MCWin64EHUnwindInfo *CurrentW64UnwindInfo;
+    void setCurrentW64UnwindInfo(MCWin64EHUnwindInfo *Frame);
+    void EnsureValidW64UnwindInfo();
+
     const MCSymbol* LastNonPrivate;
 
     /// SectionStack - This is stack of current and previous section
@@ -70,10 +76,12 @@ namespace llvm {
     const MCExpr *BuildSymbolDiff(MCContext &Context, const MCSymbol *A,
                                   const MCSymbol *B);
 
-    const MCExpr *ForceExpAbs(MCStreamer *Streamer, MCContext &Context,
-                              const MCExpr* Expr);
+    const MCExpr *ForceExpAbs(const MCExpr* Expr);
 
     void EmitFrames(bool usingCFI);
+
+    MCWin64EHUnwindInfo *getCurrentW64UnwindInfo(){return CurrentW64UnwindInfo;}
+    void EmitW64Tables();
 
   public:
     virtual ~MCStreamer();
@@ -86,6 +94,14 @@ namespace llvm {
 
     const MCDwarfFrameInfo &getFrameInfo(unsigned i) {
       return FrameInfos[i];
+    }
+
+    unsigned getNumW64UnwindInfos() {
+      return W64UnwindInfos.size();
+    }
+
+    MCWin64EHUnwindInfo &getW64UnwindInfo(unsigned i) {
+      return *W64UnwindInfos[i];
     }
 
     /// @name Assembly File Formatting.
@@ -177,6 +193,17 @@ namespace llvm {
         SectionStack.back().first = Section;
         ChangeSection(Section);
       }
+    }
+
+    /// SwitchSectionNoChange - Set the current section where code is being
+    /// emitted to @p Section.  This is required to update CurSection. This
+    /// version does not call ChangeSection.
+    void SwitchSectionNoChange(const MCSection *Section) {
+      assert(Section && "Cannot switch to a null section!");
+      const MCSection *curSection = SectionStack.back().first;
+      SectionStack.back().second = curSection;
+      if (Section != curSection)
+        SectionStack.back().first = Section;
     }
 
     /// InitSections - Create the default sections and set the initial one.
@@ -457,16 +484,18 @@ namespace llvm {
     virtual void EmitCFIRelOffset(int64_t Register, int64_t Offset);
     virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
 
-    virtual void EmitWin64EHStartProc(MCSymbol *Symbol, MCSymbol *EHandler = 0);
+    virtual void EmitWin64EHStartProc(const MCSymbol *Symbol);
     virtual void EmitWin64EHEndProc();
     virtual void EmitWin64EHStartChained();
     virtual void EmitWin64EHEndChained();
-    virtual void EmitWin64EHUnwindOnly();
-    virtual void EmitWin64EHLsda(const MCSymbol *Sym, int64_t Size);
-    virtual void EmitWin64EHPushReg(int64_t Register);
-    virtual void EmitWin64EHSetFrame(int64_t Register, int64_t Offset);
-    virtual void EmitWin64EHAllocStack(int64_t Size);
-    virtual void EmitWin64EHSaveReg(int64_t Register, int64_t Offset);
+    virtual void EmitWin64EHHandler(const MCSymbol *Sym, bool Unwind,
+                                    bool Except);
+    virtual void EmitWin64EHHandlerData();
+    virtual void EmitWin64EHPushReg(unsigned Register);
+    virtual void EmitWin64EHSetFrame(unsigned Register, unsigned Offset);
+    virtual void EmitWin64EHAllocStack(unsigned Size);
+    virtual void EmitWin64EHSaveReg(unsigned Register, unsigned Offset);
+    virtual void EmitWin64EHSaveXMM(unsigned Register, unsigned Offset);
     virtual void EmitWin64EHPushFrame(bool Code);
     virtual void EmitWin64EHEndProlog();
 

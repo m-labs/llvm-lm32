@@ -1973,9 +1973,9 @@ class T2SatI<dag oops, dag iops, InstrItinClass itin,
 }
 
 def t2SSAT: T2SatI<
-                (outs rGPR:$Rd), (ins i32imm:$sat_imm, rGPR:$Rn, shift_imm:$sh),
-                NoItinerary, "ssat", "\t$Rd, $sat_imm, $Rn$sh",
-                [/* For disassembly only; pattern left blank */]> {
+              (outs rGPR:$Rd), (ins ssat_imm:$sat_imm, rGPR:$Rn, shift_imm:$sh),
+              NoItinerary, "ssat", "\t$Rd, $sat_imm, $Rn$sh",
+              [/* For disassembly only; pattern left blank */]> {
   let Inst{31-27} = 0b11110;
   let Inst{25-22} = 0b1100;
   let Inst{20} = 0;
@@ -1983,9 +1983,9 @@ def t2SSAT: T2SatI<
 }
 
 def t2SSAT16: T2SatI<
-                   (outs rGPR:$Rd), (ins i32imm:$sat_imm, rGPR:$Rn), NoItinerary,
-                   "ssat16", "\t$Rd, $sat_imm, $Rn",
-                   [/* For disassembly only; pattern left blank */]> {
+                (outs rGPR:$Rd), (ins ssat_imm:$sat_imm, rGPR:$Rn), NoItinerary,
+                "ssat16", "\t$Rd, $sat_imm, $Rn",
+                [/* For disassembly only; pattern left blank */]> {
   let Inst{31-27} = 0b11110;
   let Inst{25-22} = 0b1100;
   let Inst{20} = 0;
@@ -2881,7 +2881,9 @@ def t2LDREX  : Thumb2I<(outs rGPR:$Rt), (ins t2addrmode_reg:$addr), AddrModeNone
   let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
-def t2LDREXD : T2I_ldrex<0b11, (outs rGPR:$Rt, rGPR:$Rt2), (ins t2addrmode_reg:$addr),
+let hasExtraDefRegAllocReq = 1 in
+def t2LDREXD : T2I_ldrex<0b11, (outs rGPR:$Rt, rGPR:$Rt2),
+                         (ins t2addrmode_reg:$addr),
                          AddrModeNone, Size4Bytes, NoItinerary,
                          "ldrexd", "\t$Rt, $Rt2, $addr", "",
                          [], {?, ?, ?, ?}> {
@@ -2912,6 +2914,9 @@ def t2STREX  : Thumb2I<(outs rGPR:$Rd), (ins rGPR:$Rt, t2addrmode_reg:$addr),
   let Inst{19-16} = addr;
   let Inst{15-12} = Rt;
 }
+}
+
+let hasExtraSrcRegAllocReq = 1, Constraints = "@earlyclobber $Rd" in
 def t2STREXD : T2I_strex<0b11, (outs rGPR:$Rd),
                          (ins rGPR:$Rt, rGPR:$Rt2, t2addrmode_reg:$addr),
                          AddrModeNone, Size4Bytes, NoItinerary,
@@ -2919,7 +2924,6 @@ def t2STREXD : T2I_strex<0b11, (outs rGPR:$Rd),
                          {?, ?, ?, ?}> {
   bits<4> Rt2;
   let Inst{11-8} = Rt2;
-}
 }
 
 // Clear-Exclusive is for disassembly only.

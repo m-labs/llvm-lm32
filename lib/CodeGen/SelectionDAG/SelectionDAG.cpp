@@ -2050,14 +2050,15 @@ void SelectionDAG::ComputeMaskedBits(SDValue Op, const APInt &Mask,
     break;
 
   default:
-    // Allow the target to implement this method for its nodes.
-    if (Op.getOpcode() >= ISD::BUILTIN_OP_END) {
+    if (Op.getOpcode() < ISD::BUILTIN_OP_END)
+      break;
+    // Fallthrough
   case ISD::INTRINSIC_WO_CHAIN:
   case ISD::INTRINSIC_W_CHAIN:
   case ISD::INTRINSIC_VOID:
-      TLI.computeMaskedBitsForTargetNode(Op, Mask, KnownZero, KnownOne, *this,
-                                         Depth);
-    }
+    // Allow the target to implement this method for its nodes.
+    TLI.computeMaskedBitsForTargetNode(Op, Mask, KnownZero, KnownOne, *this,
+                                       Depth);
     return;
   }
 }
@@ -2322,6 +2323,13 @@ bool SelectionDAG::isKnownNeverZero(SDValue Op) const {
     return !C->isZero();
 
   // TODO: Recognize more cases here.
+  switch (Op.getOpcode()) {
+  default: break;
+  case ISD::OR:
+    if (const ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op.getOperand(1)))
+      return !C->isNullValue();
+    break;
+  }
 
   return false;
 }
@@ -2338,16 +2346,6 @@ bool SelectionDAG::isEqualTo(SDValue A, SDValue B) const {
   // Otherwise they may not be equal.
   return false;
 }
-
-bool SelectionDAG::isVerifiedDebugInfoDesc(SDValue Op) const {
-  GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(Op);
-  if (!GA) return false;
-  if (GA->getOffset() != 0) return false;
-  const GlobalVariable *GV = dyn_cast<GlobalVariable>(GA->getGlobal());
-  if (!GV) return false;
-  return MF->getMMI().hasDebugInfo();
-}
-
 
 /// getNode - Gets or creates the specified node.
 ///

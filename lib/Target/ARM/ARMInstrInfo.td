@@ -475,6 +475,12 @@ def width_imm : Operand<i32>, ImmLeaf<i32, [{
   let EncoderMethod = "getMsbOpValue";
 }
 
+def ssat_imm : Operand<i32>, ImmLeaf<i32, [{
+  return Imm > 0 && Imm <= 32;
+}]> {
+  let EncoderMethod = "getSsatBitPosValue";
+}
+
 // Define ARM specific addressing modes.
 
 def MemMode2AsmOperand : AsmOperandClass {
@@ -1310,6 +1316,15 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
               Requires<[IsARM, HasV4T]> {
     bits<4> dst;
     let Inst{31-4} = 0b1110000100101111111111110001;
+    let Inst{3-0}  = dst;
+  }
+
+  // For disassembly only.
+  def BX_pred : AXI<(outs), (ins GPR:$dst, pred:$p), BrMiscFrm, IIC_Br,
+                  "bx$p\t$dst", [/* pattern left blank */]>,
+              Requires<[IsARM, HasV4T]> {
+    bits<4> dst;
+    let Inst{27-4} = 0b000100101111111111110001;
     let Inst{3-0}  = dst;
   }
 
@@ -2446,7 +2461,7 @@ def USADA8 : AI<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm, GPR:$Ra),
 
 // Signed/Unsigned saturate -- for disassembly only
 
-def SSAT : AI<(outs GPR:$Rd), (ins i32imm:$sat_imm, GPR:$a, shift_imm:$sh),
+def SSAT : AI<(outs GPR:$Rd), (ins ssat_imm:$sat_imm, GPR:$a, shift_imm:$sh),
               SatFrm, NoItinerary, "ssat", "\t$Rd, $sat_imm, $a$sh",
               [/* For disassembly only; pattern left blank */]> {
   bits<4> Rd;
@@ -2462,7 +2477,7 @@ def SSAT : AI<(outs GPR:$Rd), (ins i32imm:$sat_imm, GPR:$a, shift_imm:$sh),
   let Inst{3-0} = Rn;
 }
 
-def SSAT16 : AI<(outs GPR:$Rd), (ins i32imm:$sat_imm, GPR:$Rn), SatFrm,
+def SSAT16 : AI<(outs GPR:$Rd), (ins ssat_imm:$sat_imm, GPR:$Rn), SatFrm,
                 NoItinerary, "ssat16", "\t$Rd, $sat_imm, $Rn",
                 [/* For disassembly only; pattern left blank */]> {
   bits<4> Rd;
@@ -3357,8 +3372,9 @@ def LDREXH : AIldrex<0b11, (outs GPR:$Rt), (ins addrmode7:$addr), NoItinerary,
                     "ldrexh", "\t$Rt, $addr", []>;
 def LDREX  : AIldrex<0b00, (outs GPR:$Rt), (ins addrmode7:$addr), NoItinerary,
                     "ldrex", "\t$Rt, $addr", []>;
-def LDREXD : AIldrex<0b01, (outs GPR:$Rt, GPR:$Rt2), (ins addrmode7:$addr),
-                    NoItinerary, "ldrexd", "\t$Rt, $Rt2, $addr", []>;
+let hasExtraDefRegAllocReq = 1 in
+  def LDREXD : AIldrex<0b01, (outs GPR:$Rt, GPR:$Rt2), (ins addrmode7:$addr),
+                      NoItinerary, "ldrexd", "\t$Rt, $Rt2, $addr", []>;
 }
 
 let mayStore = 1, Constraints = "@earlyclobber $Rd" in {
@@ -3368,10 +3384,12 @@ def STREXH : AIstrex<0b11, (outs GPR:$Rd), (ins GPR:$Rt, addrmode7:$addr),
                     NoItinerary, "strexh", "\t$Rd, $Rt, $addr", []>;
 def STREX  : AIstrex<0b00, (outs GPR:$Rd), (ins GPR:$Rt, addrmode7:$addr),
                     NoItinerary, "strex", "\t$Rd, $Rt, $addr", []>;
+}
+
+let hasExtraSrcRegAllocReq = 1, Constraints = "@earlyclobber $Rd" in
 def STREXD : AIstrex<0b01, (outs GPR:$Rd),
                     (ins GPR:$Rt, GPR:$Rt2, addrmode7:$addr),
                     NoItinerary, "strexd", "\t$Rd, $Rt, $Rt2, $addr", []>;
-}
 
 // Clear-Exclusive is for disassembly only.
 def CLREX : AXI<(outs), (ins), MiscFrm, NoItinerary, "clrex",

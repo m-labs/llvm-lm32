@@ -280,8 +280,35 @@ static SDValue getCopyFromPartsVector(SelectionDAG &DAG, DebugLoc DL,
     }
 
     // Vector/Vector bitcast.
-    return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
+    if (ValueVT.getSizeInBits() == PartVT.getSizeInBits())
+      return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
+
+    assert(PartVT.getVectorNumElements() == ValueVT.getVectorNumElements() &&
+      "Cannot handle this kind of promotion");
+    // Promoted vector extract
+    unsigned NumElts = ValueVT.getVectorNumElements();
+    SmallVector<SDValue, 8> NewOps;
+    for (unsigned i = 0; i < NumElts; ++i) {
+      SDValue Ext = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,
+        PartVT.getScalarType(), Val ,DAG.getIntPtrConstant(i));
+      SDValue Cast;
+
+      bool Smaller = ValueVT.bitsLE(PartVT);
+
+      Cast = DAG.getNode((Smaller ? ISD::TRUNCATE : ISD::ANY_EXTEND),
+                         DL, ValueVT.getScalarType(), Ext);
+
+      NewOps.push_back(Cast);
+    }
+    return DAG.getNode(ISD::BUILD_VECTOR, DL, ValueVT,
+      &NewOps[0], NewOps.size());
   }
+  
+  // Trivial bitcast if the types are the same size and the destination
+  // vector type is legal.
+  if (PartVT.getSizeInBits() == ValueVT.getSizeInBits() &&
+      TLI.isTypeLegal(ValueVT))
+    return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
 
   assert(ValueVT.getVectorElementType() == PartVT &&
          ValueVT.getVectorNumElements() == 1 &&
@@ -446,7 +473,24 @@ static void getCopyToPartsVector(SelectionDAG &DAG, DebugLoc DL,
 
       //SDValue UndefElts = DAG.getUNDEF(VectorTy);
       //Val = DAG.getNode(ISD::CONCAT_VECTORS, DL, PartVT, Val, UndefElts);
-    } else {
+    } else if (PartVT.isVector() &&
+               PartVT.getVectorElementType().bitsGE(
+                 ValueVT.getVectorElementType())&&
+               PartVT.getVectorNumElements() == ValueVT.getVectorNumElements()) {
+
+      // Promoted vector extract
+      unsigned NumElts = ValueVT.getVectorNumElements();
+      SmallVector<SDValue, 8> NewOps;
+      for (unsigned i = 0; i < NumElts; ++i) {
+        SDValue Ext = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,
+                       ValueVT.getScalarType(), Val ,DAG.getIntPtrConstant(i));
+        SDValue Cast = DAG.getNode(ISD::ANY_EXTEND,
+                       DL, PartVT.getScalarType(), Ext);
+        NewOps.push_back(Cast);
+      }
+      Val = DAG.getNode(ISD::BUILD_VECTOR, DL, PartVT,
+                        &NewOps[0], NewOps.size());
+    } else{
       // Vector -> scalar conversion.
       assert(ValueVT.getVectorElementType() == PartVT &&
              ValueVT.getVectorNumElements() == 1 &&
@@ -783,9 +827,18 @@ void SelectionDAGBuilder::clear() {
   UnusedArgNodeMap.clear();
   PendingLoads.clear();
   PendingExports.clear();
-  DanglingDebugInfoMap.clear();
   CurDebugLoc = DebugLoc();
   HasTailCall = false;
+}
+
+/// clearDanglingDebugInfo - Clear the dangling debug information
+/// map. This function is seperated from the clear so that debug
+/// information that is dangling in a basic block can be properly
+/// resolved in a different basic block. This allows the
+/// SelectionDAG to resolve dangling debug information attached
+/// to PHI nodes.
+void SelectionDAGBuilder::clearDanglingDebugInfo() {
+  DanglingDebugInfoMap.clear();
 }
 
 /// getRoot - Return the current virtual root of the Selection DAG,
@@ -5720,7 +5773,11 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
       // Memory operands really want the address of the value.  If we don't have
       // an indirect input, put it in the constpool if we can, otherwise spill
       // it to a stack slot.
-
+      // TODO: This isn't quite right. We need to handle these according to
+      // the addressing mode that the constraint wants. Also, this may take
+      // an additional register for the computation and we don't want that
+      // either.
+      
       // If the operand is a float, integer, or vector constant, spill to a
       // constant pool entry to get its address.
       const Value *OpVal = OpInfo.CallOperandVal;
@@ -5921,7 +5978,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
 
       if (OpInfo.ConstraintType == TargetLowering::C_Other) {
         std::vector<SDValue> Ops;
-        TLI.LowerAsmOperandForConstraint(InOperandVal, OpInfo.ConstraintCode[0],
+        TLI.LowerAsmOperandForConstraint(InOperandVal, OpInfo.ConstraintCode,
                                          Ops, DAG);
         if (Ops.empty())
           report_fatal_error("Invalid operand for inline asm constraint '" +
@@ -6130,14 +6187,15 @@ TargetLowering::LowerCallTo(SDValue Chain, const Type *RetTy,
         Flags.setByVal();
         const PointerType *Ty = cast<PointerType>(Args[i].Ty);
         const Type *ElementTy = Ty->getElementType();
-        unsigned FrameAlign = getByValTypeAlignment(ElementTy);
-        unsigned FrameSize  = getTargetData()->getTypeAllocSize(ElementTy);
+        Flags.setByValSize(getTargetData()->getTypeAllocSize(ElementTy));
         // For ByVal, alignment should come from FE.  BE will guess if this
         // info is not there but there are cases it cannot get right.
+        unsigned FrameAlign;
         if (Args[i].Alignment)
           FrameAlign = Args[i].Alignment;
+        else
+          FrameAlign = getByValTypeAlignment(ElementTy);
         Flags.setByValAlign(FrameAlign);
-        Flags.setByValSize(FrameSize);
       }
       if (Args[i].isNest)
         Flags.setNest();
@@ -6355,14 +6413,15 @@ void SelectionDAGISel::LowerArguments(const BasicBlock *LLVMBB) {
         Flags.setByVal();
         const PointerType *Ty = cast<PointerType>(I->getType());
         const Type *ElementTy = Ty->getElementType();
-        unsigned FrameAlign = TLI.getByValTypeAlignment(ElementTy);
-        unsigned FrameSize  = TD->getTypeAllocSize(ElementTy);
+        Flags.setByValSize(TD->getTypeAllocSize(ElementTy));
         // For ByVal, alignment should be passed from FE.  BE will guess if
         // this info is not there but there are cases it cannot get right.
+        unsigned FrameAlign;
         if (F.getParamAlignment(Idx))
           FrameAlign = F.getParamAlignment(Idx);
+        else
+          FrameAlign = TLI.getByValTypeAlignment(ElementTy);
         Flags.setByValAlign(FrameAlign);
-        Flags.setByValSize(FrameSize);
       }
       if (F.paramHasAttr(Idx, Attribute::Nest))
         Flags.setNest();

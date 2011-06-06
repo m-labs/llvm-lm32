@@ -199,6 +199,9 @@ bool AsmPrinter::doInitialization(Module &M) {
   case ExceptionHandling::ARM:
     DE = new ARMException(this);
     return false;
+  case ExceptionHandling::Win64:
+    DE = new Win64Exception(this);
+    return false;
   }
 
   llvm_unreachable("Unknown exception type.");
@@ -591,18 +594,19 @@ static bool EmitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
 }
 
 AsmPrinter::CFIMoveType AsmPrinter::needsCFIMoves() {
-  if (MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI) {
-    if (UnwindTablesMandatory)
-      return CFI_M_EH;
-
-    if (!MF->getFunction()->doesNotThrow())
-      return CFI_M_EH;
-  }
+  if (MAI->getExceptionHandlingType() == ExceptionHandling::DwarfCFI &&
+      MF->getFunction()->needsUnwindTableEntry())
+    return CFI_M_EH;
 
   if (MMI->hasDebugInfo())
     return CFI_M_Debug;
 
   return CFI_M_None;
+}
+
+bool AsmPrinter::needsSEHMoves() {
+  return MAI->getExceptionHandlingType() == ExceptionHandling::Win64 &&
+    MF->getFunction()->needsUnwindTableEntry();
 }
 
 void AsmPrinter::emitPrologLabel(const MachineInstr &MI) {
@@ -764,30 +768,25 @@ getDebugValueLocation(const MachineInstr *MI) const {
   return MachineLocation();
 }
 
-/// getDwarfRegOpSize - get size required to emit given machine location using
-/// dwarf encoding.
-unsigned AsmPrinter::getDwarfRegOpSize(const MachineLocation &MLoc) const {
-  const TargetRegisterInfo *RI = TM.getRegisterInfo();
-  unsigned DWReg = RI->getDwarfRegNum(MLoc.getReg(), false);
-  if (int Offset = MLoc.getOffset()) {
-    // If the value is at a certain offset from frame register then
-    // use DW_OP_breg.
-    if (DWReg < 32)
-      return 1 + MCAsmInfo::getSLEB128Size(Offset);
-    else
-      return 1 + MCAsmInfo::getULEB128Size(MLoc.getReg()) 
-        + MCAsmInfo::getSLEB128Size(Offset);
-  }
-  if (DWReg < 32)
-    return 1;
-
-  return 1 + MCAsmInfo::getULEB128Size(DWReg);
-}
-
 /// EmitDwarfRegOp - Emit dwarf register operation.
 void AsmPrinter::EmitDwarfRegOp(const MachineLocation &MLoc) const {
   const TargetRegisterInfo *TRI = TM.getRegisterInfo();
-  unsigned Reg = TRI->getDwarfRegNum(MLoc.getReg(), false);
+  int Reg = TRI->getDwarfRegNum(MLoc.getReg(), false);
+
+  for (const unsigned *SR = TRI->getSuperRegisters(MLoc.getReg());
+       *SR && Reg < 0; ++SR) {
+    Reg = TRI->getDwarfRegNum(*SR, false);
+    // FIXME: Get the bit range this register uses of the superregister
+    // so that we can produce a DW_OP_bit_piece
+  }
+
+  // FIXME: Handle cases like a super register being encoded as
+  // DW_OP_reg 32 DW_OP_piece 4 DW_OP_reg 33
+
+  // FIXME: We have no reasonable way of handling errors in here. The
+  // caller might be in the middle of an dwarf expression. We should
+  // probably assert that Reg >= 0 once debug info generation is more mature.
+
   if (int Offset =  MLoc.getOffset()) {
     if (Reg < 32) {
       OutStreamer.AddComment(
@@ -812,6 +811,8 @@ void AsmPrinter::EmitDwarfRegOp(const MachineLocation &MLoc) const {
       EmitULEB128(Reg);
     }
   }
+
+  // FIXME: Produce a DW_OP_bit_piece if we used a superregister
 }
 
 bool AsmPrinter::doFinalization(Module &M) {

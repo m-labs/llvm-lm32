@@ -40,6 +40,16 @@ namespace llvm {
       // Handle gp_rel (small data/bss sections) relocation.
       GPRel,
 
+      // General Dynamic TLS
+      TlsGd,
+
+      // Local Exec TLS
+      TprelHi,
+      TprelLo,
+
+      // Thread Pointer
+      ThreadPointer,
+
       // Floating Point Branch Conditional
       FPBrcond,
 
@@ -67,7 +77,9 @@ namespace llvm {
       DivRemU,
 
       BuildPairF64,
-      ExtractElementF64
+      ExtractElementF64,
+
+      WrapperPIC
     };
   }
 
@@ -106,13 +118,14 @@ namespace llvm {
     SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerFP_TO_SINT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBlockAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
@@ -164,6 +177,16 @@ namespace llvm {
     /// specified FP immediate natively. If false, the legalizer will
     /// materialize the FP immediate as a load from a constant pool.
     virtual bool isFPImmLegal(const APFloat &Imm, EVT VT) const;
+
+    MachineBasicBlock *EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
+                    unsigned Size, unsigned BinOpcode, bool Nand = false) const;
+    MachineBasicBlock *EmitAtomicBinaryPartword(MachineInstr *MI,
+                    MachineBasicBlock *BB, unsigned Size, unsigned BinOpcode,
+                    bool Nand = false) const;
+    MachineBasicBlock *EmitAtomicCmpSwap(MachineInstr *MI,
+                                  MachineBasicBlock *BB, unsigned Size) const;
+    MachineBasicBlock *EmitAtomicCmpSwapPartword(MachineInstr *MI,
+                                  MachineBasicBlock *BB, unsigned Size) const;
   };
 }
 

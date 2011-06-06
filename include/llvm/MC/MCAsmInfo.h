@@ -26,12 +26,12 @@ namespace llvm {
   class MCSymbol;
   class MCContext;
 
-  /// MCAsmInfo - This class is intended to be used as a base class for asm
-  /// properties and features specific to the target.
   namespace ExceptionHandling {
-    enum ExceptionsType { None, DwarfCFI, SjLj, ARM };
+    enum ExceptionsType { None, DwarfCFI, SjLj, ARM, Win64 };
   }
 
+  /// MCAsmInfo - This class is intended to be used as a base class for asm
+  /// properties and features specific to the target.
   class MCAsmInfo {
   protected:
     //===------------------------------------------------------------------===//
@@ -460,7 +460,8 @@ namespace llvm {
     bool isExceptionHandlingDwarf() const {
       return
         (ExceptionsType == ExceptionHandling::DwarfCFI ||
-         ExceptionsType == ExceptionHandling::ARM);
+         ExceptionsType == ExceptionHandling::ARM ||
+         ExceptionsType == ExceptionHandling::Win64);
     }
     bool doesDwarfUsesInlineInfoSection() const {
       return DwarfUsesInlineInfoSection;

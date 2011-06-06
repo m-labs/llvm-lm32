@@ -20,6 +20,7 @@
 #include "llvm/Instructions.h"
 #include "llvm/Intrinsics.h"
 #include "llvm/IntrinsicInst.h"
+#include "llvm/Metadata.h"
 #include "llvm/Operator.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -44,11 +45,14 @@ using namespace llvm;
 //  Local constant propagation.
 //
 
-// ConstantFoldTerminator - If a terminator instruction is predicated on a
-// constant value, convert it into an unconditional branch to the constant
-// destination.
-//
-bool llvm::ConstantFoldTerminator(BasicBlock *BB) {
+/// ConstantFoldTerminator - If a terminator instruction is predicated on a
+/// constant value, convert it into an unconditional branch to the constant
+/// destination.  This is a nontrivial operation because the successors of this
+/// basic block must have their PHI nodes updated.
+/// Also calls RecursivelyDeleteTriviallyDeadInstructions() on any branch/switch
+/// conditions and indirectbr addresses this might make dead if
+/// DeleteDeadConditions is true.
+bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions) {
   TerminatorInst *T = BB->getTerminator();
   IRBuilder<> Builder(T);
 
@@ -89,7 +93,10 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB) {
 
       // Replace the conditional branch with an unconditional one.
       Builder.CreateBr(Dest1);
+      Value *Cond = BI->getCondition();
       BI->eraseFromParent();
+      if (DeleteDeadConditions)
+        RecursivelyDeleteTriviallyDeadInstructions(Cond);
       return true;
     }
     return false;
@@ -152,7 +159,10 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB) {
       }
 
       // Delete the old switch.
-      BB->getInstList().erase(SI);
+      Value *Cond = SI->getCondition();
+      SI->eraseFromParent();
+      if (DeleteDeadConditions)
+        RecursivelyDeleteTriviallyDeadInstructions(Cond);
       return true;
     }
     
@@ -186,7 +196,10 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB) {
         else
           IBI->getDestination(i)->removePredecessor(IBI->getParent());
       }
+      Value *Address = IBI->getAddress();
       IBI->eraseFromParent();
+      if (DeleteDeadConditions)
+        RecursivelyDeleteTriviallyDeadInstructions(Address);
       
       // If we didn't find our destination in the IBI successor list, then we
       // have undefined behavior.  Replace the unconditional branch with an
@@ -864,4 +877,16 @@ bool llvm::LowerDbgDeclare(Function &F) {
     }
   }
   return true;
+}
+
+/// FindAllocaDbgDeclare - Finds the llvm.dbg.declare intrinsic describing the
+/// alloca 'V', if any.
+DbgDeclareInst *llvm::FindAllocaDbgDeclare(Value *V) {
+  if (MDNode *DebugNode = MDNode::getIfExists(V->getContext(), V))
+    for (Value::use_iterator UI = DebugNode->use_begin(),
+         E = DebugNode->use_end(); UI != E; ++UI)
+      if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(*UI))
+        return DDI;
+
+  return 0;
 }

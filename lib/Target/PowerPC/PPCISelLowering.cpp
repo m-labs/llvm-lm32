@@ -1010,7 +1010,8 @@ bool PPCTargetLowering::SelectAddressRegImmShift(SDValue N, SDValue &Disp,
       short Imm;
       if (isIntS16Immediate(CN, Imm)) {
         Disp = DAG.getTargetConstant((unsigned short)Imm >> 2, getPointerTy());
-        Base = DAG.getRegister(PPC::R0, CN->getValueType(0));
+        Base = DAG.getRegister(PPCSubTarget.isPPC64() ? PPC::X0 : PPC::R0,
+                               CN->getValueType(0));
         return true;
       }
 
@@ -2561,7 +2562,7 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
     Callee.setNode(0);
     // Add CTR register as callee so a bctr can be emitted later.
     if (isTailCall)
-      Ops.push_back(DAG.getRegister(PPC::CTR, PtrVT));
+      Ops.push_back(DAG.getRegister(isPPC64 ? PPC::CTR8 : PPC::CTR, PtrVT));
   }
 
   // If this is a direct call, pass the chain and the callee.
@@ -5438,10 +5439,16 @@ PPCTargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
 
 /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
 /// vector.  If it is invalid, don't add anything to Ops.
-void PPCTargetLowering::LowerAsmOperandForConstraint(SDValue Op, char Letter,
+void PPCTargetLowering::LowerAsmOperandForConstraint(SDValue Op, 
+                                                     std::string &Constraint,
                                                      std::vector<SDValue>&Ops,
                                                      SelectionDAG &DAG) const {
   SDValue Result(0,0);
+  
+  // Only support length 1 constraints.
+  if (Constraint.length() > 1) return;
+  
+  char Letter = Constraint[0];
   switch (Letter) {
   default: break;
   case 'I':
@@ -5497,7 +5504,7 @@ void PPCTargetLowering::LowerAsmOperandForConstraint(SDValue Op, char Letter,
   }
 
   // Handle standard constraint letters.
-  TargetLowering::LowerAsmOperandForConstraint(Op, Letter, Ops, DAG);
+  TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops, DAG);
 }
 
 // isLegalAddressingMode - Return true if the addressing mode represented

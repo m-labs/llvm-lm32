@@ -60,13 +60,6 @@ STATISTIC(NumFastIselBlocks, "Number of blocks selected entirely by fast isel");
 STATISTIC(NumDAGBlocks, "Number of blocks selected using DAG");
 STATISTIC(NumDAGIselRetries,"Number of times dag isel has to try another path");
 
-#ifndef NDEBUG
-STATISTIC(NumBBWithOutOfOrderLineInfo,
-          "Number of blocks with out of order line number info");
-STATISTIC(NumMBBWithOutOfOrderLineInfo,
-          "Number of machine blocks with out of order line number info");
-#endif
-
 static cl::opt<bool>
 EnableFastISelVerbose("fast-isel-verbose", cl::Hidden,
           cl::desc("Enable verbose messages in the \"fast\" "
@@ -786,48 +779,6 @@ bool SelectionDAGISel::TryToFoldFastISelLoad(const LoadInst *LI,
   return FastIS->TryToFoldLoad(User, RI.getOperandNo(), LI);
 }
 
-#ifndef NDEBUG
-/// CheckLineNumbers - Check if basic block instructions follow source order
-/// or not.
-static void CheckLineNumbers(const BasicBlock *BB) {
-  unsigned Line = 0;
-  unsigned Col = 0;
-  for (BasicBlock::const_iterator BI = BB->begin(),
-         BE = BB->end(); BI != BE; ++BI) {
-    const DebugLoc DL = BI->getDebugLoc();
-    if (DL.isUnknown()) continue;
-    unsigned L = DL.getLine();
-    unsigned C = DL.getCol();
-    if (L < Line || (L == Line && C < Col)) {
-      ++NumBBWithOutOfOrderLineInfo;
-      return;
-    }
-    Line = L;
-    Col = C;
-  }
-}
-
-/// CheckLineNumbers - Check if machine basic block instructions follow source
-/// order or not.
-static void CheckLineNumbers(const MachineBasicBlock *MBB) {
-  unsigned Line = 0;
-  unsigned Col = 0;
-  for (MachineBasicBlock::const_iterator MBI = MBB->begin(),
-         MBE = MBB->end(); MBI != MBE; ++MBI) {
-    const DebugLoc DL = MBI->getDebugLoc();
-    if (DL.isUnknown()) continue;
-    unsigned L = DL.getLine();
-    unsigned C = DL.getCol();
-    if (L < Line || (L == Line && C < Col)) {
-      ++NumMBBWithOutOfOrderLineInfo;
-      return;
-    }
-    Line = L;
-    Col = C;
-  }
-}
-#endif
-
 /// isFoldedOrDeadInstruction - Return true if the specified instruction is
 /// side-effect free and is either dead or folded into a generated instruction.
 /// Return false if it needs to be emitted.
@@ -850,9 +801,6 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
   for (ReversePostOrderTraversal<const Function*>::rpo_iterator
        I = RPOT.begin(), E = RPOT.end(); I != E; ++I) {
     const BasicBlock *LLVMBB = *I;
-#ifndef NDEBUG
-    CheckLineNumbers(LLVMBB);
-#endif
 
     if (OptLevel != CodeGenOpt::None) {
       bool AllPredsVisited = true;
@@ -1014,11 +962,7 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
   }
 
   delete FastIS;
-#ifndef NDEBUG
-  for (MachineFunction::const_iterator MBI = MF->begin(), MBE = MF->end();
-       MBI != MBE; ++MBI)
-    CheckLineNumbers(MBI);
-#endif
+  SDB->clearDanglingDebugInfo();
 }
 
 void
@@ -2650,11 +2594,45 @@ SelectCodeCommon(SDNode *NodeToMatch, const unsigned char *MatcherTable,
       // instructions that access memory and for ComplexPatterns that match
       // loads.
       if (EmitNodeInfo & OPFL_MemRefs) {
+        // Only attach load or store memory operands if the generated
+        // instruction may load or store.
+        const TargetInstrDesc &TID = TM.getInstrInfo()->get(TargetOpc);
+        bool mayLoad = TID.mayLoad();
+        bool mayStore = TID.mayStore();
+
+        unsigned NumMemRefs = 0;
+        for (SmallVector<MachineMemOperand*, 2>::const_iterator I =
+             MatchedMemRefs.begin(), E = MatchedMemRefs.end(); I != E; ++I) {
+          if ((*I)->isLoad()) {
+            if (mayLoad)
+              ++NumMemRefs;
+          } else if ((*I)->isStore()) {
+            if (mayStore)
+              ++NumMemRefs;
+          } else {
+            ++NumMemRefs;
+          }
+        }
+
         MachineSDNode::mmo_iterator MemRefs =
-          MF->allocateMemRefsArray(MatchedMemRefs.size());
-        std::copy(MatchedMemRefs.begin(), MatchedMemRefs.end(), MemRefs);
+          MF->allocateMemRefsArray(NumMemRefs);
+
+        MachineSDNode::mmo_iterator MemRefsPos = MemRefs;
+        for (SmallVector<MachineMemOperand*, 2>::const_iterator I =
+             MatchedMemRefs.begin(), E = MatchedMemRefs.end(); I != E; ++I) {
+          if ((*I)->isLoad()) {
+            if (mayLoad)
+              *MemRefsPos++ = *I;
+          } else if ((*I)->isStore()) {
+            if (mayStore)
+              *MemRefsPos++ = *I;
+          } else {
+            *MemRefsPos++ = *I;
+          }
+        }
+
         cast<MachineSDNode>(Res)
-          ->setMemRefs(MemRefs, MemRefs + MatchedMemRefs.size());
+          ->setMemRefs(MemRefs, MemRefs + NumMemRefs);
       }
 
       DEBUG(errs() << "  "

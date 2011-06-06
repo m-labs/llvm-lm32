@@ -211,7 +211,7 @@ Value *InstCombiner::EvaluateInDifferentType(Value *V, const Type *Ty,
   }
   
   Res->takeName(I);
-  return InsertNewInstBefore(Res, *I);
+  return InsertNewInstWith(Res, *I);
 }
 
 
@@ -1684,8 +1684,7 @@ Instruction *InstCombiner::visitBitCast(BitCastInst &CI) {
     // If we found a path from the src to dest, create the getelementptr now.
     if (SrcElTy == DstElTy) {
       SmallVector<Value*, 8> Idxs(NumZeros+1, ZeroUInt);
-      return GetElementPtrInst::CreateInBounds(Src, Idxs.begin(), Idxs.end(),"",
-                                               ((Instruction*)NULL));
+      return GetElementPtrInst::CreateInBounds(Src, Idxs.begin(), Idxs.end());
     }
   }
   

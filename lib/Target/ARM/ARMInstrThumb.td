@@ -369,15 +369,6 @@ let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
     let Inst{2-0} = 0b000;
   }
 
-  def tBX_Rm : TI<(outs), (ins pred:$p, GPR:$Rm), IIC_Br, "bx${p}\t$Rm",
-                  [/* for disassembly only */]>,
-               T1Special<{1,1,0,?}> {
-    // A6.2.3 & A8.6.25
-    bits<4> Rm;
-    let Inst{6-3} = Rm;
-    let Inst{2-0} = 0b000;
-  }
-
   // Alternative return instruction used by vararg functions.
   def tBX_RET_vararg : TI<(outs), (ins tGPR:$Rm),
                           IIC_Br, "bx\t$Rm",
@@ -392,6 +383,14 @@ let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
 
 // Indirect branches
 let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
+  def tBX : TI<(outs), (ins GPR:$Rm, pred:$p), IIC_Br, "bx${p}\t$Rm", []>,
+            T1Special<{1,1,0,?}> {
+    // A6.2.3 & A8.6.25
+    bits<4> Rm;
+    let Inst{6-3} = Rm;
+    let Inst{2-0} = 0b000;
+  }
+
   def tBRIND : TI<(outs), (ins GPR:$Rm),
                   IIC_Br,
                   "mov\tpc, $Rm",
@@ -464,11 +463,8 @@ let isCall = 1,
   }
 
   // ARMv4T
-  // FIXME: Should be a pseudo.
-  let isCodeGenOnly = 1 in
-  def tBX : TIx2<{?,?,?,?,?}, {?,?}, ?,
-                  (outs), (ins tGPR:$func, variable_ops), IIC_Br,
-                  "mov\tlr, pc\n\tbx\t$func",
+  def tBX_CALL : tPseudoInst<(outs), (ins tGPR:$func, variable_ops),
+                  Size4Bytes, IIC_Br,
                   [(ARMcall_nolink tGPR:$func)]>,
             Requires<[IsThumb, IsThumb1Only, IsNotDarwin]>;
 }
@@ -519,11 +515,8 @@ let isCall = 1,
   }
 
   // ARMv4T
-  let isCodeGenOnly = 1 in
-  // FIXME: Should be a pseudo.
-  def tBXr9 : TIx2<{?,?,?,?,?}, {?,?}, ?,
-                   (outs), (ins tGPR:$func, variable_ops), IIC_Br,
-                   "mov\tlr, pc\n\tbx\t$func",
+  def tBXr9_CALL : tPseudoInst<(outs), (ins tGPR:$func, variable_ops),
+                   Size4Bytes, IIC_Br,
                    [(ARMcall_nolink tGPR:$func)]>,
               Requires<[IsThumb, IsThumb1Only, IsDarwin]>;
 }
@@ -558,7 +551,7 @@ let isBranch = 1, isTerminator = 1 in
   def tBcc : T1I<(outs), (ins t_bcctarget:$target, pred:$p), IIC_Br,
                  "b${p}\t$target",
                  [/*(ARMbrcond bb:$target, imm:$cc)*/]>,
-             T1Encoding<{1,1,0,1,?,?}> {
+             T1BranchCond<{1,1,0,1}> {
   bits<4> p;
   bits<8> target;
   let Inst{11-8} = p;

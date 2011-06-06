@@ -597,6 +597,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   case Intrinsic::x86_sse41_pmovzxbw:
   case Intrinsic::x86_sse41_pmovzxwd:
   case Intrinsic::x86_sse41_pmovzxdq: {
+    // pmov{s|z}x ignores the upper half of their input vectors.
     unsigned VWidth =
       cast<VectorType>(II->getArgOperand(0)->getType())->getNumElements();
     unsigned LowHalfElts = VWidth / 2;
@@ -1129,6 +1130,7 @@ bool InstCombiner::transformConstExprCastCall(CallSite CS) {
       Instruction::CastOps opcode =
         CastInst::getCastOpcode(NC, false, OldRetTy, false);
       NV = NC = CastInst::Create(opcode, NC, OldRetTy, "tmp");
+      NC->setDebugLoc(Caller->getDebugLoc());
 
       // If this is an invoke instruction, we should insert it after the first
       // non-phi, instruction in the normal successor block.
@@ -1212,7 +1214,7 @@ Instruction *InstCombiner::transformCallThroughTrampoline(CallSite CS) {
             // Add the chain argument and attributes.
             Value *NestVal = Tramp->getArgOperand(2);
             if (NestVal->getType() != NestTy)
-              NestVal = new BitCastInst(NestVal, NestTy, "nest", Caller);
+              NestVal = Builder->CreateBitCast(NestVal, NestTy, "nest");
             NewArgs.push_back(NestVal);
             NewAttrs.push_back(AttributeWithIndex::get(NestIdx, NestAttr));
           }

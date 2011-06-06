@@ -396,6 +396,12 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setLibcallCallingConv(RTLIB::UDIV_I8, CallingConv::ARM_AAPCS);
     setLibcallCallingConv(RTLIB::UDIV_I16, CallingConv::ARM_AAPCS);
     setLibcallCallingConv(RTLIB::UDIV_I32, CallingConv::ARM_AAPCS);
+
+    // Memory operations
+    // RTABI chapter 4.3.4
+    setLibcallName(RTLIB::MEMCPY,  "__aeabi_memcpy");
+    setLibcallName(RTLIB::MEMMOVE, "__aeabi_memmove");
+    setLibcallName(RTLIB::MEMSET,  "__aeabi_memset");
   }
 
   if (Subtarget->isThumb1Only())
@@ -650,6 +656,7 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setOperationAction(ISD::EH_SJLJ_SETJMP, MVT::i32, Custom);
     setOperationAction(ISD::EH_SJLJ_LONGJMP, MVT::Other, Custom);
     setOperationAction(ISD::EH_SJLJ_DISPATCHSETUP, MVT::Other, Custom);
+    setLibcallName(RTLIB::UNWIND_RESUME, "_Unwind_SjLj_Resume");
   }
 
   setOperationAction(ISD::SETCC,     MVT::i32, Expand);
@@ -2076,7 +2083,8 @@ SDValue ARMTargetLowering::LowerGlobalAddressDarwin(SDValue Op,
   MachineFunction &MF = DAG.getMachineFunction();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
 
-  if (Subtarget->useMovt()) {
+  // FIXME: Enable this for static codegen when tool issues are fixed.
+  if (Subtarget->useMovt() && RelocM != Reloc::Static) {
     ++NumMovwMovt;
     // FIXME: Once remat is capable of dealing with instructions with register
     // operands, expand this into two nodes.
@@ -4663,10 +4671,10 @@ LowerSDIV_v4i16(SDValue N0, SDValue N1, DebugLoc dl, SelectionDAG &DAG) {
   // Because short has a smaller range than ushort, we can actually get away
   // with only a single newton step.  This requires that we use a weird bias
   // of 89, however (again, this has been exhaustively tested).
-  // float4 result = as_float4(as_int4(xf*recip) + 89);
+  // float4 result = as_float4(as_int4(xf*recip) + 0x89);
   N0 = DAG.getNode(ISD::FMUL, dl, MVT::v4f32, N0, N2);
   N0 = DAG.getNode(ISD::BITCAST, dl, MVT::v4i32, N0);
-  N1 = DAG.getConstant(89, MVT::i32);
+  N1 = DAG.getConstant(0x89, MVT::i32);
   N1 = DAG.getNode(ISD::BUILD_VECTOR, dl, MVT::v4i32, N1, N1, N1, N1);
   N0 = DAG.getNode(ISD::ADD, dl, MVT::v4i32, N0, N1);
   N0 = DAG.getNode(ISD::BITCAST, dl, MVT::v4f32, N0);
@@ -4753,26 +4761,26 @@ static SDValue LowerUDIV(SDValue Op, SelectionDAG &DAG) {
   N0 = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::v4i32, N0);
   N1 = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::v4i32, N1);
   N0 = DAG.getNode(ISD::SINT_TO_FP, dl, MVT::v4f32, N0);
-  N1 = DAG.getNode(ISD::SINT_TO_FP, dl, MVT::v4f32, N1);
+  SDValue BN1 = DAG.getNode(ISD::SINT_TO_FP, dl, MVT::v4f32, N1);
 
   // Use reciprocal estimate and two refinement steps.
   // float4 recip = vrecpeq_f32(yf);
   // recip *= vrecpsq_f32(yf, recip);
   // recip *= vrecpsq_f32(yf, recip);
   N2 = DAG.getNode(ISD::INTRINSIC_WO_CHAIN, dl, MVT::v4f32,
-                   DAG.getConstant(Intrinsic::arm_neon_vrecpe, MVT::i32), N1);
+                   DAG.getConstant(Intrinsic::arm_neon_vrecpe, MVT::i32), BN1);
   N1 = DAG.getNode(ISD::INTRINSIC_WO_CHAIN, dl, MVT::v4f32,
                    DAG.getConstant(Intrinsic::arm_neon_vrecps, MVT::i32),
-                   N1, N2);
+                   BN1, N2);
   N2 = DAG.getNode(ISD::FMUL, dl, MVT::v4f32, N1, N2);
   N1 = DAG.getNode(ISD::INTRINSIC_WO_CHAIN, dl, MVT::v4f32,
                    DAG.getConstant(Intrinsic::arm_neon_vrecps, MVT::i32),
-                   N1, N2);
+                   BN1, N2);
   N2 = DAG.getNode(ISD::FMUL, dl, MVT::v4f32, N1, N2);
   // Simply multiplying by the reciprocal estimate can leave us a few ulps
   // too low, so we add 2 ulps (exhaustive testing shows that this is enough,
   // and that it will never cause us to return an answer too large).
-  // float4 result = as_float4(as_int4(xf*recip) + 89);
+  // float4 result = as_float4(as_int4(xf*recip) + 2);
   N0 = DAG.getNode(ISD::FMUL, dl, MVT::v4f32, N0, N2);
   N0 = DAG.getNode(ISD::BITCAST, dl, MVT::v4i32, N0);
   N1 = DAG.getConstant(2, MVT::i32);
@@ -4976,8 +4984,14 @@ ARMTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
   unsigned ptr = MI->getOperand(1).getReg();
   unsigned incr = MI->getOperand(2).getReg();
   DebugLoc dl = MI->getDebugLoc();
-
   bool isThumb2 = Subtarget->isThumb2();
+
+  MachineRegisterInfo &MRI = BB->getParent()->getRegInfo();
+  if (isThumb2) {
+    MRI.constrainRegClass(dest, ARM::rGPRRegisterClass);
+    MRI.constrainRegClass(ptr, ARM::rGPRRegisterClass);
+  }
+
   unsigned ldrOpc, strOpc;
   switch (Size) {
   default: llvm_unreachable("unsupported size for AtomicCmpSwap!");
@@ -5006,10 +5020,10 @@ ARMTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
                   BB->end());
   exitMBB->transferSuccessorsAndUpdatePHIs(BB);
 
-  MachineRegisterInfo &RegInfo = MF->getRegInfo();
-  unsigned scratch = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
-  unsigned scratch2 = (!BinOpcode) ? incr :
-    RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+  TargetRegisterClass *TRC =
+    isThumb2 ? ARM::tGPRRegisterClass : ARM::GPRRegisterClass;
+  unsigned scratch = MRI.createVirtualRegister(TRC);
+  unsigned scratch2 = (!BinOpcode) ? incr : MRI.createVirtualRegister(TRC);
 
   //  thisMBB:
   //   ...
@@ -5072,8 +5086,14 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
   unsigned incr = MI->getOperand(2).getReg();
   unsigned oldval = dest;
   DebugLoc dl = MI->getDebugLoc();
-
   bool isThumb2 = Subtarget->isThumb2();
+
+  MachineRegisterInfo &MRI = BB->getParent()->getRegInfo();
+  if (isThumb2) {
+    MRI.constrainRegClass(dest, ARM::rGPRRegisterClass);
+    MRI.constrainRegClass(ptr, ARM::rGPRRegisterClass);
+  }
+
   unsigned ldrOpc, strOpc, extendOpc;
   switch (Size) {
   default: llvm_unreachable("unsupported size for AtomicCmpSwap!");
@@ -5105,9 +5125,10 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
                   BB->end());
   exitMBB->transferSuccessorsAndUpdatePHIs(BB);
 
-  MachineRegisterInfo &RegInfo = MF->getRegInfo();
-  unsigned scratch = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
-  unsigned scratch2 = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+  TargetRegisterClass *TRC =
+    isThumb2 ? ARM::tGPRRegisterClass : ARM::GPRRegisterClass;
+  unsigned scratch = MRI.createVirtualRegister(TRC);
+  unsigned scratch2 = MRI.createVirtualRegister(TRC);
 
   //  thisMBB:
   //   ...
@@ -5128,7 +5149,7 @@ ARMTargetLowering::EmitAtomicBinaryMinMax(MachineInstr *MI,
 
   // Sign extend the value, if necessary.
   if (signExtend && extendOpc) {
-    oldval = RegInfo.createVirtualRegister(ARM::GPRRegisterClass);
+    oldval = MRI.createVirtualRegister(ARM::GPRRegisterClass);
     AddDefaultPred(BuildMI(BB, dl, TII->get(extendOpc), oldval).addReg(dest));
   }
 
@@ -7244,6 +7265,9 @@ ARMTargetLowering::getConstraintType(const std::string &Constraint) const {
     case 'l': return C_RegisterClass;
     case 'w': return C_RegisterClass;
     }
+  } else {
+    if (Constraint == "Uv")
+      return C_Memory;
   }
   return TargetLowering::getConstraintType(Constraint);
 }
@@ -7355,12 +7379,16 @@ getRegClassForInlineAsmConstraint(const std::string &Constraint,
 /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
 /// vector.  If it is invalid, don't add anything to Ops.
 void ARMTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
-                                                     char Constraint,
+                                                     std::string &Constraint,
                                                      std::vector<SDValue>&Ops,
                                                      SelectionDAG &DAG) const {
   SDValue Result(0, 0);
 
-  switch (Constraint) {
+  // Currently only support length 1 constraints.
+  if (Constraint.length() != 1) return;
+  
+  char ConstraintLetter = Constraint[0];
+  switch (ConstraintLetter) {
   default: break;
   case 'I': case 'J': case 'K': case 'L':
   case 'M': case 'N': case 'O':
@@ -7375,7 +7403,7 @@ void ARMTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
     if (CVal != CVal64)
       return;
 
-    switch (Constraint) {
+    switch (ConstraintLetter) {
       case 'I':
         if (Subtarget->isThumb1Only()) {
           // This must be a constant between 0 and 255, for ADD
@@ -7636,6 +7664,28 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.vol = false; // volatile stores with NEON intrinsics not supported
     Info.readMem = false;
     Info.writeMem = true;
+    return true;
+  }
+  case Intrinsic::arm_strexd: {
+    Info.opc = ISD::INTRINSIC_W_CHAIN;
+    Info.memVT = MVT::i64;
+    Info.ptrVal = I.getArgOperand(2);
+    Info.offset = 0;
+    Info.align = 8;
+    Info.vol = false;
+    Info.readMem = false;
+    Info.writeMem = true;
+    return true;
+  }
+  case Intrinsic::arm_ldrexd: {
+    Info.opc = ISD::INTRINSIC_W_CHAIN;
+    Info.memVT = MVT::i64;
+    Info.ptrVal = I.getArgOperand(0);
+    Info.offset = 0;
+    Info.align = 8;
+    Info.vol = false;
+    Info.readMem = true;
+    Info.writeMem = false;
     return true;
   }
   default:

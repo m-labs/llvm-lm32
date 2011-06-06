@@ -289,6 +289,7 @@ CodeGenRegisterClass::CodeGenRegisterClass(Record *R) : TheDef(R) {
   SpillSize = Size ? Size : EVT(VTs[0]).getSizeInBits();
   SpillAlignment = R->getValueAsInt("Alignment");
   CopyCost = R->getValueAsInt("CopyCost");
+  Allocatable = R->getValueAsBit("isAllocatable");
   MethodBodies = R->getValueAsCode("MethodBodies");
   MethodProtos = R->getValueAsCode("MethodProtos");
 }
@@ -460,6 +461,7 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R) {
   ModRef = ReadWriteMem;
   isOverloaded = false;
   isCommutative = false;
+  canThrow = false;
 
   if (DefName.size() <= 4 ||
       std::string(DefName.begin(), DefName.begin() + 4) != "int_")
@@ -582,10 +584,15 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R) {
       ModRef = ReadWriteArgMem;
     else if (Property->getName() == "Commutative")
       isCommutative = true;
+    else if (Property->getName() == "Throws")
+      canThrow = true;
     else if (Property->isSubClassOf("NoCapture")) {
       unsigned ArgNo = Property->getValueAsInt("ArgNo");
       ArgumentAttributes.push_back(std::make_pair(ArgNo, NoCapture));
     } else
       assert(0 && "Unknown property!");
   }
+
+  // Sort the argument attributes for later benefit.
+  std::sort(ArgumentAttributes.begin(), ArgumentAttributes.end());
 }

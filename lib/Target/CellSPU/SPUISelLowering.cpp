@@ -1215,7 +1215,7 @@ SPUTargetLowering::LowerFormalArguments(SDValue Chain,
       FuncInfo->setVarArgsFrameIndex(
         MFI->CreateFixedObject(StackSlotSize, ArgOffset, true));
       SDValue FIN = DAG.getFrameIndex(FuncInfo->getVarArgsFrameIndex(), PtrVT);
-      unsigned VReg = MF.addLiveIn(ArgRegs[ArgRegIdx], &SPU::R32CRegClass);
+      unsigned VReg = MF.addLiveIn(ArgRegs[ArgRegIdx], &SPU::VECREGRegClass);
       SDValue ArgVal = DAG.getRegister(VReg, MVT::v16i8);
       SDValue Store = DAG.getStore(Chain, dl, ArgVal, FIN, MachinePointerInfo(),
                                    false, false, 0);
@@ -3204,11 +3204,11 @@ SPUTargetLowering::ComputeNumSignBitsForTargetNode(SDValue Op,
 // LowerAsmOperandForConstraint
 void
 SPUTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
-                                                char ConstraintLetter,
+                                                std::string &Constraint,
                                                 std::vector<SDValue> &Ops,
                                                 SelectionDAG &DAG) const {
   // Default, for the time being, to the base class handler
-  TargetLowering::LowerAsmOperandForConstraint(Op, ConstraintLetter, Ops, DAG);
+  TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops, DAG);
 }
 
 /// isLegalAddressImmediate - Return true if the integer value can be used

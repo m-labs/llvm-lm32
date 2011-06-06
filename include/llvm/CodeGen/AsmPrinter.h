@@ -192,6 +192,8 @@ namespace llvm {
     };
     CFIMoveType needsCFIMoves();
 
+    bool needsSEHMoves();
+
     /// EmitConstantPool - Print to the current output stream assembly
     /// representations of the constants in the constant pool MCP. This is
     /// used to print out constants which have been "spilled to memory" by
@@ -385,10 +387,6 @@ namespace llvm {
     /// getDebugValueLocation - Get location information encoded by DBG_VALUE
     /// operands.
     virtual MachineLocation getDebugValueLocation(const MachineInstr *MI) const;
-
-    /// getDwarfRegOpSize - get size required to emit given machine location
-    /// using dwarf encoding.
-    virtual unsigned getDwarfRegOpSize(const MachineLocation &MLoc) const;
 
     /// getISAEncoding - Get the value for DW_AT_APPLE_isa. Zero if no isa
     /// encoding specified.

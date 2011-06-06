@@ -67,6 +67,9 @@ STATISTIC(NumWidened , "Number of indvars widened");
 STATISTIC(NumInserted, "Number of canonical indvars added");
 STATISTIC(NumReplaced, "Number of exit values replaced");
 STATISTIC(NumLFTR    , "Number of loop exit tests replaced");
+STATISTIC(NumElimExt , "Number of IV sign/zero extends eliminated");
+STATISTIC(NumElimRem , "Number of IV remainder operations eliminated");
+STATISTIC(NumElimCmp , "Number of IV comparisons eliminated");
 
 // DisableIVRewrite mode currently affects IVUsers, so is defined in libAnalysis
 // and referenced here.
@@ -109,16 +112,13 @@ namespace {
   private:
     bool isValidRewrite(Value *FromVal, Value *ToVal);
 
-    void SimplifyIVUsers();
+    void SimplifyIVUsers(SCEVExpander &Rewriter);
     void EliminateIVComparison(ICmpInst *ICmp, Value *IVOperand);
     void EliminateIVRemainder(BinaryOperator *Rem,
                               Value *IVOperand,
-                              bool isSigned);
+                              bool IsSigned,
+                              PHINode *IVPhi);
     void RewriteNonIntegerIVs(Loop *L);
-    const Type *WidenIVs(Loop *L, SCEVExpander &Rewriter);
-
-    bool canExpandBackedgeTakenCount(Loop *L,
-                                     const SCEV *BackedgeTakenCount);
 
     ICmpInst *LinearFunctionTestReplace(Loop *L, const SCEV *BackedgeTakenCount,
                                         PHINode *IndVar,
@@ -200,9 +200,8 @@ bool IndVarSimplify::isValidRewrite(Value *FromVal, Value *ToVal) {
 /// canExpandBackedgeTakenCount - Return true if this loop's backedge taken
 /// count expression can be safely and cheaply expanded into an instruction
 /// sequence that can be used by LinearFunctionTestReplace.
-bool IndVarSimplify::
-canExpandBackedgeTakenCount(Loop *L,
-                            const SCEV *BackedgeTakenCount) {
+static bool canExpandBackedgeTakenCount(Loop *L, ScalarEvolution *SE) {
+  const SCEV *BackedgeTakenCount = SE->getBackedgeTakenCount(L);
   if (isa<SCEVCouldNotCompute>(BackedgeTakenCount) ||
       BackedgeTakenCount->isZero())
     return false;
@@ -235,6 +234,36 @@ canExpandBackedgeTakenCount(Loop *L,
   return true;
 }
 
+/// getBackedgeIVType - Get the widest type used by the loop test after peeking
+/// through Truncs.
+///
+/// TODO: Unnecessary once LinearFunctionTestReplace is removed.
+static const Type *getBackedgeIVType(Loop *L) {
+  if (!L->getExitingBlock())
+    return 0;
+
+  // Can't rewrite non-branch yet.
+  BranchInst *BI = dyn_cast<BranchInst>(L->getExitingBlock()->getTerminator());
+  if (!BI)
+    return 0;
+
+  ICmpInst *Cond = dyn_cast<ICmpInst>(BI->getCondition());
+  if (!Cond)
+    return 0;
+
+  const Type *Ty = 0;
+  for(User::op_iterator OI = Cond->op_begin(), OE = Cond->op_end();
+      OI != OE; ++OI) {
+    assert((!Ty || Ty == (*OI)->getType()) && "bad icmp operand types");
+    TruncInst *Trunc = dyn_cast<TruncInst>(*OI);
+    if (!Trunc)
+      continue;
+
+    return Trunc->getSrcTy();
+  }
+  return Ty;
+}
+
 /// LinearFunctionTestReplace - This method rewrites the exit condition of the
 /// loop to be a canonical != comparison against the incremented loop induction
 /// variable.  This pass is able to rewrite the exit tests of any loop where the
@@ -245,7 +274,7 @@ LinearFunctionTestReplace(Loop *L,
                           const SCEV *BackedgeTakenCount,
                           PHINode *IndVar,
                           SCEVExpander &Rewriter) {
-  assert(canExpandBackedgeTakenCount(L, BackedgeTakenCount) && "precondition");
+  assert(canExpandBackedgeTakenCount(L, SE) && "precondition");
   BranchInst *BI = cast<BranchInst>(L->getExitingBlock()->getTerminator());
 
   // If the exiting block is not the same as the backedge block, we must compare
@@ -454,27 +483,430 @@ void IndVarSimplify::RewriteNonIntegerIVs(Loop *L) {
     SE->forgetLoop(L);
 }
 
+namespace {
+  // Collect information about induction variables that are used by sign/zero
+  // extend operations. This information is recorded by CollectExtend and
+  // provides the input to WidenIV.
+  struct WideIVInfo {
+    const Type *WidestNativeType; // Widest integer type created [sz]ext
+    bool IsSigned;                // Was an sext user seen before a zext?
+
+    WideIVInfo() : WidestNativeType(0), IsSigned(false) {}
+  };
+  typedef std::map<PHINode *, WideIVInfo> WideIVMap;
+}
+
+/// CollectExtend - Update information about the induction variable that is
+/// extended by this sign or zero extend operation. This is used to determine
+/// the final width of the IV before actually widening it.
+static void CollectExtend(CastInst *Cast, PHINode *Phi, bool IsSigned,
+                          WideIVMap &IVMap, ScalarEvolution *SE,
+                          const TargetData *TD) {
+  const Type *Ty = Cast->getType();
+  uint64_t Width = SE->getTypeSizeInBits(Ty);
+  if (TD && !TD->isLegalInteger(Width))
+    return;
+
+  WideIVInfo &IVInfo = IVMap[Phi];
+  if (!IVInfo.WidestNativeType) {
+    IVInfo.WidestNativeType = SE->getEffectiveSCEVType(Ty);
+    IVInfo.IsSigned = IsSigned;
+    return;
+  }
+
+  // We extend the IV to satisfy the sign of its first user, arbitrarily.
+  if (IVInfo.IsSigned != IsSigned)
+    return;
+
+  if (Width > SE->getTypeSizeInBits(IVInfo.WidestNativeType))
+    IVInfo.WidestNativeType = SE->getEffectiveSCEVType(Ty);
+}
+
+namespace {
+/// WidenIV - The goal of this transform is to remove sign and zero extends
+/// without creating any new induction variables. To do this, it creates a new
+/// phi of the wider type and redirects all users, either removing extends or
+/// inserting truncs whenever we stop propagating the type.
+///
+class WidenIV {
+  PHINode *OrigPhi;
+  const Type *WideType;
+  bool IsSigned;
+
+  IVUsers *IU;
+  LoopInfo *LI;
+  Loop *L;
+  ScalarEvolution *SE;
+  DominatorTree *DT;
+  SmallVectorImpl<WeakVH> &DeadInsts;
+
+  PHINode *WidePhi;
+  Instruction *WideInc;
+  const SCEV *WideIncExpr;
+
+  SmallPtrSet<Instruction*,16> Processed;
+
+public:
+  WidenIV(PHINode *PN, const WideIVInfo &IVInfo, IVUsers *IUsers,
+          LoopInfo *LInfo, ScalarEvolution *SEv, DominatorTree *DTree,
+          SmallVectorImpl<WeakVH> &DI) :
+    OrigPhi(PN),
+    WideType(IVInfo.WidestNativeType),
+    IsSigned(IVInfo.IsSigned),
+    IU(IUsers),
+    LI(LInfo),
+    L(LI->getLoopFor(OrigPhi->getParent())),
+    SE(SEv),
+    DT(DTree),
+    DeadInsts(DI),
+    WidePhi(0),
+    WideInc(0),
+    WideIncExpr(0) {
+    assert(L->getHeader() == OrigPhi->getParent() && "Phi must be an IV");
+  }
+
+  bool CreateWideIV(SCEVExpander &Rewriter);
+
+protected:
+  Instruction *CloneIVUser(Instruction *NarrowUse,
+                           Instruction *NarrowDef,
+                           Instruction *WideDef);
+
+  const SCEVAddRecExpr *GetWideRecurrence(Instruction *NarrowUse);
+
+  Instruction *WidenIVUse(Instruction *NarrowUse,
+                          Instruction *NarrowDef,
+                          Instruction *WideDef);
+};
+} // anonymous namespace
+
 /// SimplifyIVUsers - Iteratively perform simplification on IVUsers within this
 /// loop. IVUsers is treated as a worklist. Each successive simplification may
 /// push more users which may themselves be candidates for simplification.
-void IndVarSimplify::SimplifyIVUsers() {
-  for (IVUsers::iterator I = IU->begin(); I != IU->end(); ++I) {
-    Instruction *UseInst = I->getUser();
-    Value *IVOperand = I->getOperandValToReplace();
+///
+void IndVarSimplify::SimplifyIVUsers(SCEVExpander &Rewriter) {
+  WideIVMap IVMap;
 
-    if (ICmpInst *ICmp = dyn_cast<ICmpInst>(UseInst)) {
-      EliminateIVComparison(ICmp, IVOperand);
-      continue;
-    }
+  // Each round of simplification involves a round of eliminating operations
+  // followed by a round of widening IVs. A single IVUsers worklist is used
+  // across all rounds. The inner loop advances the user. If widening exposes
+  // more uses, then another pass through the outer loop is triggered.
+  for (IVUsers::iterator I = IU->begin(), E = IU->end(); I != E;) {
+    for(; I != E; ++I) {
+      Instruction *UseInst = I->getUser();
+      Value *IVOperand = I->getOperandValToReplace();
 
-    if (BinaryOperator *Rem = dyn_cast<BinaryOperator>(UseInst)) {
-      bool isSigned = Rem->getOpcode() == Instruction::SRem;
-      if (isSigned || Rem->getOpcode() == Instruction::URem) {
-        EliminateIVRemainder(Rem, IVOperand, isSigned);
+      if (DisableIVRewrite) {
+        if (CastInst *Cast = dyn_cast<CastInst>(UseInst)) {
+          bool IsSigned = Cast->getOpcode() == Instruction::SExt;
+          if (IsSigned || Cast->getOpcode() == Instruction::ZExt) {
+            CollectExtend(Cast, I->getPhi(), IsSigned, IVMap, SE, TD);
+            continue;
+          }
+        }
+      }
+      if (ICmpInst *ICmp = dyn_cast<ICmpInst>(UseInst)) {
+        EliminateIVComparison(ICmp, IVOperand);
         continue;
       }
+      if (BinaryOperator *Rem = dyn_cast<BinaryOperator>(UseInst)) {
+        bool IsSigned = Rem->getOpcode() == Instruction::SRem;
+        if (IsSigned || Rem->getOpcode() == Instruction::URem) {
+          EliminateIVRemainder(Rem, IVOperand, IsSigned, I->getPhi());
+          continue;
+        }
+      }
+    }
+    for (WideIVMap::const_iterator I = IVMap.begin(), E = IVMap.end();
+         I != E; ++I) {
+      WidenIV Widener(I->first, I->second, IU, LI, SE, DT, DeadInsts);
+      if (Widener.CreateWideIV(Rewriter))
+        Changed = true;
     }
   }
+}
+
+static Value *getExtend( Value *NarrowOper, const Type *WideType,
+                               bool IsSigned, IRBuilder<> &Builder) {
+  return IsSigned ? Builder.CreateSExt(NarrowOper, WideType) :
+                    Builder.CreateZExt(NarrowOper, WideType);
+}
+
+/// CloneIVUser - Instantiate a wide operation to replace a narrow
+/// operation. This only needs to handle operations that can evaluation to
+/// SCEVAddRec. It can safely return 0 for any operation we decide not to clone.
+Instruction *WidenIV::CloneIVUser(Instruction *NarrowUse,
+                                  Instruction *NarrowDef,
+                                  Instruction *WideDef) {
+  unsigned Opcode = NarrowUse->getOpcode();
+  switch (Opcode) {
+  default:
+    return 0;
+  case Instruction::Add:
+  case Instruction::Mul:
+  case Instruction::UDiv:
+  case Instruction::Sub:
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+    DEBUG(dbgs() << "Cloning IVUser: " << *NarrowUse << "\n");
+
+    IRBuilder<> Builder(NarrowUse);
+
+    // Replace NarrowDef operands with WideDef. Otherwise, we don't know
+    // anything about the narrow operand yet so must insert a [sz]ext. It is
+    // probably loop invariant and will be folded or hoisted. If it actually
+    // comes from a widened IV, it should be removed during a future call to
+    // WidenIVUse.
+    Value *LHS = (NarrowUse->getOperand(0) == NarrowDef) ? WideDef :
+      getExtend(NarrowUse->getOperand(0), WideType, IsSigned, Builder);
+    Value *RHS = (NarrowUse->getOperand(1) == NarrowDef) ? WideDef :
+      getExtend(NarrowUse->getOperand(1), WideType, IsSigned, Builder);
+
+    BinaryOperator *NarrowBO = cast<BinaryOperator>(NarrowUse);
+    BinaryOperator *WideBO = BinaryOperator::Create(NarrowBO->getOpcode(),
+                                                    LHS, RHS,
+                                                    NarrowBO->getName());
+    Builder.Insert(WideBO);
+    if (NarrowBO->hasNoUnsignedWrap()) WideBO->setHasNoUnsignedWrap();
+    if (NarrowBO->hasNoSignedWrap()) WideBO->setHasNoSignedWrap();
+
+    return WideBO;
+  }
+  llvm_unreachable(0);
+}
+
+// GetWideRecurrence - Is this instruction potentially interesting from IVUsers'
+// perspective after widening it's type? In other words, can the extend be
+// safely hoisted out of the loop with SCEV reducing the value to a recurrence
+// on the same loop. If so, return the sign or zero extended
+// recurrence. Otherwise return NULL.
+const SCEVAddRecExpr *WidenIV::GetWideRecurrence(Instruction *NarrowUse) {
+  if (!SE->isSCEVable(NarrowUse->getType()))
+    return 0;
+
+  const SCEV *NarrowExpr = SE->getSCEV(NarrowUse);
+  const SCEV *WideExpr = IsSigned ?
+    SE->getSignExtendExpr(NarrowExpr, WideType) :
+    SE->getZeroExtendExpr(NarrowExpr, WideType);
+  const SCEVAddRecExpr *AddRec = dyn_cast<SCEVAddRecExpr>(WideExpr);
+  if (!AddRec || AddRec->getLoop() != L)
+    return 0;
+
+  return AddRec;
+}
+
+/// HoistStep - Attempt to hoist an IV increment above a potential use.
+///
+/// To successfully hoist, two criteria must be met:
+/// - IncV operands dominate InsertPos and
+/// - InsertPos dominates IncV
+///
+/// Meeting the second condition means that we don't need to check all of IncV's
+/// existing uses (it's moving up in the domtree).
+///
+/// This does not yet recursively hoist the operands, although that would
+/// not be difficult.
+static bool HoistStep(Instruction *IncV, Instruction *InsertPos,
+                      const DominatorTree *DT)
+{
+  if (DT->dominates(IncV, InsertPos))
+    return true;
+
+  if (!DT->dominates(InsertPos->getParent(), IncV->getParent()))
+    return false;
+
+  if (IncV->mayHaveSideEffects())
+    return false;
+
+  // Attempt to hoist IncV
+  for (User::op_iterator OI = IncV->op_begin(), OE = IncV->op_end();
+       OI != OE; ++OI) {
+    Instruction *OInst = dyn_cast<Instruction>(OI);
+    if (OInst && !DT->dominates(OInst, InsertPos))
+      return false;
+  }
+  IncV->moveBefore(InsertPos);
+  return true;
+}
+
+/// WidenIVUse - Determine whether an individual user of the narrow IV can be
+/// widened. If so, return the wide clone of the user.
+Instruction *WidenIV::WidenIVUse(Instruction *NarrowUse,
+                                 Instruction *NarrowDef,
+                                 Instruction *WideDef) {
+  // To be consistent with IVUsers, stop traversing the def-use chain at
+  // inner-loop phis or post-loop phis.
+  if (isa<PHINode>(NarrowUse) && LI->getLoopFor(NarrowUse->getParent()) != L)
+    return 0;
+
+  // Handle data flow merges and bizarre phi cycles.
+  if (!Processed.insert(NarrowUse))
+    return 0;
+
+  // Our raison d'etre! Eliminate sign and zero extension.
+  if (IsSigned ? isa<SExtInst>(NarrowUse) : isa<ZExtInst>(NarrowUse)) {
+    Value *NewDef = WideDef;
+    if (NarrowUse->getType() != WideType) {
+      unsigned CastWidth = SE->getTypeSizeInBits(NarrowUse->getType());
+      unsigned IVWidth = SE->getTypeSizeInBits(WideType);
+      if (CastWidth < IVWidth) {
+        // The cast isn't as wide as the IV, so insert a Trunc.
+        IRBuilder<> Builder(NarrowUse);
+        NewDef = Builder.CreateTrunc(WideDef, NarrowUse->getType());
+      }
+      else {
+        // A wider extend was hidden behind a narrower one. This may induce
+        // another round of IV widening in which the intermediate IV becomes
+        // dead. It should be very rare.
+        DEBUG(dbgs() << "INDVARS: New IV " << *WidePhi
+              << " not wide enough to subsume " << *NarrowUse << "\n");
+        NarrowUse->replaceUsesOfWith(NarrowDef, WideDef);
+        NewDef = NarrowUse;
+      }
+    }
+    if (NewDef != NarrowUse) {
+      DEBUG(dbgs() << "INDVARS: eliminating " << *NarrowUse
+            << " replaced by " << *WideDef << "\n");
+      ++NumElimExt;
+      NarrowUse->replaceAllUsesWith(NewDef);
+      DeadInsts.push_back(NarrowUse);
+    }
+    // Now that the extend is gone, expose it's uses to IVUsers for potential
+    // further simplification within SimplifyIVUsers.
+    IU->AddUsersIfInteresting(WideDef, WidePhi);
+
+    // No further widening is needed. The deceased [sz]ext had done it for us.
+    return 0;
+  }
+  const SCEVAddRecExpr *WideAddRec = GetWideRecurrence(NarrowUse);
+  if (!WideAddRec) {
+    // This user does not evaluate to a recurence after widening, so don't
+    // follow it. Instead insert a Trunc to kill off the original use,
+    // eventually isolating the original narrow IV so it can be removed.
+    IRBuilder<> Builder(NarrowUse);
+    Value *Trunc = Builder.CreateTrunc(WideDef, NarrowDef->getType());
+    NarrowUse->replaceUsesOfWith(NarrowDef, Trunc);
+    return 0;
+  }
+  // Reuse the IV increment that SCEVExpander created as long as it dominates
+  // NarrowUse.
+  Instruction *WideUse = 0;
+  if (WideAddRec == WideIncExpr && HoistStep(WideInc, NarrowUse, DT)) {
+    WideUse = WideInc;
+  }
+  else {
+    WideUse = CloneIVUser(NarrowUse, NarrowDef, WideDef);
+    if (!WideUse)
+      return 0;
+  }
+  // GetWideRecurrence ensured that the narrow expression could be extended
+  // outside the loop without overflow. This suggests that the wide use
+  // evaluates to the same expression as the extended narrow use, but doesn't
+  // absolutely guarantee it. Hence the following failsafe check. In rare cases
+  // where it fails, we simple throw away the newly created wide use.
+  if (WideAddRec != SE->getSCEV(WideUse)) {
+    DEBUG(dbgs() << "Wide use expression mismatch: " << *WideUse
+          << ": " << *SE->getSCEV(WideUse) << " != " << *WideAddRec << "\n");
+    DeadInsts.push_back(WideUse);
+    return 0;
+  }
+
+  // Returning WideUse pushes it on the worklist.
+  return WideUse;
+}
+
+/// CreateWideIV - Process a single induction variable. First use the
+/// SCEVExpander to create a wide induction variable that evaluates to the same
+/// recurrence as the original narrow IV. Then use a worklist to forward
+/// traverse the narrow IV's def-use chain. After WidenIVUse as processed all
+/// interesting IV users, the narrow IV will be isolated for removal by
+/// DeleteDeadPHIs.
+///
+/// It would be simpler to delete uses as they are processed, but we must avoid
+/// invalidating SCEV expressions.
+///
+bool WidenIV::CreateWideIV(SCEVExpander &Rewriter) {
+  // Is this phi an induction variable?
+  const SCEVAddRecExpr *AddRec = dyn_cast<SCEVAddRecExpr>(SE->getSCEV(OrigPhi));
+  if (!AddRec)
+    return false;
+
+  // Widen the induction variable expression.
+  const SCEV *WideIVExpr = IsSigned ?
+    SE->getSignExtendExpr(AddRec, WideType) :
+    SE->getZeroExtendExpr(AddRec, WideType);
+
+  assert(SE->getEffectiveSCEVType(WideIVExpr->getType()) == WideType &&
+         "Expect the new IV expression to preserve its type");
+
+  // Can the IV be extended outside the loop without overflow?
+  AddRec = dyn_cast<SCEVAddRecExpr>(WideIVExpr);
+  if (!AddRec || AddRec->getLoop() != L)
+    return false;
+
+  // An AddRec must have loop-invariant operands. Since this AddRec it
+  // materialized by a loop header phi, the expression cannot have any post-loop
+  // operands, so they must dominate the loop header.
+  assert(SE->properlyDominates(AddRec->getStart(), L->getHeader()) &&
+         SE->properlyDominates(AddRec->getStepRecurrence(*SE), L->getHeader())
+         && "Loop header phi recurrence inputs do not dominate the loop");
+
+  // The rewriter provides a value for the desired IV expression. This may
+  // either find an existing phi or materialize a new one. Either way, we
+  // expect a well-formed cyclic phi-with-increments. i.e. any operand not part
+  // of the phi-SCC dominates the loop entry.
+  Instruction *InsertPt = L->getHeader()->begin();
+  WidePhi = cast<PHINode>(Rewriter.expandCodeFor(AddRec, WideType, InsertPt));
+
+  // Remembering the WideIV increment generated by SCEVExpander allows
+  // WidenIVUse to reuse it when widening the narrow IV's increment. We don't
+  // employ a general reuse mechanism because the call above is the only call to
+  // SCEVExpander. Henceforth, we produce 1-to-1 narrow to wide uses.
+  if (BasicBlock *LatchBlock = L->getLoopLatch()) {
+    WideInc =
+      cast<Instruction>(WidePhi->getIncomingValueForBlock(LatchBlock));
+    WideIncExpr = SE->getSCEV(WideInc);
+  }
+
+  DEBUG(dbgs() << "Wide IV: " << *WidePhi << "\n");
+  ++NumWidened;
+
+  // Traverse the def-use chain using a worklist starting at the original IV.
+  assert(Processed.empty() && "expect initial state" );
+
+  // Each worklist entry has a Narrow def-use link and Wide def.
+  SmallVector<std::pair<Use *, Instruction *>, 8> NarrowIVUsers;
+  for (Value::use_iterator UI = OrigPhi->use_begin(),
+         UE = OrigPhi->use_end(); UI != UE; ++UI) {
+    NarrowIVUsers.push_back(std::make_pair(&UI.getUse(), WidePhi));
+  }
+  while (!NarrowIVUsers.empty()) {
+    Use *NarrowDefUse;
+    Instruction *WideDef;
+    tie(NarrowDefUse, WideDef) = NarrowIVUsers.pop_back_val();
+
+    // Process a def-use edge. This may replace the use, so don't hold a
+    // use_iterator across it.
+    Instruction *NarrowDef = cast<Instruction>(NarrowDefUse->get());
+    Instruction *NarrowUse = cast<Instruction>(NarrowDefUse->getUser());
+    Instruction *WideUse = WidenIVUse(NarrowUse, NarrowDef, WideDef);
+
+    // Follow all def-use edges from the previous narrow use.
+    if (WideUse) {
+      for (Value::use_iterator UI = NarrowUse->use_begin(),
+             UE = NarrowUse->use_end(); UI != UE; ++UI) {
+        NarrowIVUsers.push_back(std::make_pair(&UI.getUse(), WideUse));
+      }
+    }
+    // WidenIVUse may have removed the def-use edge.
+    if (NarrowDef->use_empty())
+      DeadInsts.push_back(NarrowDef);
+  }
+  return true;
 }
 
 void IndVarSimplify::EliminateIVComparison(ICmpInst *ICmp, Value *IVOperand) {
@@ -506,12 +938,15 @@ void IndVarSimplify::EliminateIVComparison(ICmpInst *ICmp, Value *IVOperand) {
     return;
 
   DEBUG(dbgs() << "INDVARS: Eliminated comparison: " << *ICmp << '\n');
+  ++NumElimCmp;
+  Changed = true;
   DeadInsts.push_back(ICmp);
 }
 
 void IndVarSimplify::EliminateIVRemainder(BinaryOperator *Rem,
                                           Value *IVOperand,
-                                          bool isSigned) {
+                                          bool IsSigned,
+                                          PHINode *IVPhi) {
   // We're only interested in the case where we know something about
   // the numerator.
   if (IVOperand != Rem->getOperand(0))
@@ -527,18 +962,18 @@ void IndVarSimplify::EliminateIVRemainder(BinaryOperator *Rem,
   X = SE->getSCEVAtScope(X, ICmpLoop);
 
   // i % n  -->  i  if i is in [0,n).
-  if ((!isSigned || SE->isKnownNonNegative(S)) &&
-      SE->isKnownPredicate(isSigned ? ICmpInst::ICMP_SLT : ICmpInst::ICMP_ULT,
+  if ((!IsSigned || SE->isKnownNonNegative(S)) &&
+      SE->isKnownPredicate(IsSigned ? ICmpInst::ICMP_SLT : ICmpInst::ICMP_ULT,
                            S, X))
     Rem->replaceAllUsesWith(Rem->getOperand(0));
   else {
     // (i+1) % n  -->  (i+1)==n?0:(i+1)  if i is in [0,n).
     const SCEV *LessOne =
       SE->getMinusSCEV(S, SE->getConstant(S->getType(), 1));
-    if (isSigned && !SE->isKnownNonNegative(LessOne))
+    if (IsSigned && !SE->isKnownNonNegative(LessOne))
       return;
 
-    if (!SE->isKnownPredicate(isSigned ?
+    if (!SE->isKnownPredicate(IsSigned ?
                               ICmpInst::ICMP_SLT : ICmpInst::ICMP_ULT,
                               LessOne, X))
       return;
@@ -555,9 +990,11 @@ void IndVarSimplify::EliminateIVRemainder(BinaryOperator *Rem,
 
   // Inform IVUsers about the new users.
   if (Instruction *I = dyn_cast<Instruction>(Rem->getOperand(0)))
-    IU->AddUsersIfInteresting(I);
+    IU->AddUsersIfInteresting(I, IVPhi);
 
   DEBUG(dbgs() << "INDVARS: Simplified rem: " << *Rem << '\n');
+  ++NumElimRem;
+  Changed = true;
   DeadInsts.push_back(Rem);
 }
 
@@ -593,11 +1030,6 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (DisableIVRewrite)
     Rewriter.disableCanonicalMode();
 
-  const Type *LargestType = 0;
-  if (DisableIVRewrite) {
-    LargestType = WidenIVs(L, Rewriter);
-  }
-
   // Check to see if this loop has a computable loop-invariant execution count.
   // If so, this means that we can compute the final value of any expressions
   // that are recurrent in the loop, and substitute the exit values from the
@@ -607,27 +1039,27 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (!isa<SCEVCouldNotCompute>(BackedgeTakenCount))
     RewriteLoopExitValues(L, Rewriter);
 
-  SimplifyIVUsers();
+  // Eliminate redundant IV users.
+  SimplifyIVUsers(Rewriter);
 
   // Compute the type of the largest recurrence expression, and decide whether
   // a canonical induction variable should be inserted.
+  const Type *LargestType = 0;
   bool NeedCannIV = false;
-  bool ExpandBECount = canExpandBackedgeTakenCount(L, BackedgeTakenCount);
+  bool ExpandBECount = canExpandBackedgeTakenCount(L, SE);
   if (ExpandBECount) {
     // If we have a known trip count and a single exit block, we'll be
     // rewriting the loop exit test condition below, which requires a
     // canonical induction variable.
     NeedCannIV = true;
     const Type *Ty = BackedgeTakenCount->getType();
-    if (!LargestType ||
-        SE->getTypeSizeInBits(Ty) >
-        SE->getTypeSizeInBits(LargestType))
-      LargestType = SE->getEffectiveSCEVType(Ty);
-  }
-  for (IVUsers::const_iterator I = IU->begin(), E = IU->end(); I != E; ++I) {
-    NeedCannIV = true;
-    const Type *Ty =
-      SE->getEffectiveSCEVType(I->getOperandValToReplace()->getType());
+    if (DisableIVRewrite) {
+      // In this mode, SimplifyIVUsers may have already widened the IV used by
+      // the backedge test and inserted a Trunc on the compare's operand. Get
+      // the wider type to avoid creating a redundant narrow IV only used by the
+      // loop test.
+      LargestType = getBackedgeIVType(L);
+    }
     if (!LargestType ||
         SE->getTypeSizeInBits(Ty) >
         SE->getTypeSizeInBits(LargestType))
@@ -683,7 +1115,7 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
   // using it.  We can currently only handle loops with a single exit.
   ICmpInst *NewICmp = 0;
   if (ExpandBECount) {
-    assert(canExpandBackedgeTakenCount(L, BackedgeTakenCount) &&
+    assert(canExpandBackedgeTakenCount(L, SE) &&
            "canonical IV disrupted BackedgeTaken expansion");
     assert(NeedCannIV &&
            "LinearFunctionTestReplace requires a canonical induction variable");
@@ -715,7 +1147,8 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
   // For completeness, inform IVUsers of the IV use in the newly-created
   // loop exit test instruction.
   if (NewICmp)
-    IU->AddUsersIfInteresting(cast<Instruction>(NewICmp->getOperand(0)));
+    IU->AddUsersIfInteresting(cast<Instruction>(NewICmp->getOperand(0)),
+                              IndVar);
 
   // Clean up dead instructions.
   Changed |= DeleteDeadPHIs(L->getHeader());
@@ -762,83 +1195,6 @@ static bool isSafe(const SCEV *S, const Loop *L, ScalarEvolution *SE) {
 
   // Nothing else is safe.
   return false;
-}
-
-/// Widen the type of any induction variables that are sign/zero extended and
-/// remove the [sz]ext uses.
-///
-/// FIXME: This may currently create extra IVs which could increase regpressure
-/// (without LSR to cleanup).
-///
-/// FIXME: may factor this with RewriteIVExpressions once it stabilizes.
-const Type *IndVarSimplify::WidenIVs(Loop *L, SCEVExpander &Rewriter) {
-  const Type *LargestType = 0;
-  for (IVUsers::iterator UI = IU->begin(), E = IU->end(); UI != E; ++UI) {
-    Instruction *ExtInst = UI->getUser();
-    if (!isa<SExtInst>(ExtInst) && !isa<ZExtInst>(ExtInst))
-      continue;
-    const SCEV *AR = SE->getSCEV(ExtInst);
-    // Only widen this IV is SCEV tells us it's safe.
-    if (!isa<SCEVAddRecExpr>(AR) && !isa<SCEVAddExpr>(AR))
-      continue;
-
-    if (!L->contains(UI->getUser())) {
-      const SCEV *ExitVal = SE->getSCEVAtScope(AR, L->getParentLoop());
-      if (SE->isLoopInvariant(ExitVal, L))
-        AR = ExitVal;
-    }
-
-    // Only expand affine recurences.
-    if (!isSafe(AR, L, SE))
-      continue;
-
-    const Type *Ty =
-      SE->getEffectiveSCEVType(ExtInst->getType());
-
-    // Only remove [sz]ext if the wide IV is still a native type.
-    //
-    // FIXME: We may be able to remove the copy of this logic in
-    // IVUsers::AddUsersIfInteresting.
-    uint64_t Width = SE->getTypeSizeInBits(Ty);
-    if (Width > 64 || (TD && !TD->isLegalInteger(Width)))
-      continue;
-
-    // Now expand it into actual Instructions and patch it into place.
-    //
-    // FIXME: avoid creating a new IV.
-    Value *NewVal = Rewriter.expandCodeFor(AR, Ty, ExtInst);
-
-    DEBUG(dbgs() << "INDVARS: Widened IV '" << *AR << "' " << *ExtInst << '\n'
-                 << "   into = " << *NewVal << "\n");
-
-    if (!isValidRewrite(ExtInst, NewVal)) {
-      DeadInsts.push_back(NewVal);
-      continue;
-    }
-
-    ++NumWidened;
-    Changed = true;
-
-    if (!LargestType ||
-        SE->getTypeSizeInBits(Ty) >
-        SE->getTypeSizeInBits(LargestType))
-      LargestType = Ty;
-
-    SE->forgetValue(ExtInst);
-
-    // Patch the new value into place.
-    if (ExtInst->hasName())
-      NewVal->takeName(ExtInst);
-    ExtInst->replaceAllUsesWith(NewVal);
-
-    // The old value may be dead now.
-    DeadInsts.push_back(ExtInst);
-
-    // UI is a linked list iterator, so AddUsersIfInteresting effectively pushes
-    // nodes on the worklist.
-    IU->AddUsersIfInteresting(ExtInst);
-  }
-  return LargestType;
 }
 
 void IndVarSimplify::RewriteIVExpressions(Loop *L, SCEVExpander &Rewriter) {
@@ -1223,5 +1579,5 @@ void IndVarSimplify::HandleFloatingPointIV(Loop *L, PHINode *PN) {
   }
 
   // Add a new IVUsers entry for the newly-created integer PHI.
-  IU->AddUsersIfInteresting(NewPHI);
+  IU->AddUsersIfInteresting(NewPHI, NewPHI);
 }

@@ -215,13 +215,12 @@ void AsmPrinter::EmitCFIFrameMove(const MachineMove &Move) const {
 
   // If advancing cfa.
   if (Dst.isReg() && Dst.getReg() == MachineLocation::VirtualFP) {
-    assert(!Src.isReg() && "Machine move not supported yet.");
-
     if (Src.getReg() == MachineLocation::VirtualFP) {
       OutStreamer.EmitCFIDefCfaOffset(-Src.getOffset());
     } else {
-      assert("Machine move not supported yet");
       // Reg + Offset
+      OutStreamer.EmitCFIDefCfa(RI->getDwarfRegNum(Src.getReg(), true),
+                                Src.getOffset());
     }
   } else if (Src.isReg() && Src.getReg() == MachineLocation::VirtualFP) {
     assert(Dst.isReg() && "Machine move not supported yet.");

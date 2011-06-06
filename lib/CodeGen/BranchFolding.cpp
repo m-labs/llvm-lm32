@@ -1056,6 +1056,22 @@ ReoptimizeBlock:
         !MBB->hasAddressTaken() && !MBB->isLandingPad()) {
       DEBUG(dbgs() << "\nMerging into block: " << PrevBB
                    << "From MBB: " << *MBB);
+      // Remove redundant DBG_VALUEs first.
+      if (PrevBB.begin() != PrevBB.end()) {
+        MachineBasicBlock::iterator PrevBBIter = PrevBB.end();
+        --PrevBBIter;
+        MachineBasicBlock::iterator MBBIter = MBB->begin();
+        // Check if DBG_VALUE at the end of PrevBB is identical to the 
+        // DBG_VALUE at the beginning of MBB.
+        while (PrevBBIter != PrevBB.begin() && MBBIter != MBB->end()
+               && PrevBBIter->isDebugValue() && MBBIter->isDebugValue()) {
+          if (!MBBIter->isIdenticalTo(PrevBBIter))
+            break;
+          MachineInstr *DuplicateDbg = MBBIter;
+          ++MBBIter; -- PrevBBIter;
+          DuplicateDbg->eraseFromParent();
+        }
+      }
       PrevBB.splice(PrevBB.end(), MBB, MBB->begin(), MBB->end());
       PrevBB.removeSuccessor(PrevBB.succ_begin());;
       assert(PrevBB.succ_empty());

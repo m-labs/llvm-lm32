@@ -62,6 +62,7 @@ bool ELFObjectWriter::RelocNeedsGOT(MCSymbolRefExpr::VariantKind Variant) {
   case MCSymbolRefExpr::VK_GOT:
   case MCSymbolRefExpr::VK_PLT:
   case MCSymbolRefExpr::VK_GOTPCREL:
+  case MCSymbolRefExpr::VK_GOTOFF:
   case MCSymbolRefExpr::VK_TPOFF:
   case MCSymbolRefExpr::VK_TLSGD:
   case MCSymbolRefExpr::VK_GOTTPOFF:
@@ -556,6 +557,7 @@ void ELFObjectWriter::ComputeSymbolTable(MCAssembler &Asm,
                                          RevGroupMapTy RevGroupMap,
                                          unsigned NumRegularSections) {
   // FIXME: Is this the correct place to do this?
+  // FIXME: Why is an undefined reference to _GLOBAL_OFFSET_TABLE_ needed?
   if (NeedsGOT) {
     llvm::StringRef Name = "_GLOBAL_OFFSET_TABLE_";
     MCSymbol *Sym = Asm.getContext().GetOrCreateSymbol(Name);
@@ -1441,6 +1443,17 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case ARM::fixup_t2_movw_lo16_pcrel:
       Type = ELF::R_ARM_THM_MOVW_PREL_NC;
       break;
+    case ARM::fixup_arm_thumb_bl:
+    case ARM::fixup_arm_thumb_blx:
+      switch (Modifier) {
+      case MCSymbolRefExpr::VK_ARM_PLT:
+        Type = ELF::R_ARM_THM_CALL;
+        break;
+      default:
+        Type = ELF::R_ARM_NONE;
+        break;
+      }
+      break;
     }
   } else {
     switch ((unsigned)Fixup.getKind()) {
@@ -1708,6 +1721,9 @@ unsigned X86ELFObjectWriter::GetRelocType(const MCValue &Target,
           break;
         case MCSymbolRefExpr::VK_DTPOFF:
           Type = ELF::R_386_TLS_LDO_32;
+          break;
+        case MCSymbolRefExpr::VK_GOTTPOFF:
+          Type = ELF::R_386_TLS_IE_32;
           break;
         }
         break;

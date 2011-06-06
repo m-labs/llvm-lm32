@@ -252,7 +252,12 @@ bool SimpleRegisterCoalescing::AdjustCopiesBackFrom(const CoalescerPair &CP,
 
   // Okay, merge "B1" into the same value number as "B0".
   if (BValNo != ValLR->valno) {
+    // If B1 is killed by a PHI, then the merged live range must also be killed
+    // by the same PHI, as B0 and B1 can not overlap.
+    bool HasPHIKill = BValNo->hasPHIKill();
     IntB.MergeValueNumberInto(BValNo, ValLR->valno);
+    if (HasPHIKill)
+      ValLR->valno->setHasPHIKill(true);
   }
   DEBUG({
       dbgs() << "   result = ";
@@ -424,6 +429,10 @@ bool SimpleRegisterCoalescing::RemoveCopyByCommutingDef(const CoalescerPair &CP,
   MachineBasicBlock *MBB = DefMI->getParent();
   MachineInstr *NewMI = tii_->commuteInstruction(DefMI);
   if (!NewMI)
+    return false;
+  if (TargetRegisterInfo::isVirtualRegister(IntA.reg) &&
+      TargetRegisterInfo::isVirtualRegister(IntB.reg) &&
+      !mri_->constrainRegClass(IntB.reg, mri_->getRegClass(IntA.reg)))
     return false;
   if (NewMI != DefMI) {
     li_->ReplaceMachineInstrInMaps(DefMI, NewMI);
@@ -763,7 +772,7 @@ bool SimpleRegisterCoalescing::shouldJoinPhys(CoalescerPair &CP) {
   //        CodeGen/X86/phys_subreg_coalesce-3.ll needs it.
   if (!CP.isPartial()) {
     const TargetRegisterClass *RC = mri_->getRegClass(CP.getSrcReg());
-    unsigned Threshold = allocatableRCRegs_[RC].count() * 2;
+    unsigned Threshold = RegClassInfo.getNumAllocatableRegs(RC) * 2;
     unsigned Length = li_->getApproximateInstructionCount(JoinVInt);
     if (Length > Threshold) {
       ++numAborts;
@@ -782,7 +791,7 @@ SimpleRegisterCoalescing::isWinToJoinCrossClass(unsigned SrcReg,
                                              const TargetRegisterClass *SrcRC,
                                              const TargetRegisterClass *DstRC,
                                              const TargetRegisterClass *NewRC) {
-  unsigned NewRCCount = allocatableRCRegs_[NewRC].count();
+  unsigned NewRCCount = RegClassInfo.getNumAllocatableRegs(NewRC);
   // This heuristics is good enough in practice, but it's obviously not *right*.
   // 4 is a magic number that works well enough for x86, ARM, etc. It filter
   // out all but the most restrictive register classes.
@@ -812,12 +821,12 @@ SimpleRegisterCoalescing::isWinToJoinCrossClass(unsigned SrcReg,
   unsigned NewUses = SrcUses + DstUses;
   unsigned NewSize = SrcSize + DstSize;
   if (SrcRC != NewRC && SrcSize > ThresSize) {
-    unsigned SrcRCCount = allocatableRCRegs_[SrcRC].count();
+    unsigned SrcRCCount = RegClassInfo.getNumAllocatableRegs(SrcRC);
     if (NewUses*SrcSize*SrcRCCount > 2*SrcUses*NewSize*NewRCCount)
       return false;
   }
   if (DstRC != NewRC && DstSize > ThresSize) {
-    unsigned DstRCCount = allocatableRCRegs_[DstRC].count();
+    unsigned DstRCCount = RegClassInfo.getNumAllocatableRegs(DstRC);
     if (NewUses*DstSize*DstRCCount > 2*DstUses*NewSize*NewRCCount)
       return false;
   }
@@ -1391,10 +1400,7 @@ bool SimpleRegisterCoalescing::runOnMachineFunction(MachineFunction &fn) {
   if (VerifyCoalescing)
     mf_->verify(this, "Before register coalescing");
 
-  for (TargetRegisterInfo::regclass_iterator I = tri_->regclass_begin(),
-         E = tri_->regclass_end(); I != E; ++I)
-    allocatableRCRegs_.insert(std::make_pair(*I,
-                                             tri_->getAllocatableSet(fn, *I)));
+  RegClassInfo.runOnMachineFunction(fn);
 
   // Join (coalesce) intervals if requested.
   if (EnableJoining) {

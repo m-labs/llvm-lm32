@@ -133,6 +133,8 @@ private:
 
   bool isTypeLegal(const Type *Ty, MVT &VT, bool AllowI1 = false);
 
+  bool IsMemcpySmall(uint64_t Len);
+
   bool TryEmitSmallMemcpy(X86AddressMode DestAM,
                           X86AddressMode SrcAM, uint64_t Len);
 };
@@ -722,18 +724,38 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
     // Only handle register returns for now.
     if (!VA.isRegLoc())
       return false;
-    // TODO: For now, don't try to handle cases where getLocInfo()
-    // says Full but the types don't match.
-    if (TLI.getValueType(RV->getType()) != VA.getValVT())
-      return false;
 
     // The calling-convention tables for x87 returns don't tell
     // the whole story.
     if (VA.getLocReg() == X86::ST0 || VA.getLocReg() == X86::ST1)
       return false;
 
-    // Make the copy.
     unsigned SrcReg = Reg + VA.getValNo();
+    EVT SrcVT = TLI.getValueType(RV->getType());
+    EVT DstVT = VA.getValVT();
+    // Special handling for extended integers.
+    if (SrcVT != DstVT) {
+      if (SrcVT != MVT::i1 && SrcVT != MVT::i8 && SrcVT != MVT::i16)
+        return false;
+
+      if (!Outs[0].Flags.isZExt() && !Outs[0].Flags.isSExt())
+        return false;
+
+      assert(DstVT == MVT::i32 && "X86 should always ext to i32");
+
+      if (SrcVT == MVT::i1) {
+        if (Outs[0].Flags.isSExt())
+          return false;
+        SrcReg = FastEmitZExtFromI1(MVT::i8, SrcReg, /*TODO: Kill=*/false);
+        SrcVT = MVT::i8;
+      }
+      unsigned Op = Outs[0].Flags.isZExt() ? ISD::ZERO_EXTEND :
+                                             ISD::SIGN_EXTEND;
+      SrcReg = FastEmit_r(SrcVT.getSimpleVT(), DstVT.getSimpleVT(), Op,
+                          SrcReg, /*TODO: Kill=*/false);
+    }
+
+    // Make the copy.
     unsigned DstReg = VA.getLocReg();
     const TargetRegisterClass* SrcRC = MRI.getRegClass(SrcReg);
     // Avoid a cross-class copy. This is very unlikely.
@@ -914,18 +936,31 @@ bool X86FastISel::X86SelectCmp(const Instruction *I) {
 
 bool X86FastISel::X86SelectZExt(const Instruction *I) {
   // Handle zero-extension from i1 to i8, which is common.
-  if (I->getType()->isIntegerTy(8) &&
-      I->getOperand(0)->getType()->isIntegerTy(1)) {
-    unsigned ResultReg = getRegForValue(I->getOperand(0));
-    if (ResultReg == 0) return false;
-    // Set the high bits to zero.
-    ResultReg = FastEmitZExtFromI1(MVT::i8, ResultReg, /*TODO: Kill=*/false);
-    if (ResultReg == 0) return false;
-    UpdateValueMap(I, ResultReg);
-    return true;
+  if (!I->getOperand(0)->getType()->isIntegerTy(1)) 
+    return false;
+
+  EVT DstVT = TLI.getValueType(I->getType());
+  if (!TLI.isTypeLegal(DstVT))
+    return false;
+
+  unsigned ResultReg = getRegForValue(I->getOperand(0));
+  if (ResultReg == 0)
+    return false;
+
+  // Set the high bits to zero.
+  ResultReg = FastEmitZExtFromI1(MVT::i8, ResultReg, /*TODO: Kill=*/false);
+  if (ResultReg == 0)
+    return false;
+
+  if (DstVT != MVT::i8) {
+    ResultReg = FastEmit_r(MVT::i8, DstVT.getSimpleVT(), ISD::ZERO_EXTEND,
+                           ResultReg, /*Kill=*/true);
+    if (ResultReg == 0)
+      return false;
   }
 
-  return false;
+  UpdateValueMap(I, ResultReg);
+  return true;
 }
 
 
@@ -1207,18 +1242,13 @@ bool X86FastISel::X86SelectFPTrunc(const Instruction *I) {
 }
 
 bool X86FastISel::X86SelectTrunc(const Instruction *I) {
-  if (Subtarget->is64Bit())
-    // All other cases should be handled by the tblgen generated code.
-    return false;
   EVT SrcVT = TLI.getValueType(I->getOperand(0)->getType());
   EVT DstVT = TLI.getValueType(I->getType());
 
-  // This code only handles truncation to byte right now.
+  // This code only handles truncation to byte.
   if (DstVT != MVT::i8 && DstVT != MVT::i1)
-    // All other cases should be handled by the tblgen generated code.
     return false;
-  if (SrcVT != MVT::i16 && SrcVT != MVT::i32)
-    // All other cases should be handled by the tblgen generated code.
+  if (!TLI.isTypeLegal(SrcVT))
     return false;
 
   unsigned InputReg = getRegForValue(I->getOperand(0));
@@ -1226,16 +1256,26 @@ bool X86FastISel::X86SelectTrunc(const Instruction *I) {
     // Unhandled operand.  Halt "fast" selection and bail.
     return false;
 
-  // First issue a copy to GR16_ABCD or GR32_ABCD.
-  const TargetRegisterClass *CopyRC = (SrcVT == MVT::i16)
-    ? X86::GR16_ABCDRegisterClass : X86::GR32_ABCDRegisterClass;
-  unsigned CopyReg = createResultReg(CopyRC);
-  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
-          CopyReg).addReg(InputReg);
+  if (SrcVT == MVT::i8) {
+    // Truncate from i8 to i1; no code needed.
+    UpdateValueMap(I, InputReg);
+    return true;
+  }
 
-  // Then issue an extract_subreg.
+  if (!Subtarget->is64Bit()) {
+    // If we're on x86-32; we can't extract an i8 from a general register.
+    // First issue a copy to GR16_ABCD or GR32_ABCD.
+    const TargetRegisterClass *CopyRC = (SrcVT == MVT::i16)
+      ? X86::GR16_ABCDRegisterClass : X86::GR32_ABCDRegisterClass;
+    unsigned CopyReg = createResultReg(CopyRC);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(TargetOpcode::COPY),
+            CopyReg).addReg(InputReg);
+    InputReg = CopyReg;
+  }
+
+  // Issue an extract_subreg.
   unsigned ResultReg = FastEmitInst_extractsubreg(MVT::i8,
-                                                  CopyReg, /*Kill=*/true,
+                                                  InputReg, /*Kill=*/true,
                                                   X86::sub_8bit);
   if (!ResultReg)
     return false;
@@ -1244,11 +1284,18 @@ bool X86FastISel::X86SelectTrunc(const Instruction *I) {
   return true;
 }
 
+bool X86FastISel::IsMemcpySmall(uint64_t Len) {
+  return Len <= (Subtarget->is64Bit() ? 32 : 16);
+}
+
 bool X86FastISel::TryEmitSmallMemcpy(X86AddressMode DestAM,
                                      X86AddressMode SrcAM, uint64_t Len) {
+
   // Make sure we don't bloat code by inlining very large memcpy's.
-  bool i64Legal = TLI.isTypeLegal(MVT::i64);
-  if (Len > (i64Legal ? 32 : 16)) return false;
+  if (!IsMemcpySmall(Len))
+    return false;
+
+  bool i64Legal = Subtarget->is64Bit();
 
   // We don't care about alignment here since we just emit integer accesses.
   while (Len) {
@@ -1457,6 +1504,25 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
     if (CS.paramHasAttr(AttrInd, Attribute::ZExt))
       Flags.setZExt();
 
+    if (CS.paramHasAttr(AttrInd, Attribute::ByVal)) {
+      const PointerType *Ty = cast<PointerType>(ArgVal->getType());
+      const Type *ElementTy = Ty->getElementType();
+      unsigned FrameSize = TD.getTypeAllocSize(ElementTy);
+      unsigned FrameAlign = CS.getParamAlignment(AttrInd);
+      if (!FrameAlign)
+        FrameAlign = TLI.getByValTypeAlignment(ElementTy);
+      Flags.setByVal();
+      Flags.setByValSize(FrameSize);
+      Flags.setByValAlign(FrameAlign);
+      if (!IsMemcpySmall(FrameSize))
+        return false;
+    }
+
+    if (CS.paramHasAttr(AttrInd, Attribute::InReg))
+      Flags.setInReg();
+    if (CS.paramHasAttr(AttrInd, Attribute::Nest))
+      Flags.setNest();
+
     // If this is an i1/i8/i16 argument, promote to i32 to avoid an extra
     // instruction.  This is safe because it is common to all fastisel supported
     // calling conventions on x86.
@@ -1492,15 +1558,11 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
 
     if (ArgReg == 0) return false;
 
-    // FIXME: Only handle *easy* calls for now.
-    if (CS.paramHasAttr(AttrInd, Attribute::InReg) ||
-        CS.paramHasAttr(AttrInd, Attribute::Nest) ||
-        CS.paramHasAttr(AttrInd, Attribute::ByVal))
-      return false;
-
     const Type *ArgTy = ArgVal->getType();
     MVT ArgVT;
     if (!isTypeLegal(ArgTy, ArgVT))
+      return false;
+    if (ArgVT == MVT::x86mmx)
       return false;
     unsigned OriginalAlignment = TD.getABITypeAlignment(ArgTy);
     Flags.setOrigAlign(OriginalAlignment);
@@ -1542,6 +1604,8 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
     default: llvm_unreachable("Unknown loc info!");
     case CCValAssign::Full: break;
     case CCValAssign::SExt: {
+      assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
+             "Unexpected extend");
       bool Emitted = X86FastEmitExtend(ISD::SIGN_EXTEND, VA.getLocVT(),
                                        Arg, ArgVT, Arg);
       assert(Emitted && "Failed to emit a sext!"); (void)Emitted;
@@ -1549,6 +1613,8 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
       break;
     }
     case CCValAssign::ZExt: {
+      assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
+             "Unexpected extend");
       bool Emitted = X86FastEmitExtend(ISD::ZERO_EXTEND, VA.getLocVT(),
                                        Arg, ArgVT, Arg);
       assert(Emitted && "Failed to emit a zext!"); (void)Emitted;
@@ -1556,9 +1622,8 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
       break;
     }
     case CCValAssign::AExt: {
-      // We don't handle MMX parameters yet.
-      if (VA.getLocVT().isVector() && VA.getLocVT().getSizeInBits() == 128)
-        return false;
+      assert(VA.getLocVT().isInteger() && !VA.getLocVT().isVector() &&
+             "Unexpected extend");
       bool Emitted = X86FastEmitExtend(ISD::ANY_EXTEND, VA.getLocVT(),
                                        Arg, ArgVT, Arg);
       if (!Emitted)
@@ -1592,14 +1657,21 @@ bool X86FastISel::X86SelectCall(const Instruction *I) {
       AM.Base.Reg = StackPtr;
       AM.Disp = LocMemOffset;
       const Value *ArgVal = ArgVals[VA.getValNo()];
+      ISD::ArgFlagsTy Flags = ArgFlags[VA.getValNo()];
 
-      // If this is a really simple value, emit this with the Value* version of
-      // X86FastEmitStore.  If it isn't simple, we don't want to do this, as it
-      // can cause us to reevaluate the argument.
-      if (isa<ConstantInt>(ArgVal) || isa<ConstantPointerNull>(ArgVal))
+      if (Flags.isByVal()) {
+        X86AddressMode SrcAM;
+        SrcAM.Base.Reg = Arg;
+        bool Res = TryEmitSmallMemcpy(AM, SrcAM, Flags.getByValSize());
+        assert(Res && "memcpy length already checked!"); (void)Res;
+      } else if (isa<ConstantInt>(ArgVal) || isa<ConstantPointerNull>(ArgVal)) {
+        // If this is a really simple value, emit this with the Value* version
+        //of X86FastEmitStore.  If it isn't simple, we don't want to do this,
+        // as it can cause us to reevaluate the argument.
         X86FastEmitStore(ArgVT, ArgVal, AM);
-      else
+      } else {
         X86FastEmitStore(ArgVT, Arg, AM);
+      }
     }
   }
 
