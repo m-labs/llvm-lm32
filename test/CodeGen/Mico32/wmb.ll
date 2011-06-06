@@ -1,4 +1,5 @@
 ; RUN: llvm-as < %s | llc -march=mico32
+; END.
 ;# RUN: llvm-as < %s | llc -march=alpha | grep wmb
 
 declare void @llvm.memory.barrier( i1 , i1 , i1 , i1 , i1)
