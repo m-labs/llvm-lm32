@@ -19,6 +19,9 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "Mico32GenInstrInfo.inc"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
+
 
 using namespace llvm;
 
@@ -115,16 +118,48 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   BuildMI(MBB, I, DL, get(Mico32::LW), DestReg).addFrameIndex(FI).addImm(0);
 }
 
-#if 0
 //===----------------------------------------------------------------------===//
 // Branch Analysis
 //===----------------------------------------------------------------------===//
-bool Mico32InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
-                                    MachineBasicBlock *&TBB,
-                                    MachineBasicBlock *&FBB,
-                                    SmallVectorImpl<MachineOperand> &Cond,
-                                    bool AllowModify) const {
+
+// Modeled from PTX:
+MachineBasicBlock *Mico32InstrInfo::
+GetBranchTarget(const MachineInstr& inst) {
+  // The last explicit operand is the destiantion MBB in Mico32 branches.
+  int NumOp = inst.getNumExplicitOperands();
+  const MachineOperand& target = inst.getOperand(NumOp-1);
+
+//  // FIXME So far all branch instructions put destination in 1st operand
+//  const MachineOperand& target = inst.getOperand(0);
+  assert(target.isMBB() && "FIXME: detect branch target operand");
+  return target.getMBB();
+}
+
+// AnalyzeBranch returns a Boolean value and takes four parameters:
+//    MachineBasicBlock &MBB — The incoming block to be examined.
+//    MachineBasicBlock *&TBB — A destination block that is returned. For
+//         a conditional branch that evaluates to true, TBB is the destination.
+//    MachineBasicBlock *&FBB — For a conditional branch that evaluates to
+//         false, FBB is returned as the destination.
+//    std::vector<MachineOperand> &Cond — List of operands to evaluate a
+//         condition for a conditional branch.
+//  Return false if the branch is sucessfully analyzed, true otherwise.
+//
+//  Note that Cond appears to be  only used by the target specific code.  The
+//  generic code just checks if Cond is empty or not.
+bool Mico32InstrInfo::
+AnalyzeBranch(MachineBasicBlock &MBB,
+              MachineBasicBlock *&TBB,
+              MachineBasicBlock *&FBB,
+              SmallVectorImpl<MachineOperand> &Cond,
+              bool AllowModify) const
+{
+    DEBUG(dbgs() << "AnalyzeBranch: blocks:\n");
+    DEBUG(MBB.dump());
+    DEBUG(dbgs() << "AnalyzeBranch: end blocks:\n");
+
   // If the block has no terminators, it just falls into the block after it.
+
   MachineBasicBlock::iterator I = MBB.end();
   if (I == MBB.begin())
     return false;
@@ -134,8 +169,11 @@ bool Mico32InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
       return false;
     --I;
   }
-  if (!isUnpredicatedTerminator(I))
+  if (!isUnpredicatedTerminator(I)) {
+    DEBUG(dbgs() << "AnalyzeBranch:predicated Terminator\n");
+    DEBUG(dbgs() << "AnalyzeBranch: MBB:    " << MBB.getName().str() << "\n");
     return false;
+  }
 
   // Get the last instruction in the block.
   MachineInstr *LastInst = I;
@@ -144,14 +182,28 @@ bool Mico32InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   unsigned LastOpc = LastInst->getOpcode();
   if (I == MBB.begin() || !isUnpredicatedTerminator(--I)) {
     if (Mico32::isUncondBranchOpcode(LastOpc)) {
+  DEBUG(dbgs() << "AnalyzeBranch:one terminator instruction\n");
       TBB = LastInst->getOperand(0).getMBB();
+  DEBUG(dbgs() << "AnalyzeBranch: instruction: " << *LastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: opcode: " << LastInst->getOpcode() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: MBB:    " << MBB.getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: TBB:    " << TBB->getName().str() << "\n");
+
       return false;
     }
     if (Mico32::isCondBranchOpcode(LastOpc)) {
       // Block ends with fall-through condbranch.
-      TBB = LastInst->getOperand(1).getMBB();
+  DEBUG(dbgs() << "AnalyzeBranch:Block ends with fall-through condbranch\n");
+  DEBUG(dbgs() << "AnalyzeBranch: instruction: " << *LastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: opcode: " << LastOpc << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: MBB:    " << MBB.getName().str() << "\n");
+      TBB = GetBranchTarget(*LastInst);
       Cond.push_back(MachineOperand::CreateImm(LastInst->getOpcode()));
       Cond.push_back(LastInst->getOperand(0));
+  DEBUG(dbgs() << "AnalyzeBranch: TBB:    " << TBB->getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: Cond[0]:" << Cond[0] << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: Cond[1]:" << Cond[1] << "\n");
+
       return false;
     }
     // Otherwise, don't know what this is.
@@ -165,13 +217,25 @@ bool Mico32InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   if (SecondLastInst && I != MBB.begin() && isUnpredicatedTerminator(--I))
     return true;
 
-  // If the block ends with something like BEQID then BRID, handle it.
+  // The block ends with both a conditional branch and an ensuing
+  // unconditional branch. 
   if (Mico32::isCondBranchOpcode(SecondLastInst->getOpcode()) &&
       Mico32::isUncondBranchOpcode(LastInst->getOpcode())) {
-    TBB = SecondLastInst->getOperand(1).getMBB();
+  DEBUG(dbgs() << "AnalyzeBranch:Conditional branch and ensuing unconditional\n");
+    TBB = GetBranchTarget(*SecondLastInst);
     Cond.push_back(MachineOperand::CreateImm(SecondLastInst->getOpcode()));
     Cond.push_back(SecondLastInst->getOperand(0));
-    FBB = LastInst->getOperand(0).getMBB();
+    FBB = GetBranchTarget(*LastInst);
+  DEBUG(dbgs() << "AnalyzeBranch: 2nd instr:   " << *SecondLastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: last instr:  " << *LastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: 2nd opcode:  " << SecondLastInst->getOpcode() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: last opcode: " << LastInst->getOpcode() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: MBB:    " << MBB.getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: TBB:    " << TBB->getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: FBB:    " << FBB->getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: Cond[0]:" << Cond[0] << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: Cond[1]:" << Cond[1] << "\n");
+
     return false;
   }
 
@@ -179,16 +243,25 @@ bool Mico32InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   // The second one is not executed, so remove it.
   if (Mico32::isUncondBranchOpcode(SecondLastInst->getOpcode()) &&
       Mico32::isUncondBranchOpcode(LastInst->getOpcode())) {
-    TBB = SecondLastInst->getOperand(0).getMBB();
+    TBB = GetBranchTarget(*SecondLastInst);
     I = LastInst;
     if (AllowModify)
       I->eraseFromParent();
+  DEBUG(dbgs() << "AnalyzeBranch:two unconditional branches\n");
+  DEBUG(dbgs() << "AnalyzeBranch: instruction: " << *LastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: 2nd instr:   " << *SecondLastInst << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: opcode: " << LastInst->getOpcode() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: 2nd opcode: " << SecondLastInst->getOpcode() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: MBB:    " << MBB.getName().str() << "\n");
+  DEBUG(dbgs() << "AnalyzeBranch: TBB:    " << TBB->getName().str() << "\n");
+
     return false;
   }
 
   // Otherwise, can't handle this.
   return true;
 }
+
 
 unsigned Mico32InstrInfo::
 InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
@@ -200,9 +273,14 @@ InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   assert((Cond.size() == 2 || Cond.size() == 0) &&
          "Mico32 branch conditions have two components!");
 
-  unsigned Opc = Mico32::BRID;
+  unsigned Opc = Mico32::BI;
   if (!Cond.empty())
     Opc = (unsigned)Cond[0].getImm();
+
+  DEBUG(dbgs() << "InsertBranch:Opcode:  " << Opc << "\n");
+  DEBUG(dbgs() << "InsertBranch: MBB:    " << MBB.getName().str() << "\n");
+  DEBUG(dbgs() << "InsertBranch: MBB:    " << MBB << "\n");
+  DEBUG( MBB.dump(););
 
   if (FBB == 0) {
     if (Cond.empty()) // Unconditional branch
@@ -213,11 +291,12 @@ InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   }
 
   BuildMI(&MBB, DL, get(Opc)).addReg(Cond[1].getReg()).addMBB(TBB);
-  BuildMI(&MBB, DL, get(Mico32::BRID)).addMBB(FBB);
+  BuildMI(&MBB, DL, get(Mico32::BI)).addMBB(FBB);
   return 2;
 }
 
-unsigned Mico32InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
+unsigned Mico32InstrInfo::
+RemoveBranch(MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator I = MBB.end();
   if (I == MBB.begin()) return 0;
   --I;
@@ -246,38 +325,20 @@ unsigned Mico32InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
   return 2;
 }
 
-bool Mico32InstrInfo::ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
+// Mico32 has be, bne, bg, bge, bgu, bgeu but not reverse conditions.  Can only
+// reverse be/bne.
+bool Mico32InstrInfo::
+ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
   assert(Cond.size() == 2 && "Invalid Mico32 branch opcode!");
+  DEBUG(dbgs() << "ReverseBranchCondition: Cond: " << Cond[0].getImm() << "\n");
+
   switch (Cond[0].getImm()) {
-  default:            return true;
-  case Mico32::BEQ:   Cond[0].setImm(Mico32::BNE); return false;
-  case Mico32::BNE:   Cond[0].setImm(Mico32::BEQ); return false;
-  case Mico32::BGT:   Cond[0].setImm(Mico32::BLE); return false;
-  case Mico32::BGE:   Cond[0].setImm(Mico32::BLT); return false;
-  case Mico32::BLT:   Cond[0].setImm(Mico32::BGE); return false;
-  case Mico32::BLE:   Cond[0].setImm(Mico32::BGT); return false;
-  case Mico32::BEQI:  Cond[0].setImm(Mico32::BNEI); return false;
-  case Mico32::BNEI:  Cond[0].setImm(Mico32::BEQI); return false;
-  case Mico32::BGTI:  Cond[0].setImm(Mico32::BLEI); return false;
-  case Mico32::BGEI:  Cond[0].setImm(Mico32::BLTI); return false;
-  case Mico32::BLTI:  Cond[0].setImm(Mico32::BGEI); return false;
-  case Mico32::BLEI:  Cond[0].setImm(Mico32::BGTI); return false;
-  case Mico32::BEQD:  Cond[0].setImm(Mico32::BNED); return false;
-  case Mico32::BNED:  Cond[0].setImm(Mico32::BEQD); return false;
-  case Mico32::BGTD:  Cond[0].setImm(Mico32::BLED); return false;
-  case Mico32::BGED:  Cond[0].setImm(Mico32::BLTD); return false;
-  case Mico32::BLTD:  Cond[0].setImm(Mico32::BGED); return false;
-  case Mico32::BLED:  Cond[0].setImm(Mico32::BGTD); return false;
-  case Mico32::BEQID: Cond[0].setImm(Mico32::BNEID); return false;
-  case Mico32::BNEID: Cond[0].setImm(Mico32::BEQID); return false;
-  case Mico32::BGTID: Cond[0].setImm(Mico32::BLEID); return false;
-  case Mico32::BGEID: Cond[0].setImm(Mico32::BLTID); return false;
-  case Mico32::BLTID: Cond[0].setImm(Mico32::BGEID); return false;
-  case Mico32::BLEID: Cond[0].setImm(Mico32::BGTID); return false;
+    default:            return true;
+    case Mico32::BE:    Cond[0].setImm(Mico32::BNE); return false;
+    case Mico32::BNE:   Cond[0].setImm(Mico32::BE); return false;
   }
 }
 
-#endif
 
 #if 0
 /// getGlobalBaseReg - Return a virtual register initialized with the

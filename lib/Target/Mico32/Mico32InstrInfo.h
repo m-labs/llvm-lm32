@@ -21,6 +21,32 @@
 
 namespace llvm {
 
+namespace Mico32 {
+
+  inline static bool isUncondBranchOpcode(int Opc) {
+    switch (Opc) {
+    default: return false;
+    case Mico32::BI:
+    case Mico32::B:
+      return true;
+    }
+  }
+
+  inline static bool isCondBranchOpcode(int Opc) {
+    switch (Opc) {
+    default: return false;
+    case Mico32::BE:
+    case Mico32::BG:
+    case Mico32::BGE:
+    case Mico32::BGEU:
+    case Mico32::BGU:
+    case Mico32::BNE:
+      return true;
+    }
+  }
+}
+
+
 class Mico32InstrInfo : public TargetInstrInfoImpl {
   Mico32TargetMachine &TM;
   const Mico32RegisterInfo RI;
@@ -49,6 +75,7 @@ public:
   /// any side effects other than storing to the stack slot.
   virtual unsigned isStoreToStackSlot(const MachineInstr *MI,
                                       int &FrameIndex) const;
+#endif
 
   /// Branch Analysis
   virtual bool AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
@@ -65,7 +92,6 @@ public:
     const;
 
 
-#endif
   virtual void copyPhysReg(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator I, DebugLoc DL,
                            unsigned DestReg, unsigned SrcReg,
@@ -98,8 +124,9 @@ public:
   ///
   unsigned getGlobalBaseReg(MachineFunction *MF) const;
 #endif
+
+  static MachineBasicBlock *GetBranchTarget(const MachineInstr& inst);
 };
 
 }
-
 #endif

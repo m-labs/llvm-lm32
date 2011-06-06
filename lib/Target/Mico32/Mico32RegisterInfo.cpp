@@ -265,5 +265,10 @@ int Mico32RegisterInfo::getDwarfRegNum(unsigned RegNo, bool isEH) const {
   return Mico32GenRegisterInfo::getDwarfRegNumFull(RegNo,0);
 }
 
+int Mico32RegisterInfo::getLLVMRegNum(unsigned DwarfRegNo, bool isEH) const {
+  return Mico32GenRegisterInfo::getLLVMRegNumFull(DwarfRegNo,0);
+}
+
+
 #include "Mico32GenRegisterInfo.inc"
 

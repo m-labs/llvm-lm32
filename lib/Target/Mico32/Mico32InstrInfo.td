@@ -382,11 +382,13 @@ let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
   //FIXME: Need to account for shift?
   // 16 bit immediate is shifted left 2 bits to form a 16 bit word offset.
   // This is based on Mips.
-  class CBranch<bits<6> op, string instr_asm, PatFrag cond_op> : 
-                TRI<op, (outs), (ins GPR:$a, GPR:$b, brtarget:$offset),
-                    !strconcat(instr_asm, " $a, $b, $offset"),
-                    [(brcond (cond_op GPR:$a, GPR:$b), bb:$offset)],
-                    IIBranch>;
+  let isPredicable = 1 in {
+    class CBranch<bits<6> op, string instr_asm, PatFrag cond_op> : 
+                  TRI<op, (outs), (ins GPR:$a, GPR:$b, brtarget:$offset),
+                      !strconcat(instr_asm, " $a, $b, $offset"),
+                      [(brcond (cond_op GPR:$a, GPR:$b), bb:$offset)],
+                      IIBranch>;
+  }
 }
 
 def BE     : CBranch<0x11, "be      ", seteq>;
@@ -414,6 +416,16 @@ let isCommutable = 1, isAsCheapAsAMove = 1 in {
   def AND    :  ArithRR<0x28, "and     ", and, IIAlu>;
   def OR     :  ArithRR<0x2e, "or      ", or, IIAlu>;
   def XOR    :  ArithRR<0x26, "xor     ", xor, IIAlu>;
+}
+
+let isAsCheapAsAMove = 1 in {
+  //  NOT is a pseudo instruction for XNOR rX,rY,r0:
+  let rb = R0.Num in  {
+    def NOT    :  TRR<0x29, (outs GPR:$dst), (ins GPR:$a),
+                      "not $dst, $a",
+                      [(set GPR:$dst, (not GPR:$a))], IIAlu>;
+  }
+
   def NOR    :  ArithNRR<0x21, "nor      ", or, IIAlu>;  // (not (or ...))
   def XNOR   :  ArithNRR<0x29, "xnor     ", xor, IIAlu>; // (not (xor ...))
 }
@@ -497,6 +509,7 @@ def SB      :  StoreM<0x0c, "sb      ", truncstorei8>;
 def SH      :  StoreM<0x03, "sh      ", truncstorei16>;
 def SW      :  StoreM<0x16, "sw      ", store>;
 
+
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
 //===----------------------------------------------------------------------===//
@@ -514,9 +527,6 @@ def CMPGEU  : ArithFRR<0x3c, "cmpgeu  ", setuge, IICmp>;
 def CMPGU   : ArithFRR<0x3d, "cmpgu   ", setugt, IICmp>;
 def CMPNE   : ArithFRR<0x3f, "cmpne   ", setne, IICmp>;
 
-//===----------------------------------------------------------------------===//
-// MBlaze branch instructions
-//===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
 // Mico32 misc instructions
@@ -566,4 +576,16 @@ def : Pat<(Mico32Hi tglobaladdr:$in), (ORHIsym R0, tglobaladdr:$in)>;
 def : Pat<(Mico32Lo tglobaladdr:$in), (ORIsym R0, tglobaladdr:$in)>;
 def : Pat<(add GPR:$hi, (Mico32Lo tglobaladdr:$lo)),
           (ADDIsym GPR:$hi, tglobaladdr:$lo)>;
+
+// A conditional move pattern.
+// Cond is 0 or 1 on entry.
+//   %tmp = sub 0, %cond   ; = (cond) ? 0xFFFFFFFF : 0
+//   %tmpnot = not %tmp    ; 
+//   %tval = and %tmp %trueval
+//   %fval = and %tmpnot %falseval
+//   %res = or %trueval %falseval
+def : Pat<(select GPR:$which, GPR:$trueval, GPR:$falseval),
+          (OR (AND GPR:$trueval, (SUB R0, GPR:$which)),
+               (AND GPR:$falseval, (NOT (SUB R0, GPR:$which))))>;
+
 

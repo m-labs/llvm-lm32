@@ -60,25 +60,6 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   // See MBlaze for conditional floating point setup if we add that.
   addRegisterClass(MVT::i32, Mico32::GPRRegisterClass);
 
-  // Floating point operations which are not supported
-  setOperationAction(ISD::FREM,       MVT::f32, Expand);
-  setOperationAction(ISD::UINT_TO_FP, MVT::i8,  Expand);
-  setOperationAction(ISD::UINT_TO_FP, MVT::i16, Expand);
-  setOperationAction(ISD::UINT_TO_FP, MVT::i32, Expand);
-  setOperationAction(ISD::FP_TO_UINT, MVT::i32, Expand);
-  setOperationAction(ISD::FP_ROUND,   MVT::f32, Expand);
-  setOperationAction(ISD::FP_ROUND,   MVT::f64, Expand);
-  setOperationAction(ISD::FCOPYSIGN,  MVT::f32, Expand);
-  setOperationAction(ISD::FCOPYSIGN,  MVT::f64, Expand);
-  setOperationAction(ISD::FSIN,       MVT::f32, Expand);
-  setOperationAction(ISD::FCOS,       MVT::f32, Expand);
-  setOperationAction(ISD::FPOWI,      MVT::f32, Expand);
-  setOperationAction(ISD::FPOW,       MVT::f32, Expand);
-  setOperationAction(ISD::FLOG,       MVT::f32, Expand);
-  setOperationAction(ISD::FLOG2,      MVT::f32, Expand);
-  setOperationAction(ISD::FLOG10,     MVT::f32, Expand);
-  setOperationAction(ISD::FEXP,       MVT::f32, Expand);
-
   // Load extented operations for i1 types must be promoted
   setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
   setLoadExtAction(ISD::ZEXTLOAD, MVT::i1,  Promote);
@@ -161,21 +142,49 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::VACOPY,             MVT::Other, Expand);
 
 
-  // Operations not directly supported by Mico32.
 // FIXME: need to handle branches
 //  setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
   setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
+
   // Operations not directly supported by Mico32.
   setOperationAction(ISD::SIGN_EXTEND_INREG,  MVT::i1,    Expand);
-  setOperationAction(ISD::ROTL,               MVT::i32,   Expand);
-  setOperationAction(ISD::ROTR,               MVT::i32,   Expand);
   setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
-  setOperationAction(ISD::CTLZ,               MVT::i32,   Expand);
-  setOperationAction(ISD::CTTZ,               MVT::i32,   Expand);
-  setOperationAction(ISD::CTPOP,              MVT::i32,   Expand);
-  setOperationAction(ISD::BSWAP,              MVT::i32,   Expand);
+  setOperationAction(ISD::MEMBARRIER, MVT::Other, Expand);
+  setOperationAction(ISD::FP_ROUND,   MVT::f32, Expand);
+  setOperationAction(ISD::FP_ROUND,   MVT::f64, Expand);
+  setOperationAction(ISD::CTPOP, MVT::i32, Expand);
+  setOperationAction(ISD::CTTZ , MVT::i32, Expand);
+  setOperationAction(ISD::CTLZ , MVT::i32, Expand);
+// FIXME: don't we have ROTL ROTR?
+  setOperationAction(ISD::ROTL , MVT::i32, Expand);
+  setOperationAction(ISD::ROTR , MVT::i32, Expand);
+  setOperationAction(ISD::BSWAP, MVT::i32, Expand);
+
+ // Floating point operations which are not supported
+  setOperationAction(ISD::FREM,       MVT::f32, Expand);
+  setOperationAction(ISD::UINT_TO_FP, MVT::i8,  Expand);
+  setOperationAction(ISD::UINT_TO_FP, MVT::i16, Expand);
+  setOperationAction(ISD::UINT_TO_FP, MVT::i32, Expand);
+  setOperationAction(ISD::FP_TO_UINT, MVT::i32, Expand);
+  setOperationAction(ISD::FP_ROUND,   MVT::f32, Expand);
+  setOperationAction(ISD::FP_ROUND,   MVT::f64, Expand);
+  setOperationAction(ISD::FCOPYSIGN,  MVT::f32, Expand);
+  setOperationAction(ISD::FCOPYSIGN,  MVT::f64, Expand);
+  setOperationAction(ISD::FSUB,       MVT::f32, Expand);
+  setOperationAction(ISD::FSIN,       MVT::f32, Expand);
+  setOperationAction(ISD::FCOS,       MVT::f32, Expand);
+  setOperationAction(ISD::FPOWI,      MVT::f32, Expand);
+  setOperationAction(ISD::FPOW,       MVT::f32, Expand);
+  setOperationAction(ISD::FPOW,       MVT::f64, Expand);
+  setOperationAction(ISD::FLOG,       MVT::f32, Expand);
+  setOperationAction(ISD::FLOG2,      MVT::f32, Expand);
+  setOperationAction(ISD::FLOG10,     MVT::f32, Expand);
+  setOperationAction(ISD::FEXP,       MVT::f32, Expand);
+  setOperationAction(ISD::FSQRT,      MVT::f64, Expand);
+  setOperationAction(ISD::FSQRT,      MVT::f32, Expand);
+
 
   // We don't have line number support yet.
   // EH_LABEL - Represents a label in mid basic block used to track
@@ -341,6 +350,8 @@ SDValue Mico32TargetLowering::LowerSELECT_CC(SDValue Op,
   SDValue FalseVal = Op.getOperand(3);
   DebugLoc dl = Op.getDebugLoc();
   unsigned Opc;
+
+DAG.viewGraph();
 
   SDValue CompareFlag;
   if (LHS.getValueType() == MVT::i32) {
