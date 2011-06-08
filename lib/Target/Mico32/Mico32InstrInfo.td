@@ -509,6 +509,10 @@ def SB      :  StoreM<0x0c, "sb      ", truncstorei8>;
 def SH      :  StoreM<0x03, "sh      ", truncstorei16>;
 def SW      :  StoreM<0x16, "sw      ", store>;
 
+// Convert any extend loads into zero extend loads
+def : Pat<(extloadi8  ADDRri:$addr), (i32 (LBU ADDRri:$addr))>;
+def : Pat<(extloadi16 ADDRri:$addr), (i32 (LHU ADDRri:$addr))>;
+
 
 //===----------------------------------------------------------------------===//
 // Mico32 comparison instructions
