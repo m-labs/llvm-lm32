@@ -3,11 +3,11 @@
 ;; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | not grep mullw
 ;; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | grep vmsumuhm
 
-define <4 x i32> @test_v4i32(<4 x i32>* %X, <4 x i32>* %Y) {
-	%tmp = load <4 x i32>* %X		; <<4 x i32>> [#uses=1]
-	%tmp2 = load <4 x i32>* %Y		; <<4 x i32>> [#uses=1]
-	%tmp3 = mul <4 x i32> %tmp, %tmp2		; <<4 x i32>> [#uses=1]
-	ret <4 x i32> %tmp3
+define <2 x i32> @test_v2i32(<2 x i32>* %X, <2 x i32>* %Y) {
+	%tmp = load <2 x i32>* %X		; <<2 x i32>> [#uses=1]
+	%tmp2 = load <2 x i32>* %Y		; <<2 x i32>> [#uses=1]
+	%tmp3 = mul <2 x i32> %tmp, %tmp2		; <<2 x i32>> [#uses=1]
+	ret <2 x i32> %tmp3
 }
 
 ;define <8 x i16> @test_v8i16(<8 x i16>* %X, <8 x i16>* %Y) {
