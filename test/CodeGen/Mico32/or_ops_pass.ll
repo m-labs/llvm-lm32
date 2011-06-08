@@ -12,15 +12,15 @@ target datalayout = "E-p:32:32:128-f64:64:128-f32:32:128-i64:32:128-i32:32:128-i
 target triple = "spu"
 
 ; OR instruction generation:
-define <4 x i32> @or_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = or <4 x i32> %arg1, %arg2
-        ret <4 x i32> %A
-}
+;define <4 x i32> @or_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = or <4 x i32> %arg1, %arg2
+;        ret <4 x i32> %A
+;}
 
-define <4 x i32> @or_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = or <4 x i32> %arg2, %arg1
-        ret <4 x i32> %A
-}
+;define <4 x i32> @or_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = or <4 x i32> %arg2, %arg1
+;        ret <4 x i32> %A
+;}
 
 ;define <8 x i16> @or_v8i16_1(<8 x i16> %arg1, <8 x i16> %arg2) {
 ;        %A = or <8 x i16> %arg1, %arg2
@@ -73,23 +73,23 @@ define i8 @or_i8_2(i8 %arg1, i8 %arg2) {
 }
 
 ; ORC instruction generation:
-define <4 x i32> @orc_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg2, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = or <4 x i32> %arg1, %A
-        ret <4 x i32> %B
-}
+;define <4 x i32> @orc_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = xor <4 x i32> %arg2, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        %B = or <4 x i32> %arg1, %A
+;        ret <4 x i32> %B
+;}
 
-define <4 x i32> @orc_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = or <4 x i32> %arg2, %A
-        ret <4 x i32> %B
-}
+;define <4 x i32> @orc_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        %B = or <4 x i32> %arg2, %A
+;        ret <4 x i32> %B
+;}
 
-define <4 x i32> @orc_v4i32_3(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = or <4 x i32> %A, %arg2
-        ret <4 x i32> %B
-}
+;define <4 x i32> @orc_v4i32_3(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        %B = or <4 x i32> %A, %arg2
+;        ret <4 x i32> %B
+;}
 
 ;define <8 x i16> @orc_v8i16_1(<8 x i16> %arg1, <8 x i16> %arg2) {
 ;        %A = xor <8 x i16> %arg2, < i16 -1, i16 -1, i16 -1, i16 -1,
@@ -184,25 +184,25 @@ define i8 @orc_i8_3(i8 %arg1, i8 %arg2) {
 }
 
 ; ORI instruction generation (i32 data type):
-define <4 x i32> @ori_v4i32_1(<4 x i32> %in) {
-        %tmp2 = or <4 x i32> %in, < i32 511, i32 511, i32 511, i32 511 >
-        ret <4 x i32> %tmp2
-}
+;define <4 x i32> @ori_v4i32_1(<4 x i32> %in) {
+;        %tmp2 = or <4 x i32> %in, < i32 511, i32 511, i32 511, i32 511 >
+;        ret <4 x i32> %tmp2
+;}
 
-define <4 x i32> @ori_v4i32_2(<4 x i32> %in) {
-        %tmp2 = or <4 x i32> %in, < i32 510, i32 510, i32 510, i32 510 >
-        ret <4 x i32> %tmp2
-}
+;define <4 x i32> @ori_v4i32_2(<4 x i32> %in) {
+;        %tmp2 = or <4 x i32> %in, < i32 510, i32 510, i32 510, i32 510 >
+;        ret <4 x i32> %tmp2
+;}
 
-define <4 x i32> @ori_v4i32_3(<4 x i32> %in) {
-        %tmp2 = or <4 x i32> %in, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        ret <4 x i32> %tmp2
-}
+;define <4 x i32> @ori_v4i32_3(<4 x i32> %in) {
+;        %tmp2 = or <4 x i32> %in, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        ret <4 x i32> %tmp2
+;}
 
-define <4 x i32> @ori_v4i32_4(<4 x i32> %in) {
-        %tmp2 = or <4 x i32> %in, < i32 -512, i32 -512, i32 -512, i32 -512 >
-        ret <4 x i32> %tmp2
-}
+;define <4 x i32> @ori_v4i32_4(<4 x i32> %in) {
+;        %tmp2 = or <4 x i32> %in, < i32 -512, i32 -512, i32 -512, i32 -512 >
+;        ret <4 x i32> %tmp2
+;}
 
 define i32 @ori_u32(i32 zeroext  %in) zeroext  {
         %tmp37 = or i32 %in, 37         ; <i32> [#uses=1]

@@ -37,21 +37,21 @@
 ;}
 
 ; 1574023 -> 0x180487 (ILHU 24/IOHL 1159)
-define <4 x i32> @test_v4i32_1(<4 x i32> %P, i32 %x) {
+define <2 x i32> @test_v4i32_1(<2 x i32> %P, i32 %x) {
 entry:
-        %tmp1 = insertelement <4 x i32> %P, i32 %x, i32 2
-        %tmp1.1 = insertelement <4 x i32> %tmp1, i32 1574023, i32 1
-        %tmp1.2 = insertelement <4 x i32> %tmp1.1, i32 %x, i32 3
-        ret <4 x i32> %tmp1.2
+        %tmp1 = insertelement <2 x i32> %P, i32 %x, i32 2
+        %tmp1.1 = insertelement <2 x i32> %tmp1, i32 1574023, i32 1
+        %tmp1.2 = insertelement <2 x i32> %tmp1.1, i32 %x, i32 3
+        ret <2 x i32> %tmp1.2
 }
 
 ; Should generate IL for the load
-define <4 x i32> @test_v4i32_2(<4 x i32> %P, i32 %x) {
+define <2 x i32> @test_v2i32_2(<2 x i32> %P, i32 %x) {
 entry:
-        %tmp1 = insertelement <4 x i32> %P, i32 %x, i32 2
-        %tmp1.1 = insertelement <4 x i32> %tmp1, i32 -39, i32 1
-        %tmp1.2 = insertelement <4 x i32> %tmp1.1, i32 %x, i32 3
-        ret <4 x i32> %tmp1.2
+        %tmp1 = insertelement <2 x i32> %P, i32 %x, i32 2
+        %tmp1.1 = insertelement <2 x i32> %tmp1, i32 -39, i32 1
+        %tmp1.2 = insertelement <2 x i32> %tmp1.1, i32 %x, i32 3
+        ret <2 x i32> %tmp1.2
 }
 
 define void @variable_v16i8_1(<16 x i8>* %a, i32 %i) nounwind {
@@ -74,23 +74,23 @@ entry:
 	ret void
 }
 
-define void @variable_v4i32_1(<4 x i32>* %a, i32 %i) nounwind {
+define void @variable_v2i32_1(<2 x i32>* %a, i32 %i) nounwind {
 entry:
-	%arrayidx = getelementptr <4 x i32>* %a, i32 %i
-	%tmp2 = load <4 x i32>* %arrayidx
-	%tmp3 = insertelement <4 x i32> %tmp2, i32 1, i32 1
-	%tmp8 = insertelement <4 x i32> %tmp3, i32 2, i32 2
-	store <4 x i32> %tmp8, <4 x i32>* %arrayidx
+	%arrayidx = getelementptr <2 x i32>* %a, i32 %i
+	%tmp2 = load <2 x i32>* %arrayidx
+	%tmp3 = insertelement <2 x i32> %tmp2, i32 1, i32 1
+	%tmp8 = insertelement <2 x i32> %tmp3, i32 2, i32 2
+	store <2 x i32> %tmp8, <2 x i32>* %arrayidx
 	ret void
 }
 
-define void @variable_v4f32_1(<4 x float>* %a, i32 %i) nounwind {
+define void @variable_v2f32_1(<2 x float>* %a, i32 %i) nounwind {
 entry:
-	%arrayidx = getelementptr <4 x float>* %a, i32 %i
-	%tmp2 = load <4 x float>* %arrayidx
-	%tmp3 = insertelement <4 x float> %tmp2, float 1.000000e+00, i32 1
-	%tmp8 = insertelement <4 x float> %tmp3, float 2.000000e+00, i32 2
-	store <4 x float> %tmp8, <4 x float>* %arrayidx
+	%arrayidx = getelementptr <2 x float>* %a, i32 %i
+	%tmp2 = load <2 x float>* %arrayidx
+	%tmp3 = insertelement <2 x float> %tmp2, float 1.000000e+00, i32 1
+	%tmp8 = insertelement <2 x float> %tmp3, float 2.000000e+00, i32 2
+	store <2 x float> %tmp8, <2 x float>* %arrayidx
 	ret void
 }
 
