@@ -1,4 +1,3 @@
-; monarch only supports returning <4 x i32> at most.
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | not grep CPI
@@ -16,28 +15,4 @@ define void @test1(<4 x i32>* %P1, <4 x i32>* %P2, <4 x float>* %P3) {
 	%tmp13 = bitcast <4 x i32> %tmp12 to <4 x float>		; <<4 x float>> [#uses=1]
 	store <4 x float> %tmp13, <4 x float>* %P3
 	ret void
-}
-
-define <4 x i32> @test_30() {
-	ret <4 x i32> < i32 30, i32 30, i32 30, i32 30 >
-}
-
-define <4 x i32> @test_29() {
-	ret <4 x i32> < i32 29, i32 29, i32 29, i32 29 >
-}
-
-;define <8 x i16> @test_n30() {
-;	ret <8 x i16> < i16 -30, i16 -30, i16 -30, i16 -30, i16 -30, i16 -30, i16 -30, i16 -30 >
-;}
-
-;define <16 x i8> @test_n104() {
-;	ret <16 x i8> < i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104, i8 -104 >
-;}
-
-define <4 x i32> @test_vsldoi() {
-	ret <4 x i32> < i32 512, i32 512, i32 512, i32 512 >
-}
-
-define <4 x i32> @test_rol() {
-	ret <4 x i32> < i32 -11534337, i32 -11534337, i32 -11534337, i32 -11534337 >
 }
