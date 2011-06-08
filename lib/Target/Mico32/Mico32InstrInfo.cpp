@@ -154,6 +154,8 @@ AnalyzeBranch(MachineBasicBlock &MBB,
               SmallVectorImpl<MachineOperand> &Cond,
               bool AllowModify) const
 {
+// The Cond parameters need to be fixed - disable this for now.
+return true;
     DEBUG(dbgs() << "AnalyzeBranch: blocks:\n");
     DEBUG(MBB.dump());
     DEBUG(dbgs() << "AnalyzeBranch: end blocks:\n");
