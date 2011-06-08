@@ -2,20 +2,6 @@
 
 This is the Lattice Mico32 backend.
 
-git remotes:
-mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (fetch)
-mico32	ssh://login.geekisp.com/home/jpbonn/gitrepos/mico32.git (push)
-origin	http://llvm.org/git/llvm.git (fetch)
-origin	http://llvm.org/git/llvm.git (push)
-clang   http://llvm.org/git/clang.git
-
-To update while in mico32 branch:
-# git pull origin master
-# git push mico32 mico32
-
-
-Currently the port only supports the standard Mico32.  For LM32 Baker variant look at ARM Thumb modes for examples of how to implement.  Specifically search for IsThumb1Only and see how ARM handles the instructions.
-
 INSTALLATION
 
 Install llvm-gcc and ensure it works.  See the LLVM Getting Started manual for directions:
@@ -27,26 +13,34 @@ The general project layout will be:
     - build
     - install
 
-Check out the Mico32 LLVM port from the GIT repository: 
-??
-
-Checkout Clang:
-//FIXME: update for mico32 repository:
-(cd $TOPDIR/llvm/tools ; git clone http://llvm.org/git/clang.git)
+Check out the Mico32 LLVM port and clang from the GIT repository: 
+------------------
+cd $TOPDIR
+git clone git://github.com/milkymist/llvm-lm32.git llvm
+(cd $TOPDIR/llvm/tools ; git clone git://github.com/milkymist/clang-lm32.git clang)
+------------------
 
 Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below. 
+
+Configure with cmake:
+------------------
+mkdir $TOPDIR/build
+( cd $TOPDIR/build ;  cmake ../llvm  -DCMAKE_INSTALL_PREFIX=/Users/jpbonn/Documents/github/install -DCMAKE_BUILD_TYPE=Debug)
+------------------
+
+
+Alternatively, configure with autotools:
 -------------------
-#!/bin/sh
-#rm -rf $TOPDIR/install
-rm -rf $TOPDIR/build
 mkdir $TOPDIR/build
 
 (cd $TOPDIR/build ; ../llvm/configure  --with-llvmgccdir=/Users/jpbonn/Documents/llvm/llvm-gcc-4.2-2.7-x86_64-apple-darwin10/bin/x86_64-apple-darwin10-llvm-gcc --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
-
-(cd $TOPDIR/build ; make install)
-
-(cd $TOPDIR/build ; make check )
 -------------------
+
+Build llvm and clang:
+-------------------
+(cd $TOPDIR/build ; make install)
+-------------------
+
 
 LLVM MICO32 CODEGEN TESTS
 
@@ -57,12 +51,14 @@ After the inital "make check" (which does some initial DejaGnu configuration) yo
 
 (cd $TOPDIR/build ; make TESTSUITE=CodeGen/mico32 check)
 
+Note: at the moment TESTSUITE=CodeGen/mico32 only works with the autotools configured environemnt.
+
 Initial results: 
 
-  Expected Passes    : 347
-  Expected Failures  : 19
-  Unexpected Passes  : 3
-  Unexpected Failures: 141
+  Expected Passes    : 379
+  Expected Failures  : 26
+  Unexpected Passes  : 6
+  Unexpected Failures: 104
 
 
 Notes
