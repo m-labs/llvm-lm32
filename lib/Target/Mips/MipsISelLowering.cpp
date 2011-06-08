@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "mips-lower"
-//#include <algorithm>
 #include "MipsISelLowering.h"
 #include "MipsMachineFunction.h"
 #include "MipsTargetMachine.h"
@@ -60,7 +59,7 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case MipsISD::BuildPairF64:      return "MipsISD::BuildPairF64";
   case MipsISD::ExtractElementF64: return "MipsISD::ExtractElementF64";
   case MipsISD::WrapperPIC:        return "MipsISD::WrapperPIC";
-  default: return NULL;
+  default:                         return NULL;
   }
 }
 
@@ -555,16 +554,108 @@ static Mips::FPBranchCode GetFPBranchCodeFromCond(Mips::CondCode CC) {
   return Mips::BRANCH_INVALID;
 }
 
+static MachineBasicBlock* ExpandCondMov(MachineInstr *MI, MachineBasicBlock *BB,
+                                        DebugLoc dl,
+                                        const MipsSubtarget* Subtarget,
+                                        const TargetInstrInfo *TII,
+                                        bool isFPCmp, unsigned Opc) {
+  // There is no need to expand CMov instructions if target has
+  // conditional moves.
+  if (Subtarget->hasCondMov())
+    return BB;
+
+  // To "insert" a SELECT_CC instruction, we actually have to insert the
+  // diamond control-flow pattern.  The incoming instruction knows the
+  // destination vreg to set, the condition code register to branch on, the
+  // true/false values to select between, and a branch opcode to use.
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineFunction::iterator It = BB;
+  ++It;
+
+  //  thisMBB:
+  //  ...
+  //   TrueVal = ...
+  //   setcc r1, r2, r3
+  //   bNE   r1, r0, copy1MBB
+  //   fallthrough --> copy0MBB
+  MachineBasicBlock *thisMBB  = BB;
+  MachineFunction *F = BB->getParent();
+  MachineBasicBlock *copy0MBB = F->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *sinkMBB  = F->CreateMachineBasicBlock(LLVM_BB);
+  F->insert(It, copy0MBB);
+  F->insert(It, sinkMBB);
+
+  // Transfer the remainder of BB and its successor edges to sinkMBB.
+  sinkMBB->splice(sinkMBB->begin(), BB,
+                  llvm::next(MachineBasicBlock::iterator(MI)),
+                  BB->end());
+  sinkMBB->transferSuccessorsAndUpdatePHIs(BB);
+
+  // Next, add the true and fallthrough blocks as its successors.
+  BB->addSuccessor(copy0MBB);
+  BB->addSuccessor(sinkMBB);
+
+  // Emit the right instruction according to the type of the operands compared
+  if (isFPCmp)
+    BuildMI(BB, dl, TII->get(Opc)).addMBB(sinkMBB);
+  else
+    BuildMI(BB, dl, TII->get(Opc)).addReg(MI->getOperand(2).getReg())
+      .addReg(Mips::ZERO).addMBB(sinkMBB);
+
+  //  copy0MBB:
+  //   %FalseValue = ...
+  //   # fallthrough to sinkMBB
+  BB = copy0MBB;
+
+  // Update machine-CFG edges
+  BB->addSuccessor(sinkMBB);
+
+  //  sinkMBB:
+  //   %Result = phi [ %TrueValue, thisMBB ], [ %FalseValue, copy0MBB ]
+  //  ...
+  BB = sinkMBB;
+
+  if (isFPCmp)
+    BuildMI(*BB, BB->begin(), dl,
+            TII->get(Mips::PHI), MI->getOperand(0).getReg())
+      .addReg(MI->getOperand(2).getReg()).addMBB(thisMBB)
+      .addReg(MI->getOperand(1).getReg()).addMBB(copy0MBB);
+  else
+    BuildMI(*BB, BB->begin(), dl,
+            TII->get(Mips::PHI), MI->getOperand(0).getReg())
+      .addReg(MI->getOperand(3).getReg()).addMBB(thisMBB)
+      .addReg(MI->getOperand(1).getReg()).addMBB(copy0MBB);
+
+  MI->eraseFromParent();   // The pseudo instruction is gone now.
+  return BB;
+}
+
 MachineBasicBlock *
 MipsTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                 MachineBasicBlock *BB) const {
   const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
-  bool isFPCmp = false;
   DebugLoc dl = MI->getDebugLoc();
-  unsigned Opc;
 
   switch (MI->getOpcode()) {
-  default: assert(false && "Unexpected instr type to insert");
+  default:
+    assert(false && "Unexpected instr type to insert");
+    return NULL;
+  case Mips::MOVT:
+  case Mips::MOVT_S:
+  case Mips::MOVT_D:
+    return ExpandCondMov(MI, BB, dl, Subtarget, TII, true, Mips::BC1F);
+  case Mips::MOVF:
+  case Mips::MOVF_S:
+  case Mips::MOVF_D:
+    return ExpandCondMov(MI, BB, dl, Subtarget, TII, true, Mips::BC1T);
+  case Mips::MOVZ_I:
+  case Mips::MOVZ_S:
+  case Mips::MOVZ_D:
+    return ExpandCondMov(MI, BB, dl, Subtarget, TII, false, Mips::BNE);
+  case Mips::MOVN_I:
+  case Mips::MOVN_S:
+  case Mips::MOVN_D:
+    return ExpandCondMov(MI, BB, dl, Subtarget, TII, false, Mips::BEQ);
 
   case Mips::ATOMIC_LOAD_ADD_I8:
     return EmitAtomicBinaryPartword(MI, BB, 1, Mips::ADDu);
@@ -621,108 +712,15 @@ MipsTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     return EmitAtomicCmpSwapPartword(MI, BB, 2);
   case Mips::ATOMIC_CMP_SWAP_I32:
     return EmitAtomicCmpSwap(MI, BB, 4);
-
-  case Mips::MOVT:
-  case Mips::MOVT_S:
-  case Mips::MOVT_D:
-    isFPCmp = true;
-    Opc = Mips::BC1F;
-    break;
-  case Mips::MOVF:
-  case Mips::MOVF_S:
-  case Mips::MOVF_D:
-    isFPCmp = true;
-    Opc = Mips::BC1T;
-    break;
-  case Mips::MOVZ_I:
-  case Mips::MOVZ_S:
-  case Mips::MOVZ_D:
-    Opc = Mips::BNE;
-    break;
-  case Mips::MOVN_I:
-  case Mips::MOVN_S:
-  case Mips::MOVN_D:
-    Opc = Mips::BEQ;
-    break;
   }
-
-  // There is no need to expand CMov instructions if target has
-  // conditional moves.
-  if (Subtarget->hasCondMov())
-    return BB;
-
-  // To "insert" a SELECT_CC instruction, we actually have to insert the
-  // diamond control-flow pattern.  The incoming instruction knows the
-  // destination vreg to set, the condition code register to branch on, the
-  // true/false values to select between, and a branch opcode to use.
-  const BasicBlock *LLVM_BB = BB->getBasicBlock();
-  MachineFunction::iterator It = BB;
-  ++It;
-
-  //  thisMBB:
-  //  ...
-  //   TrueVal = ...
-  //   setcc r1, r2, r3
-  //   bNE   r1, r0, copy1MBB
-  //   fallthrough --> copy0MBB
-  MachineBasicBlock *thisMBB  = BB;
-  MachineFunction *F = BB->getParent();
-  MachineBasicBlock *copy0MBB = F->CreateMachineBasicBlock(LLVM_BB);
-  MachineBasicBlock *sinkMBB  = F->CreateMachineBasicBlock(LLVM_BB);
-  F->insert(It, copy0MBB);
-  F->insert(It, sinkMBB);
-
-  // Transfer the remainder of BB and its successor edges to sinkMBB.
-  sinkMBB->splice(sinkMBB->begin(), BB,
-                  llvm::next(MachineBasicBlock::iterator(MI)),
-                  BB->end());
-  sinkMBB->transferSuccessorsAndUpdatePHIs(BB);
-
-  // Next, add the true and fallthrough blocks as its successors.
-  BB->addSuccessor(copy0MBB);
-  BB->addSuccessor(sinkMBB);
-
-  // Emit the right instruction according to the type of the operands compared
-  if (isFPCmp)
-    BuildMI(BB, dl, TII->get(Opc)).addMBB(sinkMBB);
-  else
-    BuildMI(BB, dl, TII->get(Opc)).addReg(MI->getOperand(2).getReg())
-      .addReg(Mips::ZERO).addMBB(sinkMBB);
-
-
-  //  copy0MBB:
-  //   %FalseValue = ...
-  //   # fallthrough to sinkMBB
-  BB = copy0MBB;
-
-  // Update machine-CFG edges
-  BB->addSuccessor(sinkMBB);
-
-  //  sinkMBB:
-  //   %Result = phi [ %TrueValue, thisMBB ], [ %FalseValue, copy0MBB ]
-  //  ...
-  BB = sinkMBB;
-
-  if (isFPCmp)
-    BuildMI(*BB, BB->begin(), dl,
-            TII->get(Mips::PHI), MI->getOperand(0).getReg())
-      .addReg(MI->getOperand(2).getReg()).addMBB(thisMBB)
-      .addReg(MI->getOperand(1).getReg()).addMBB(copy0MBB);
-  else
-    BuildMI(*BB, BB->begin(), dl,
-            TII->get(Mips::PHI), MI->getOperand(0).getReg())
-      .addReg(MI->getOperand(3).getReg()).addMBB(thisMBB)
-      .addReg(MI->getOperand(1).getReg()).addMBB(copy0MBB);
-
-  MI->eraseFromParent();   // The pseudo instruction is gone now.
-  return BB;
 }
 
 // This function also handles Mips::ATOMIC_SWAP_I32 (when BinOpcode == 0), and
 // Mips::ATOMIC_LOAD_NAND_I32 (when Nand == true)
 MachineBasicBlock *
 MipsTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
-                   unsigned Size, unsigned BinOpcode, bool Nand) const {
+                                     unsigned Size, unsigned BinOpcode, 
+                                     bool Nand) const {
   assert(Size == 4 && "Unsupported size for EmitAtomicBinary.");
 
   MachineFunction *MF = BB->getParent();
@@ -815,8 +813,9 @@ MipsTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
 
 MachineBasicBlock *
 MipsTargetLowering::EmitAtomicBinaryPartword(MachineInstr *MI,
-            MachineBasicBlock *BB, unsigned Size, unsigned BinOpcode,
-            bool Nand) const {
+                                             MachineBasicBlock *BB,
+                                             unsigned Size, unsigned BinOpcode,
+                                             bool Nand) const {
   assert((Size == 1 || Size == 2) &&
       "Unsupported size for EmitAtomicBinaryPartial.");
 
@@ -974,8 +973,8 @@ MipsTargetLowering::EmitAtomicBinaryPartword(MachineInstr *MI,
 
 MachineBasicBlock *
 MipsTargetLowering::EmitAtomicCmpSwap(MachineInstr *MI,
-                                     MachineBasicBlock *BB,
-                                     unsigned Size) const {
+                                      MachineBasicBlock *BB,
+                                      unsigned Size) const {
   assert(Size == 4 && "Unsupported size for EmitAtomicCmpSwap.");
 
   MachineFunction *MF = BB->getParent();
@@ -1061,8 +1060,8 @@ MipsTargetLowering::EmitAtomicCmpSwap(MachineInstr *MI,
 
 MachineBasicBlock *
 MipsTargetLowering::EmitAtomicCmpSwapPartword(MachineInstr *MI,
-                                     MachineBasicBlock *BB,
-                                     unsigned Size) const {
+                                              MachineBasicBlock *BB,
+                                              unsigned Size) const {
   assert((Size == 1 || Size == 2) &&
       "Unsupported size for EmitAtomicCmpSwapPartial.");
 
@@ -1296,26 +1295,23 @@ SDValue MipsTargetLowering::LowerGlobalAddress(SDValue Op,
     SDValue HiPart = DAG.getNode(MipsISD::Hi, dl, VTs, &GAHi, 1);
     SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, GALo);
     return DAG.getNode(ISD::ADD, dl, MVT::i32, HiPart, Lo);
-  } else {
-    SDValue GA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
-                                            MipsII::MO_GOT);
-    GA = DAG.getNode(MipsISD::WrapperPIC, dl, MVT::i32, GA);
-    SDValue ResNode = DAG.getLoad(MVT::i32, dl,
-                                  DAG.getEntryNode(), GA, MachinePointerInfo(),
-                                  false, false, 0);
-    // On functions and global targets not internal linked only
-    // a load from got/GP is necessary for PIC to work.
-    if (!GV->hasInternalLinkage() &&
-        (!GV->hasLocalLinkage() || isa<Function>(GV)))
-      return ResNode;
-    SDValue GALo = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
-                                              MipsII::MO_ABS_LO);
-    SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, GALo);
-    return DAG.getNode(ISD::ADD, dl, MVT::i32, ResNode, Lo);
   }
 
-  llvm_unreachable("Dont know how to handle GlobalAddress");
-  return SDValue(0,0);
+  SDValue GA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+                                          MipsII::MO_GOT);
+  GA = DAG.getNode(MipsISD::WrapperPIC, dl, MVT::i32, GA);
+  SDValue ResNode = DAG.getLoad(MVT::i32, dl,
+                                DAG.getEntryNode(), GA, MachinePointerInfo(),
+                                false, false, 0);
+  // On functions and global targets not internal linked only
+  // a load from got/GP is necessary for PIC to work.
+  if (!GV->hasInternalLinkage() &&
+      (!GV->hasLocalLinkage() || isa<Function>(GV)))
+    return ResNode;
+  SDValue GALo = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+                                            MipsII::MO_ABS_LO);
+  SDValue Lo = DAG.getNode(MipsISD::Lo, dl, MVT::i32, GALo);
+  return DAG.getNode(ISD::ADD, dl, MVT::i32, ResNode, Lo);
 }
 
 SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
@@ -1555,7 +1551,8 @@ SDValue MipsTargetLowering::LowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG)
 SDValue MipsTargetLowering::
 LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
   unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
-  assert((Depth == 0) && "Frame address can only be determined for current frame.");
+  assert((Depth == 0) &&
+         "Frame address can only be determined for current frame.");
 
   MachineFrameInfo *MFI = DAG.getMachineFunction().getFrameInfo();
   MFI->setFrameAddressIsTaken(true);
@@ -1988,7 +1985,6 @@ MipsTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
                                     DebugLoc dl, SelectionDAG &DAG,
                                     SmallVectorImpl<SDValue> &InVals) const {
-
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, isVarArg, getTargetMachine(),

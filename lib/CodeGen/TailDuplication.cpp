@@ -34,6 +34,7 @@ STATISTIC(NumTails     , "Number of tails duplicated");
 STATISTIC(NumTailDups  , "Number of tail duplicated blocks");
 STATISTIC(NumInstrDups , "Additional instructions due to tail duplication");
 STATISTIC(NumDeadBlocks, "Number of dead blocks removed");
+STATISTIC(NumAddedPHIs , "Number of phis added");
 
 // Heuristic for tail duplication.
 static cl::opt<unsigned>
@@ -271,6 +272,7 @@ bool TailDuplicatePass::TailDuplicateBlocks(MachineFunction &MF) {
       MadeChange = true;
     }
   }
+  NumAddedPHIs += NewPHIs.size();
 
   return MadeChange;
 }
