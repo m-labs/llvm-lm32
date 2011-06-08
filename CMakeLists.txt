@@ -72,6 +72,7 @@ set(LLVM_ALL_TARGETS
   CppBackend
   Mips
   MBlaze
+  Mico32
   MSP430
   PowerPC
   PTX
