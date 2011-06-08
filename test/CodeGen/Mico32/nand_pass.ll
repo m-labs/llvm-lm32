@@ -1,4 +1,4 @@
-; monarch supports returning <4 x i32> at most.
+; mico32 supports returning <2 x i32> at most.
 ; nand.ll has unsupported versions of this test.
 ; RUN: llvm-as -o - %s | llc -march=mico32
 ; END.
@@ -10,17 +10,17 @@
 target datalayout = "E-p:32:32:128-f64:64:128-f32:32:128-i64:32:128-i32:32:128-i16:16:128-i8:8:128-i1:8:128-a0:0:128-v128:128:128-s0:128:128"
 target triple = "spu"
 
-define <4 x i32> @nand_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = and <4 x i32> %arg2, %arg1      ; <<4 x i32>> [#uses=1]
-        %B = xor <4 x i32> %A, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        ret <4 x i32> %B
-}
+;define <4 x i32> @nand_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = and <4 x i32> %arg2, %arg1      ; <<4 x i32>> [#uses=1]
+;        %B = xor <4 x i32> %A, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        ret <4 x i32> %B
+;}
 
-define <4 x i32> @nand_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = and <4 x i32> %arg1, %arg2      ; <<4 x i32>> [#uses=1]
-        %B = xor <4 x i32> %A, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        ret <4 x i32> %B
-}
+;define <4 x i32> @nand_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
+;        %A = and <4 x i32> %arg1, %arg2      ; <<4 x i32>> [#uses=1]
+;        %B = xor <4 x i32> %A, < i32 -1, i32 -1, i32 -1, i32 -1 >
+;        ret <4 x i32> %B
+;}
 
 ;define <8 x i16> @nand_v8i16_1(<8 x i16> %arg1, <8 x i16> %arg2) {
 ;        %A = and <8 x i16> %arg2, %arg1      ; <<8 x i16>> [#uses=1]

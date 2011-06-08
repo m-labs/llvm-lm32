@@ -15,36 +15,6 @@
 target datalayout = "E-p:32:32:128-f64:64:128-f32:32:128-i64:32:128-i32:32:128-i16:16:128-i8:8:128-i1:8:128-a0:0:128-v128:128:128-s0:128:128"
 target triple = "spu"
 
-define <4 x i32> @equiv_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = and <4 x i32> %arg1, %arg2
-        %B = or <4 x i32> %arg1, %arg2
-        %Bnot = xor <4 x i32> %B, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %C = or <4 x i32> %A, %Bnot
-        ret <4 x i32> %C
-}
-
-define <4 x i32> @equiv_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %B = or <4 x i32> %arg1, %arg2          ; <<4 x i32>> [#uses=1]
-        %Bnot = xor <4 x i32> %B, < i32 -1, i32 -1, i32 -1, i32 -1 >            ; <<4 x i32>> [#uses=1]
-        %A = and <4 x i32> %arg1, %arg2         ; <<4 x i32>> [#uses=1]
-        %C = or <4 x i32> %A, %Bnot             ; <<4 x i32>> [#uses=1]
-        ret <4 x i32> %C
-}
-
-define <4 x i32> @equiv_v4i32_3(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %B = or <4 x i32> %arg1, %arg2          ; <<4 x i32>> [#uses=1]
-        %A = and <4 x i32> %arg1, %arg2         ; <<4 x i32>> [#uses=1]
-        %Bnot = xor <4 x i32> %B, < i32 -1, i32 -1, i32 -1, i32 -1 >            ; <<4 x i32>> [#uses=1]
-        %C = or <4 x i32> %A, %Bnot             ; <<4 x i32>> [#uses=1]
-        ret <4 x i32> %C
-}
-
-define <4 x i32> @equiv_v4i32_4(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %arg2not = xor <4 x i32> %arg2, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %C = xor <4 x i32> %arg1, %arg2not
-        ret <4 x i32> %C
-}
-
 define i32 @equiv_i32_1(i32 %arg1, i32 %arg2) {
         %A = and i32 %arg1, %arg2               ; <i32> [#uses=1]
         %B = or i32 %arg1, %arg2                ; <i32> [#uses=1]

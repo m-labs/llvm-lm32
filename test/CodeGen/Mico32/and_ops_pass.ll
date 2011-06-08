@@ -8,34 +8,34 @@
 ; RUN: grep andbi  %t1.s | count 4
 
 ; AND instruction generation:
-define <4 x i32> @and_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = and <4 x i32> %arg1, %arg2
-        ret <4 x i32> %A
+define <2 x i32> @and_v2i32_1(<2 x i32> %arg1, <2 x i32> %arg2) {
+        %A = and <2 x i32> %arg1, %arg2
+        ret <2 x i32> %A
 }
 
-define <4 x i32> @and_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = and <4 x i32> %arg2, %arg1
-        ret <4 x i32> %A
+define <2 x i32> @and_v2i32_2(<2 x i32> %arg1, <2 x i32> %arg2) {
+        %A = and <2 x i32> %arg2, %arg1
+        ret <2 x i32> %A
 }
 
-define <4 x i16> @and_v4i16_1(<4 x i16> %arg1, <4 x i16> %arg2) {
-        %A = and <4 x i16> %arg1, %arg2
-        ret <4 x i16> %A
+define <2 x i16> @and_v2i16_1(<2 x i16> %arg1, <2 x i16> %arg2) {
+        %A = and <2 x i16> %arg1, %arg2
+        ret <2 x i16> %A
 }
 
-define <4 x i16> @and_v4i16_2(<4 x i16> %arg1, <4 x i16> %arg2) {
-        %A = and <4 x i16> %arg2, %arg1
-        ret <4 x i16> %A
+define <2 x i16> @and_v2i16_2(<2 x i16> %arg1, <2 x i16> %arg2) {
+        %A = and <2 x i16> %arg2, %arg1
+        ret <2 x i16> %A
 }
 
-define <4 x i8> @and_v4i8_1(<4 x i8> %arg1, <4 x i8> %arg2) {
-        %A = and <4 x i8> %arg2, %arg1
-        ret <4 x i8> %A
+define <2 x i8> @and_v2i8_1(<2 x i8> %arg1, <2 x i8> %arg2) {
+        %A = and <2 x i8> %arg2, %arg1
+        ret <2 x i8> %A
 }
 
-define <4 x i8> @and_v4i8_2(<4 x i8> %arg1, <4 x i8> %arg2) {
-        %A = and <4 x i8> %arg1, %arg2
-        ret <4 x i8> %A
+define <2 x i8> @and_v2i8_2(<2 x i8> %arg1, <2 x i8> %arg2) {
+        %A = and <2 x i8> %arg1, %arg2
+        ret <2 x i8> %A
 }
 
 define i32 @and_i32_1(i32 %arg1, i32 %arg2) {
@@ -69,52 +69,52 @@ define i8 @and_i8_2(i8 %arg1, i8 %arg2) {
 }
 
 ; ANDC instruction generation:
-define <4 x i32> @andc_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg2, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = and <4 x i32> %arg1, %A
-        ret <4 x i32> %B
+define <2 x i32> @andc_v2i32_1(<2 x i32> %arg1, <2 x i32> %arg2) {
+        %A = xor <2 x i32> %arg2, < i32 -1, i32 -1 >
+        %B = and <2 x i32> %arg1, %A
+        ret <2 x i32> %B
 }
 
-define <4 x i32> @andc_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = and <4 x i32> %arg2, %A
-        ret <4 x i32> %B
+define <2 x i32> @andc_v2i32_2(<2 x i32> %arg1, <2 x i32> %arg2) {
+        %A = xor <2 x i32> %arg1, < i32 -1, i32 -1 >
+        %B = and <2 x i32> %arg2, %A
+        ret <2 x i32> %B
 }
 
-define <4 x i32> @andc_v4i32_3(<4 x i32> %arg1, <4 x i32> %arg2) {
-        %A = xor <4 x i32> %arg1, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        %B = and <4 x i32> %A, %arg2
-        ret <4 x i32> %B
+define <2 x i32> @andc_v2i32_3(<2 x i32> %arg1, <2 x i32> %arg2) {
+        %A = xor <2 x i32> %arg1, < i32 -1, i32 -1 >
+        %B = and <2 x i32> %A, %arg2
+        ret <2 x i32> %B
 }
 
-define <4 x i16> @andc_v4i16_1(<4 x i16> %arg1, <4 x i16> %arg2) {
-        %A = xor <4 x i16> %arg2, < i16 -1, i16 -1, i16 -1, i16 -1>
-        %B = and <4 x i16> %arg1, %A
-        ret <4 x i16> %B
+define <2 x i16> @andc_v2i16_1(<2 x i16> %arg1, <2 x i16> %arg2) {
+        %A = xor <2 x i16> %arg2, <i16 -1, i16 -1>
+        %B = and <2 x i16> %arg1, %A
+        ret <2 x i16> %B
 }
 
-define <4 x i16> @andc_v4i16_2(<4 x i16> %arg1, <4 x i16> %arg2) {
-        %A = xor <4 x i16> %arg1, < i16 -1, i16 -1, i16 -1, i16 -1>
-        %B = and <4 x i16> %arg2, %A
-        ret <4 x i16> %B
+define <2 x i16> @andc_v2i16_2(<2 x i16> %arg1, <2 x i16> %arg2) {
+        %A = xor <2 x i16> %arg1, < i16 -1, i16 -1>
+        %B = and <2 x i16> %arg2, %A
+        ret <2 x i16> %B
 }
 
-define <4 x i8> @andc_v4i8_1(<4 x i8> %arg1, <4 x i8> %arg2) {
-        %A = xor <4 x i8> %arg1, < i8 -1, i8 -1, i8 -1, i8 -1 >
-        %B = and <4 x i8> %arg2, %A
-        ret <4 x i8> %B
+define <2 x i8> @andc_v2i8_1(<2 x i8> %arg1, <2 x i8> %arg2) {
+        %A = xor <2 x i8> %arg1, < i8 -1, i8 -1 >
+        %B = and <2 x i8> %arg2, %A
+        ret <2 x i8> %B
 }
 
-define <4 x i8> @andc_v4i8_2(<4 x i8> %arg1, <4 x i8> %arg2) {
-        %A = xor <4 x i8> %arg2, < i8 -1, i8 -1, i8 -1, i8 -1 >
-        %B = and <4 x i8> %arg1, %A
-        ret <4 x i8> %B
+define <2 x i8> @andc_v2i8_2(<2 x i8> %arg1, <2 x i8> %arg2) {
+        %A = xor <2 x i8> %arg2, < i8 -1, i8 -1 >
+        %B = and <2 x i8> %arg1, %A
+        ret <2 x i8> %B
 }
 
-define <4 x i8> @andc_v4i8_3(<4 x i8> %arg1, <4 x i8> %arg2) {
-        %A = xor <4 x i8> %arg2, < i8 -1, i8 -1, i8 -1, i8 -1>
-        %B = and <4 x i8> %A, %arg1
-        ret <4 x i8> %B
+define <2 x i8> @andc_v2i8_3(<2 x i8> %arg1, <2 x i8> %arg2) {
+        %A = xor <2 x i8> %arg2, < i8 -1, i8 -1>
+        %B = and <2 x i8> %A, %arg1
+        ret <2 x i8> %B
 }
 
 define i32 @andc_i32_1(i32 %arg1, i32 %arg2) {
@@ -172,24 +172,24 @@ define i8 @andc_i8_3(i8 %arg1, i8 %arg2) {
 }
 
 ; ANDI instruction generation (i32 data type):
-define <4 x i32> @andi_v4i32_1(<4 x i32> %in) {
-        %tmp2 = and <4 x i32> %in, < i32 511, i32 511, i32 511, i32 511 >
-        ret <4 x i32> %tmp2
+define <2 x i32> @andi_v2i32_1(<2 x i32> %in) {
+        %tmp2 = and <2 x i32> %in, < i32 511, i32 511 >
+        ret <2 x i32> %tmp2
 }
 
-define <4 x i32> @andi_v4i32_2(<4 x i32> %in) {
-        %tmp2 = and <4 x i32> %in, < i32 510, i32 510, i32 510, i32 510 >
-        ret <4 x i32> %tmp2
+define <2 x i32> @andi_v2i32_2(<2 x i32> %in) {
+        %tmp2 = and <2 x i32> %in, < i32 510, i32 510 >
+        ret <2 x i32> %tmp2
 }
 
-define <4 x i32> @andi_v4i32_3(<4 x i32> %in) {
-        %tmp2 = and <4 x i32> %in, < i32 -1, i32 -1, i32 -1, i32 -1 >
-        ret <4 x i32> %tmp2
+define <2 x i32> @andi_v2i32_3(<2 x i32> %in) {
+        %tmp2 = and <2 x i32> %in, < i32 -1, i32 -1 >
+        ret <2 x i32> %tmp2
 }
 
-define <4 x i32> @andi_v4i32_4(<4 x i32> %in) {
-        %tmp2 = and <4 x i32> %in, < i32 -512, i32 -512, i32 -512, i32 -512 >
-        ret <4 x i32> %tmp2
+define <2 x i32> @andi_v2i32_2b(<2 x i32> %in) {
+        %tmp2 = and <2 x i32> %in, < i32 -512, i32 -512 >
+        ret <2 x i32> %tmp2
 }
 
 define i32 @andi_u32(i32 zeroext  %in) zeroext  {
@@ -208,24 +208,24 @@ define i32 @andi_i32_1(i32 %in) {
 }
 
 ; ANDHI instruction generation (i16 data type):
-define <4 x i16> @andhi_v4i16_1(<4 x i16> %in) {
-        %tmp2 = and <4 x i16> %in, < i16 511, i16 511, i16 511, i16 511>
-        ret <4 x i16> %tmp2
+define <2 x i16> @andhi_v2i16_1(<2 x i16> %in) {
+        %tmp2 = and <2 x i16> %in, < i16 511, i16 511>
+        ret <2 x i16> %tmp2
 }
 
-define <4 x i16> @andhi_v4i16_2(<4 x i16> %in) {
-        %tmp2 = and <4 x i16> %in, < i16 510, i16 510, i16 510, i16 510>
-        ret <4 x i16> %tmp2
+define <2 x i16> @andhi_v2i16_2(<2 x i16> %in) {
+        %tmp2 = and <2 x i16> %in, < i16 510, i16 510>
+        ret <2 x i16> %tmp2
 }
 
-define <4 x i16> @andhi_v4i16_3(<4 x i16> %in) {
-        %tmp2 = and <4 x i16> %in, < i16 -1, i16 -1, i16 -1, i16 -1>
-        ret <4 x i16> %tmp2
+define <2 x i16> @andhi_v2i16_3(<2 x i16> %in) {
+        %tmp2 = and <2 x i16> %in, < i16 -1, i16 -1>
+        ret <2 x i16> %tmp2
 }
 
-define <4 x i16> @andhi_v4i16_4(<4 x i16> %in) {
-        %tmp2 = and <4 x i16> %in, < i16 -512, i16 -512, i16 -512, i16 -512>
-        ret <4 x i16> %tmp2
+define <2 x i16> @andhi_v2i16_2b(<2 x i16> %in) {
+        %tmp2 = and <2 x i16> %in, < i16 -512, i16 -512>
+        ret <2 x i16> %tmp2
 }
 
 define i16 @andhi_u16(i16 zeroext  %in) zeroext  {
@@ -239,10 +239,10 @@ define i16 @andhi_i16(i16 signext  %in) signext  {
 }
 
 ; i8 data type (s/b ANDBI if 8-bit registers were supported):
-define <4 x i8> @and_v4i8(<4 x i8> %in) {
+define <2 x i8> @and_v2i8(<2 x i8> %in) {
         ; ANDBI generated for vector types
-        %tmp2 = and <4 x i8> %in, < i8 42, i8 42, i8 42, i8 42>
-        ret <4 x i8> %tmp2
+        %tmp2 = and <2 x i8> %in, < i8 42, i8 42>
+        ret <2 x i8> %tmp2
 }
 
 define i8 @and_u8(i8 zeroext  %in) zeroext  {

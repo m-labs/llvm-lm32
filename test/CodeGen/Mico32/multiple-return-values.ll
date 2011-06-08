@@ -1,3 +1,5 @@
+; mico32 can't return more than two registers.
+; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32

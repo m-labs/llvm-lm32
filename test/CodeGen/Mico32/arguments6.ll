@@ -1,3 +1,5 @@
+; This should be sret on mico32.
+; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -mtriple=arm-linux-gnueabi

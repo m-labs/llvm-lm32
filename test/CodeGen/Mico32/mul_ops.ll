@@ -16,40 +16,40 @@
 ; RUN: grep xsbh    %t1.s | count 4
 
 ; 32-bit multiply instruction generation:
-define <4 x i32> @mpy_v4i32_1(<4 x i32> %arg1, <4 x i32> %arg2) {
+define <2 x i32> @mpy_v2i32_1(<2 x i32> %arg1, <2 x i32> %arg2) {
 entry:
-        %A = mul <4 x i32> %arg1, %arg2
-        ret <4 x i32> %A
+        %A = mul <2 x i32> %arg1, %arg2
+        ret <2 x i32> %A
 }
 
-define <4 x i32> @mpy_v4i32_2(<4 x i32> %arg1, <4 x i32> %arg2) {
+define <2 x i32> @mpy_v2i32_2(<2 x i32> %arg1, <2 x i32> %arg2) {
 entry:
-        %A = mul <4 x i32> %arg2, %arg1
-        ret <4 x i32> %A
+        %A = mul <2 x i32> %arg2, %arg1
+        ret <2 x i32> %A
 }
 
-define <4 x i16> @mpy_v4i16_1(<4 x i16> %arg1, <4 x i16> %arg2) {
+define <2 x i16> @mpy_v2i16_1(<2 x i16> %arg1, <2 x i16> %arg2) {
 entry:
-        %A = mul <4 x i16> %arg1, %arg2
-        ret <4 x i16> %A
+        %A = mul <2 x i16> %arg1, %arg2
+        ret <2 x i16> %A
 }
 
-define <4 x i16> @mpy_v4i16_2(<4 x i16> %arg1, <4 x i16> %arg2) {
+define <2 x i16> @mpy_v2i16_2(<2 x i16> %arg1, <2 x i16> %arg2) {
 entry:
-        %A = mul <4 x i16> %arg2, %arg1
-        ret <4 x i16> %A
+        %A = mul <2 x i16> %arg2, %arg1
+        ret <2 x i16> %A
 }
 
-define <4 x i8> @mul_v4i8_1(<4 x i8> %arg1, <4 x i8> %arg2) {
+define <2 x i8> @mul_v2i8_1(<2 x i8> %arg1, <2 x i8> %arg2) {
 entry:
-        %A = mul <4 x i8> %arg2, %arg1
-        ret <4 x i8> %A
+        %A = mul <2 x i8> %arg2, %arg1
+        ret <2 x i8> %A
 }
 
-define <4 x i8> @mul_v4(<4 x i8> %arg1, <4 x i8> %arg2) {
+define <2 x i8> @mul_v2(<2 x i8> %arg1, <2 x i8> %arg2) {
 entry:
-        %A = mul <4 x i8> %arg1, %arg2
-        ret <4 x i8> %A
+        %A = mul <2 x i8> %arg1, %arg2
+        ret <2 x i8> %A
 }
 
 define i32 @mul_i32_1(i32 %arg1, i32 %arg2) {
