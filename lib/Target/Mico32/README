@@ -36,7 +36,7 @@ mkdir $TOPDIR/build
 (cd $TOPDIR/build ; ../llvm/configure  --with-llvmgccdir=/Users/jpbonn/Documents/llvm/llvm-gcc-4.2-2.7-x86_64-apple-darwin10/bin/x86_64-apple-darwin10-llvm-gcc --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
 -------------------
 
-Build llvm and clang:
+Once configured build llvm and clang:
 -------------------
 (cd $TOPDIR/build ; make install)
 -------------------
@@ -44,21 +44,28 @@ Build llvm and clang:
 
 LLVM MICO32 CODEGEN TESTS
 
+Run tests with CMAKE configured environment:
+-------------------
+(cd $TOPDIR/build ; ./Debug+Asserts/bin/llvm-lit -sv -j1 test/CodeGen/Mico32/)
+-------------------
+
+Run tests with autools configured environment:
+-------------------
 Do "make check" to run the LLVM tests:
 (cd $TOPDIR/build ; make check )
 
 After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
 
 (cd $TOPDIR/build ; make TESTSUITE=CodeGen/mico32 check)
+--------------------
 
-Note: at the moment TESTSUITE=CodeGen/mico32 only works with the autotools configured environemnt.
 
 Initial results: 
 
-  Expected Passes    : 379
-  Expected Failures  : 26
-  Unexpected Passes  : 6
-  Unexpected Failures: 104
+  Expected Passes    : 439
+  Expected Failures  : 28
+  Unexpected Passes  : 7
+  Unexpected Failures: 37
 
 
 Notes
