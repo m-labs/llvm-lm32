@@ -163,16 +163,6 @@ CodeGenRegBank &CodeGenTarget::getRegBank() const {
   return *RegBank;
 }
 
-void CodeGenTarget::ReadRegisterClasses() const {
-  std::vector<Record*> RegClasses =
-    Records.getAllDerivedDefinitions("RegisterClass");
-  if (RegClasses.empty())
-    throw std::string("No 'RegisterClass' subclasses defined!");
-
-  RegisterClasses.reserve(RegClasses.size());
-  RegisterClasses.assign(RegClasses.begin(), RegClasses.end());
-}
-
 /// getRegisterByName - If there is a register with the specific AsmName,
 /// return it.
 const CodeGenRegister *CodeGenTarget::getRegisterByName(StringRef Name) const {
@@ -188,15 +178,14 @@ const CodeGenRegister *CodeGenTarget::getRegisterByName(StringRef Name) const {
 
 std::vector<MVT::SimpleValueType> CodeGenTarget::
 getRegisterVTs(Record *R) const {
+  const CodeGenRegister *Reg = getRegBank().getReg(R);
   std::vector<MVT::SimpleValueType> Result;
   const std::vector<CodeGenRegisterClass> &RCs = getRegisterClasses();
   for (unsigned i = 0, e = RCs.size(); i != e; ++i) {
-    const CodeGenRegisterClass &RC = RegisterClasses[i];
-    for (unsigned ei = 0, ee = RC.Elements.size(); ei != ee; ++ei) {
-      if (R == RC.Elements[ei]) {
-        const std::vector<MVT::SimpleValueType> &InVTs = RC.getValueTypes();
-        Result.insert(Result.end(), InVTs.begin(), InVTs.end());
-      }
+    const CodeGenRegisterClass &RC = RCs[i];
+    if (RC.contains(Reg)) {
+      const std::vector<MVT::SimpleValueType> &InVTs = RC.getValueTypes();
+      Result.insert(Result.end(), InVTs.begin(), InVTs.end());
     }
   }
 

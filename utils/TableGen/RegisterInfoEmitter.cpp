@@ -129,64 +129,6 @@ void RegisterInfoEmitter::runHeader(raw_ostream &OS) {
 typedef std::pair<unsigned, unsigned> UUPair;
 typedef std::vector<UUPair> UUVector;
 
-// Generate and print a quadratically probed hash table of unsigned pairs.
-// The pair (0,0) is used as a sentinel, so it cannot be a data point.
-static void generateHashTable(raw_ostream &OS, const char *Name,
-                              const UUVector &Data) {
-  const UUPair Sentinel(0, 0);
-  unsigned HSize = Data.size();
-  UUVector HT;
-
-  // Grow the hash table until all entries can be found in less than 8 probes.
-  unsigned MaxProbes;
-  do {
-    // Hashtable size must be a power of two.
-    HSize = NextPowerOf2(HSize);
-    HT.assign(HSize, Sentinel);
-
-    // Insert all entries.
-    for (unsigned i = 0, e = Data.size(); i != e; ++i) {
-      UUPair D = Data[i];
-      unsigned Idx = (D.first * 11 + D.second * 97) & (HSize - 1);
-      unsigned ProbeAmt = 1;
-      while (HT[Idx] != Sentinel) {
-        Idx = (Idx + ProbeAmt) & (HSize - 1);
-        ProbeAmt += 1;
-      }
-      HT[Idx] = D;
-    }
-
-    // Now measure the max number of probes for any worst case miss.
-    MaxProbes = 0;
-    unsigned TotalProbes = 0;
-    for (unsigned i = 0, e = HSize; i != e; ++i) {
-      unsigned Idx = i;
-      unsigned ProbeAmt = 1;
-      while (HT[Idx] != Sentinel) {
-        Idx = (Idx + ProbeAmt) & (HSize - 1);
-        ProbeAmt += 1;
-      }
-      TotalProbes += ProbeAmt;
-      MaxProbes = std::max(MaxProbes, ProbeAmt);
-    }
-    OS << "\n  // Max number of probes: " << MaxProbes
-       << format(", avg %.1f", float(TotalProbes)/HSize);
-  } while (MaxProbes >= 6);
-
-  // Print the hash table.
-  OS << "\n  // Used entries: " << Data.size()
-     << "\n  const unsigned " << Name << "Size = " << HSize << ';'
-     << "\n  const unsigned " << Name << "[] = {\n";
-
-  for (unsigned i = 0, e = HSize; i != e; ++i) {
-    UUPair D = HT[i];
-    OS << format("    %3u,%3u,", D.first, D.second);
-    if (i % 8 == 7 && i + 1 != e)
-      OS << '\n';
-  }
-  OS << "\n  };\n";
-}
-
 //
 // RegisterInfoEmitter::run - Main register file description emitter.
 //
@@ -214,20 +156,21 @@ void RegisterInfoEmitter::run(raw_ostream &OS) {
   // Emit the register enum value arrays for each RegisterClass
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
     const CodeGenRegisterClass &RC = RegisterClasses[rc];
+    ArrayRef<Record*> Order = RC.getOrder();
 
     // Collect allocatable registers.
     if (RC.Allocatable)
-      AllocatableRegs.insert(RC.Elements.begin(), RC.Elements.end());
+      AllocatableRegs.insert(Order.begin(), Order.end());
 
     // Give the register class a legal C name if it's anonymous.
-    std::string Name = RC.TheDef->getName();
+    std::string Name = RC.getName();
 
     // Emit the register list now.
     OS << "  // " << Name << " Register Class...\n"
        << "  static const unsigned " << Name
        << "[] = {\n    ";
-    for (unsigned i = 0, e = RC.Elements.size(); i != e; ++i) {
-      Record *Reg = RC.Elements[i];
+    for (unsigned i = 0, e = Order.size(); i != e; ++i) {
+      Record *Reg = Order[i];
       OS << getQualifiedName(Reg) << ", ";
     }
     OS << "\n  };\n\n";
@@ -238,7 +181,7 @@ void RegisterInfoEmitter::run(raw_ostream &OS) {
     const CodeGenRegisterClass &RC = RegisterClasses[rc];
 
     // Give the register class a legal C name if it's anonymous.
-    std::string Name = RC.TheDef->getName() + "VTs";
+    std::string Name = RC.getName() + "VTs";
 
     // Emit the register list now.
     OS << "  // " << Name
@@ -425,7 +368,8 @@ void RegisterInfoEmitter::run(raw_ostream &OS) {
          << RC.SpillAlignment/8 << ", "
          << RC.CopyCost << ", "
          << RC.Allocatable << ", "
-         << RC.getName() << ", " << RC.getName() << " + " << RC.Elements.size()
+         << RC.getName() << ", " << RC.getName() << " + "
+         << RC.getOrder().size()
          << ") {}\n";
     }
 
@@ -442,33 +386,6 @@ void RegisterInfoEmitter::run(raw_ostream &OS) {
   typedef std::map<Record*, std::vector<int64_t>, LessRecord> DwarfRegNumsMapTy;
   DwarfRegNumsMapTy DwarfRegNums;
   const std::vector<CodeGenRegister> &Regs = Target.getRegisters();
-
-  // Print the SubregHashTable, a simple quadratically probed
-  // hash table for determining if a register is a subregister
-  // of another register.
-  UUVector HTData;
-  for (unsigned i = 0, e = Regs.size(); i != e; ++i) {
-    unsigned RegNo = Regs[i].EnumValue;
-    const CodeGenRegister::SuperRegList &SR = Regs[i].getSuperRegs();
-    for (CodeGenRegister::SuperRegList::const_iterator I = SR.begin(),
-         E = SR.end(); I != E; ++I)
-      HTData.push_back(UUPair((*I)->EnumValue, RegNo));
-  }
-  generateHashTable(OS, "SubregHashTable", HTData);
-
-  // Print the AliasHashTable, a simple quadratically probed
-  // hash table for determining if a register aliases another register.
-  // Since the overlaps() relation is symmetric, only store a < b pairs.
-  HTData.clear();
-  for (unsigned i = 0, e = Regs.size(); i != e; ++i) {
-    unsigned RegNo = Regs[i].EnumValue;
-    const CodeGenRegister::Set &O = Overlaps[&Regs[i]];
-    for (CodeGenRegister::Set::const_iterator I = O.begin(), E = O.end();
-         I != E; ++I)
-      if (RegNo < (*I)->EnumValue)
-        HTData.push_back(UUPair(RegNo, (*I)->EnumValue));
-  }
-  generateHashTable(OS, "AliasesHashTable", HTData);
 
   // Emit an overlap list for all registers.
   for (unsigned i = 0, e = Regs.size(); i != e; ++i) {
@@ -638,9 +555,7 @@ void RegisterInfoEmitter::run(raw_ostream &OS) {
      << "  : TargetRegisterInfo(RegisterDescriptors, " << Regs.size()+1
      << ", RegisterClasses, RegisterClasses+" << RegisterClasses.size() <<",\n"
      << "                 SubRegIndexTable,\n"
-     << "                 CallFrameSetupOpcode, CallFrameDestroyOpcode,\n"
-     << "                 SubregHashTable, SubregHashTableSize,\n"
-     << "                 AliasesHashTable, AliasesHashTableSize) {\n"
+     << "                 CallFrameSetupOpcode, CallFrameDestroyOpcode) {\n"
      << "}\n\n";
 
   // Collect all information about dwarf register numbers

@@ -16,7 +16,9 @@
 #define CODEGEN_REGISTERS_H
 
 #include "Record.h"
+#include "SetTheory.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include <cstdlib>
@@ -65,13 +67,14 @@ namespace llvm {
 
     // Order CodeGenRegister pointers by EnumValue.
     struct Less {
-      bool operator()(const CodeGenRegister *A, const CodeGenRegister *B) {
+      bool operator()(const CodeGenRegister *A,
+                      const CodeGenRegister *B) const {
         return A->EnumValue < B->EnumValue;
       }
     };
 
     // Canonically ordered set.
-    typedef std::set<CodeGenRegister*, Less> Set;
+    typedef std::set<const CodeGenRegister*, Less> Set;
 
   private:
     bool SubRegsComplete;
@@ -80,10 +83,12 @@ namespace llvm {
   };
 
 
-  struct CodeGenRegisterClass {
+  class CodeGenRegisterClass {
+    CodeGenRegister::Set Members;
+    const std::vector<Record*> *Elements;
+  public:
     Record *TheDef;
     std::string Namespace;
-    std::vector<Record*> Elements;
     std::vector<MVT::SimpleValueType> VTs;
     unsigned SpillSize;
     unsigned SpillAlignment;
@@ -104,13 +109,10 @@ namespace llvm {
       abort();
     }
 
-    bool containsRegister(Record *R) const {
-      for (unsigned i = 0, e = Elements.size(); i != e; ++i)
-        if (Elements[i] == R) return true;
-      return false;
-    }
+    // Return true if this this class contains the register.
+    bool contains(const CodeGenRegister*) const;
 
-    // Returns true if RC is a strict subclass.
+    // Returns true if RC is a subclass.
     // RC is a sub-class of this class if it is a valid replacement for any
     // instruction operand where a register of this classis required. It must
     // satisfy these conditions:
@@ -119,39 +121,30 @@ namespace llvm {
     // 2. The RC spill size must not be smaller than our spill size.
     // 3. RC spill alignment must be compatible with ours.
     //
-    bool hasSubClass(const CodeGenRegisterClass *RC) const {
+    bool hasSubClass(const CodeGenRegisterClass *RC) const;
 
-      if (RC->Elements.size() > Elements.size() ||
-          (SpillAlignment && RC->SpillAlignment % SpillAlignment) ||
-          SpillSize > RC->SpillSize)
-        return false;
-
-      std::set<Record*> RegSet;
-      for (unsigned i = 0, e = Elements.size(); i != e; ++i) {
-        Record *Reg = Elements[i];
-        RegSet.insert(Reg);
-      }
-
-      for (unsigned i = 0, e = RC->Elements.size(); i != e; ++i) {
-        Record *Reg = RC->Elements[i];
-        if (!RegSet.count(Reg))
-          return false;
-      }
-
-      return true;
+    // Returns an ordered list of class members.
+    // The order of registers is the same as in the .td file.
+    ArrayRef<Record*> getOrder() const {
+      return *Elements;
     }
 
-    CodeGenRegisterClass(Record *R);
+    CodeGenRegisterClass(CodeGenRegBank&, Record *R);
   };
 
   // CodeGenRegBank - Represent a target's registers and the relations between
   // them.
   class CodeGenRegBank {
     RecordKeeper &Records;
+    SetTheory Sets;
+
     std::vector<Record*> SubRegIndices;
     unsigned NumNamedIndices;
     std::vector<CodeGenRegister> Registers;
     DenseMap<Record*, CodeGenRegister*> Def2Reg;
+
+    std::vector<CodeGenRegisterClass> RegClasses;
+    DenseMap<Record*, CodeGenRegisterClass*> Def2RC;
 
     // Composite SubRegIndex instances.
     // Map (SubRegIndex, SubRegIndex) -> SubRegIndex.
@@ -163,6 +156,8 @@ namespace llvm {
 
   public:
     CodeGenRegBank(RecordKeeper&);
+
+    SetTheory &getSets() { return Sets; }
 
     // Sub-register indices. The first NumNamedIndices are defined by the user
     // in the .td files. The rest are synthesized such that all sub-registers
@@ -180,6 +175,20 @@ namespace llvm {
 
     // Find a register from its Record def.
     CodeGenRegister *getReg(Record*);
+
+    const std::vector<CodeGenRegisterClass> &getRegClasses() {
+      return RegClasses;
+    }
+
+    // Find a register class from its def.
+    CodeGenRegisterClass *getRegClass(Record*);
+
+    /// getRegisterClassForRegister - Find the register class that contains the
+    /// specified physical register.  If the register is not in a register
+    /// class, return null. If the register is in multiple classes, and the
+    /// classes have a superset-subset relationship and the same set of types,
+    /// return the superclass.  Otherwise return null.
+    const CodeGenRegisterClass* getRegClassForRegister(Record *R);
 
     // Computed derived records such as missing sub-register indices.
     void computeDerivedInfo();
