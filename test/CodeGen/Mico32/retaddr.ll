@@ -1,5 +1,3 @@
-; Monarch currently deosn't support the llvm.returnaddress intrinsic.
-; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 | grep mflr

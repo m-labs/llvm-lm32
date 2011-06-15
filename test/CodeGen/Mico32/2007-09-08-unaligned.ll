@@ -1,5 +1,3 @@
-; monarch does not support unaligned accesses.
-; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc | grep stfd | count 3

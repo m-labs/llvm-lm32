@@ -1,5 +1,3 @@
-; Monarch doesn't support unordered compares.
-; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm | grep movne | count 1
