@@ -70,6 +70,12 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
 //  setLoadExtAction(ISD::SEXTLOAD, MVT::i8, Expand);
 //  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, Expand);
 
+  // There's no extended adds or subtracts.
+  setOperationAction(ISD::ADDC, MVT::i32, Expand);
+  setOperationAction(ISD::ADDE, MVT::i32, Expand);
+  setOperationAction(ISD::SUBC, MVT::i32, Expand);
+  setOperationAction(ISD::SUBE, MVT::i32, Expand);
+
   // Check if unsigned div/mod are enabled.
   if (!Subtarget->hasDIV()) {
     setOperationAction(ISD::UDIV, MVT::i32, Expand);
@@ -142,8 +148,9 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::VACOPY,             MVT::Other, Expand);
 
 
-// FIXME: need to handle branches
-//  setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
+  // Mico32 does not have jump table branches.
+  setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
+  // Expand BR_CC to BRCOND.
   setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
 
   // Operations not directly supported by Mico32.
