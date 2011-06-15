@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=monarch
+; RUN: llvm-as < %s | llc -march=mico32
 ; XFAIL: *
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc64 -enable-ppc64-regscavenger

@@ -1,14 +1,13 @@
 ; try to check that we have the most important instructions, which shouldn't 
 ; appear otherwise
 ; RUN: llvm-as < %s | llc -march=mico32 
-;# RUN: llvm-as < %s | llc -march=alpha | grep jmp
-;# RUN: llvm-as < %s | llc -march=alpha | grep gprel32
-;# RUN: llvm-as < %s | llc -march=alpha | grep ldl
-;# RUN: llvm-as < %s | llc -march=alpha | grep rodata
-;# END.
+; END.
+; RUN: llvm-as < %s | llc -march=alpha | grep jmp
+; RUN: llvm-as < %s | llc -march=alpha | grep gprel32
+; RUN: llvm-as < %s | llc -march=alpha | grep ldl
+; RUN: llvm-as < %s | llc -march=alpha | grep rodata
+; END.
 
-; target datalayout = "e-p:64:64"
-; target triple = "alphaev67-unknown-linux-gnu"
 @str = internal constant [2 x i8] c"1\00"               ; <[2 x i8]*> [#uses=1]
 @str1 = internal constant [2 x i8] c"2\00"              ; <[2 x i8]*> [#uses=1]
 @str2 = internal constant [2 x i8] c"3\00"              ; <[2 x i8]*> [#uses=1]

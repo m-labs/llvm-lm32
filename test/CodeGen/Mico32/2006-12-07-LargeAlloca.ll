@@ -1,5 +1,3 @@
-; monarch stack offset is limited to ~32K.
-; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc64

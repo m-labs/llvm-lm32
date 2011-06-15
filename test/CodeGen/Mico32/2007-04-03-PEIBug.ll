@@ -1,6 +1,3 @@
-; monarch stack offset is limited to ~32K.
-; monarch doesn't support varargs.
-; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm | not grep {add.*#0}

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=monarch
+; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc
 ; PR1845

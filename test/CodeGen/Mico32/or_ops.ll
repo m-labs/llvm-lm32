@@ -1,4 +1,4 @@
-; monarch supports retuning <4 x i32> at most.
+; mico32 supports retuning <2 x i32> at most.
 ; or_ops_pass.ll has supported versions of this test.
 ; XFAIL: *
 ; RUN: llvm-as -o - %s | llc -march=mico32
@@ -41,36 +41,6 @@ define <16 x i8> @or_v16i8_1(<16 x i8> %arg1, <16 x i8> %arg2) {
 define <16 x i8> @or_v16i8_2(<16 x i8> %arg1, <16 x i8> %arg2) {
         %A = or <16 x i8> %arg1, %arg2
         ret <16 x i8> %A
-}
-
-define i32 @or_i32_1(i32 %arg1, i32 %arg2) {
-        %A = or i32 %arg2, %arg1
-        ret i32 %A
-}
-
-define i32 @or_i32_2(i32 %arg1, i32 %arg2) {
-        %A = or i32 %arg1, %arg2
-        ret i32 %A
-}
-
-define i16 @or_i16_1(i16 %arg1, i16 %arg2) {
-        %A = or i16 %arg2, %arg1
-        ret i16 %A
-}
-
-define i16 @or_i16_2(i16 %arg1, i16 %arg2) {
-        %A = or i16 %arg1, %arg2
-        ret i16 %A
-}
-
-define i8 @or_i8_1(i8 %arg1, i8 %arg2) {
-        %A = or i8 %arg2, %arg1
-        ret i8 %A
-}
-
-define i8 @or_i8_2(i8 %arg1, i8 %arg2) {
-        %A = or i8 %arg1, %arg2
-        ret i8 %A
 }
 
 ; ORC instruction generation:
@@ -130,60 +100,6 @@ define <16 x i8> @orc_v16i8_3(<16 x i8> %arg1, <16 x i8> %arg2) {
         ret <16 x i8> %B
 }
 
-define i32 @orc_i32_1(i32 %arg1, i32 %arg2) {
-        %A = xor i32 %arg2, -1
-        %B = or i32 %A, %arg1
-        ret i32 %B
-}
-
-define i32 @orc_i32_2(i32 %arg1, i32 %arg2) {
-        %A = xor i32 %arg1, -1
-        %B = or i32 %A, %arg2
-        ret i32 %B
-}
-
-define i32 @orc_i32_3(i32 %arg1, i32 %arg2) {
-        %A = xor i32 %arg2, -1
-        %B = or i32 %arg1, %A
-        ret i32 %B
-}
-
-define i16 @orc_i16_1(i16 %arg1, i16 %arg2) {
-        %A = xor i16 %arg2, -1
-        %B = or i16 %A, %arg1
-        ret i16 %B
-}
-
-define i16 @orc_i16_2(i16 %arg1, i16 %arg2) {
-        %A = xor i16 %arg1, -1
-        %B = or i16 %A, %arg2
-        ret i16 %B
-}
-
-define i16 @orc_i16_3(i16 %arg1, i16 %arg2) {
-        %A = xor i16 %arg2, -1
-        %B = or i16 %arg1, %A
-        ret i16 %B
-}
-
-define i8 @orc_i8_1(i8 %arg1, i8 %arg2) {
-        %A = xor i8 %arg2, -1
-        %B = or i8 %A, %arg1
-        ret i8 %B
-}
-
-define i8 @orc_i8_2(i8 %arg1, i8 %arg2) {
-        %A = xor i8 %arg1, -1
-        %B = or i8 %A, %arg2
-        ret i8 %B
-}
-
-define i8 @orc_i8_3(i8 %arg1, i8 %arg2) {
-        %A = xor i8 %arg2, -1
-        %B = or i8 %arg1, %A
-        ret i8 %B
-}
-
 ; ORI instruction generation (i32 data type):
 define <4 x i32> @ori_v4i32_1(<4 x i32> %in) {
         %tmp2 = or <4 x i32> %in, < i32 511, i32 511, i32 511, i32 511 >
@@ -203,16 +119,6 @@ define <4 x i32> @ori_v4i32_3(<4 x i32> %in) {
 define <4 x i32> @ori_v4i32_4(<4 x i32> %in) {
         %tmp2 = or <4 x i32> %in, < i32 -512, i32 -512, i32 -512, i32 -512 >
         ret <4 x i32> %tmp2
-}
-
-define i32 @ori_u32(i32 zeroext  %in) zeroext  {
-        %tmp37 = or i32 %in, 37         ; <i32> [#uses=1]
-        ret i32 %tmp37
-}
-
-define i32 @ori_i32(i32 signext  %in) signext  {
-        %tmp38 = or i32 %in, 37         ; <i32> [#uses=1]
-        ret i32 %tmp38
 }
 
 ; ORHI instruction generation (i16 data type):
@@ -240,30 +146,10 @@ define <8 x i16> @orhi_v8i16_4(<8 x i16> %in) {
         ret <8 x i16> %tmp2
 }
 
-define i16 @orhi_u16(i16 zeroext  %in) zeroext  {
-        %tmp37 = or i16 %in, 37         ; <i16> [#uses=1]
-        ret i16 %tmp37
-}
-
-define i16 @orhi_i16(i16 signext  %in) signext  {
-        %tmp38 = or i16 %in, 37         ; <i16> [#uses=1]
-        ret i16 %tmp38
-}
-
 ; ORBI instruction generation (i8 data type):
 define <16 x i8> @orbi_v16i8(<16 x i8> %in) {
         %tmp2 = or <16 x i8> %in, < i8 42, i8 42, i8 42, i8 42, i8 42, i8 42,
                                     i8 42, i8 42, i8 42, i8 42, i8 42, i8 42,
                                     i8 42, i8 42, i8 42, i8 42 >
         ret <16 x i8> %tmp2
-}
-
-define i8 @orbi_u8(i8 zeroext  %in) zeroext  {
-        %tmp37 = or i8 %in, 37         ; <i8> [#uses=1]
-        ret i8 %tmp37
-}
-
-define i8 @orbi_i8(i8 signext  %in) signext  {
-        %tmp38 = or i8 %in, 37         ; <i8> [#uses=1]
-        ret i8 %tmp38
 }

@@ -1,4 +1,4 @@
-; monarch supports returning <4 x i32> at most.
+; mico32 supports returning <2 x i32> at most.
 ; trunc.ll has unsupported versions of this test.
 ; RUN: llvm-as -o - %s | llc -march=mico32
 ; END.

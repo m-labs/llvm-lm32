@@ -1,4 +1,4 @@
-; monarch only supports returning <4 x i16>
+; mico32 only supports returning <2 x i16>
 ; XFAIL: *
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.

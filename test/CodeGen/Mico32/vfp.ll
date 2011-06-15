@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=monarch
+; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm -mattr=+vfp2 | \
 ; RUN:   grep fabs | count 2
