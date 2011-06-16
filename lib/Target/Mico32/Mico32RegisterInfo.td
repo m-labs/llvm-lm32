@@ -87,16 +87,18 @@ def CFG2 : M32CSR<10, "cfg2">, DwarfRegNum<[111]>;
 //===----------------------------------------------------------------------===//
 
 // Control and Status Register Class.
-def CSR : RegisterClass<"Mico32", [i32], 32,
-    [IE, IM, IP, ICC, DCC, CC, CFG, EBA, CFG2]> {
-  let CopyCost = -1;  // Don't allow copying of status registers.
+def CSR : RegisterClass<"Mico32", [i32], 32, (add
+    IE, IM, IP, ICC, DCC, CC, CFG, EBA, CFG2)> {
+  // None of the special purpose registers are allocatable.
+  let isAllocatable = 0;
+  //let CopyCost = -1;  // Don't allow copying of status registers.
 }
 
 
 // General Purpose Register Class.
-def GPR : RegisterClass<"Mico32", [i32], 32,
+def GPR : RegisterClass<"Mico32", [i32], 32, (add
     // Caller saved:
-    [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10,
+    R1, R2, R3, R4, R5, R6, R7, R8, R9, R10,
     // Callee saved:
     R11, R12, R13, R14, R15, R16, R17, R18, R19, R20,
     R21, R22, R23, R24, R25,
@@ -108,7 +110,7 @@ def GPR : RegisterClass<"Mico32", [i32], 32,
     RRA, // return address
     REA, // return address for exceptions
     RBA  // return address for breakpoints
-    ]>
+    )>
 {
 //FIXME: do we need to reserve RGP (global pointer) and RFP (frame pointer)?
   let MethodProtos = [{
