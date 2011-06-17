@@ -136,8 +136,6 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::GlobalAddress,      MVT::i32,   Custom);
   setOperationAction(ISD::GlobalTLSAddress,   MVT::i32,   Custom);
   setOperationAction(ISD::ConstantPool,       MVT::i32,   Custom);
-// FIXME: need to add this
-  // setOperationAction(ISD::JumpTable,          MVT::i32,   Custom);
 
   // Variable Argument support
   // Use custom implementation for VASTART.
@@ -148,8 +146,10 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::VACOPY,             MVT::Other, Expand);
 
 
-  // Mico32 does not have jump table branches.
+  // Mico32 does not have jump table branches...
   setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
+  // ... so we have to lower the loads from the jump table.
+  setOperationAction(ISD::JumpTable,          MVT::i32,   Custom);
   // Expand BR_CC to BRCOND.
   setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
 
@@ -421,11 +421,28 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {
   return SDValue(); // Not reached
 }
 
+// Derived from PPC.
 SDValue Mico32TargetLowering::
 LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
-  llvm_unreachable("JumpTables  not implemented for Mico32.");
-  return SDValue(); // Not reached
+  DEBUG(assert(Op.getValueType() == MVT::i32 && "pointers should be 32 bits."));
+  DebugLoc dl = Op.getDebugLoc();
+  JumpTableSDNode *JT = cast<JumpTableSDNode>(Op);
+  SDValue JTI = DAG.getTargetJumpTable(JT->getIndex(), MVT::i32);
+  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, JTI);
+  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, JTI);
+
+  // We don't support non-static relo models yet.
+  if (DAG.getTarget().getRelocationModel() == Reloc::Static ) {
+    // Generate non-pic code that has direct accesses to the constant pool.
+    // The address of the global is just (hi(&g)+lo(&g)).
+    return DAG.getNode(ISD::OR, dl, MVT::i32, Lo, Hi);
+  } else {
+      llvm_unreachable("JumpTables are only supported in static mode");
+  }
+  
+  return Op; // notreached
 }
+
 
 SDValue Mico32TargetLowering::
 LowerConstantPool(SDValue Op, SelectionDAG &DAG) const

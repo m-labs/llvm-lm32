@@ -600,6 +600,20 @@ def : Pat<(Mico32Lo tglobaladdr:$in), (ORIsym R0, tglobaladdr:$in)>;
 def : Pat<(add GPR:$hi, (Mico32Lo tglobaladdr:$lo)),
           (ADDIsym GPR:$hi, tglobaladdr:$lo)>;
 
+// ISel custom lowering generates (Mico32Hi tconstpool:$in) and
+// (Mico32Lo tconstpool:$in).  We further lower them here:
+def : Pat<(Mico32Hi tconstpool:$in), (ORHIsym R0, tconstpool:$in)>;
+def : Pat<(Mico32Lo tconstpool:$in), (ORIsym R0, tconstpool:$in)>;
+def : Pat<(add GPR:$hi, (Mico32Lo tconstpool:$lo)),
+          (ADDIsym GPR:$hi, tconstpool:$lo)>;
+
+// ISel custom lowering generates (Mico32Hi tjumptable:$in) and
+// (Mico32Lo tjumptable:$in).  We further lower them here:
+def : Pat<(Mico32Hi tjumptable:$in), (ORHIsym R0, tjumptable:$in)>;
+def : Pat<(Mico32Lo tjumptable:$in), (ORIsym R0, tjumptable:$in)>;
+def : Pat<(add GPR:$hi, (Mico32Lo tjumptable:$lo)),
+          (ADDIsym GPR:$hi, tjumptable:$lo)>;
+
 // A conditional move pattern.
 // Cond is 0 or 1 on entry.
 //   %tmp = sub 0, %cond   ; = (cond) ? 0xFFFFFFFF : 0
