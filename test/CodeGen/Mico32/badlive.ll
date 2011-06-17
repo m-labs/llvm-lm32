@@ -4,7 +4,7 @@
 
 define i32 @main() {
 bb0:
-        %reg109 = malloc i32, i32 100           ; <i32*> [#uses=2]
+        %reg109 = alloca i32, i32 100           ; <i32*> [#uses=2]
         br label %bb2
 
 bb2:            ; preds = %bb2, %bb0

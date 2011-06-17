@@ -95,12 +95,12 @@ define i8 @andc_i8_3(i8 %arg1, i8 %arg2) {
 }
 
 ; ANDI instruction generation (i32 data type):
-define i32 @andi_u32(i32 zeroext  %in) zeroext  {
+define zeroext i32 @andi_u32(i32 zeroext  %in) {
         %tmp37 = and i32 %in, 37
         ret i32 %tmp37
 }
 
-define i32 @andi_i32(i32 signext  %in) signext  {
+define signext i32 @andi_i32(i32 signext  %in) {
         %tmp38 = and i32 %in, 37
         ret i32 %tmp38
 }
@@ -111,24 +111,24 @@ define i32 @andi_i32_1(i32 %in) {
 }
 
 ; ANDHI instruction generation (i16 data type):
-define i16 @andhi_u16(i16 zeroext  %in) zeroext  {
+define zeroext i16 @andhi_u16(i16 zeroext  %in) {
         %tmp37 = and i16 %in, 37         ; <i16> [#uses=1]
         ret i16 %tmp37
 }
 
-define i16 @andhi_i16(i16 signext  %in) signext  {
+define signext i16 @andhi_i16(i16 signext  %in) {
         %tmp38 = and i16 %in, 37         ; <i16> [#uses=1]
         ret i16 %tmp38
 }
 
 ; i8 data type (s/b ANDBI if 8-bit registers were supported):
-define i8 @and_u8(i8 zeroext  %in) zeroext  {
+define zeroext i8 @and_u8(i8 zeroext  %in) {
         ; ANDBI generated:
         %tmp37 = and i8 %in, 37
         ret i8 %tmp37
 }
 
-define i8 @and_sext8(i8 signext  %in) signext  {
+define signext i8 @and_sext8(i8 signext  %in) {
         ; ANDBI generated
         %tmp38 = and i8 %in, 37
         ret i8 %tmp38

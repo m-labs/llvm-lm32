@@ -1,9 +1,8 @@
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
 ; RUN: llvm-as < %s | llc
-target datalayout = "E-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32"
 
-define i16 @t(i16* %dct) signext nounwind  {
+define signext i16 @t(i16* %dct) nounwind  {
 entry:
          load i16* null, align 2         ; <i16>:0 [#uses=2]
          lshr i16 %0, 11         ; <i16>:1 [#uses=0]

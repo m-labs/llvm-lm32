@@ -1,6 +1,6 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llc < %s -march=mico32
 ; END.
-; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin
+; RUN: llc < %s -mtriple=arm-apple-darwin
 
 	%struct.CONTENTBOX = type { i32, i32, i32, i32, i32 }
 	%struct.FILE = type { i8*, i32, i32, i16, i16, %struct.__sbuf, i32, i8*, i32 (i8*)*, i32 (i8*, i8*, i32)*, i64 (i8*, i64, i32)*, i32 (i8*, i8*, i32)*, %struct.__sbuf, %struct.__sFILEX*, i32, [3 x i8], [1 x i8], %struct.__sbuf, i32, i64 }
@@ -189,11 +189,6 @@ bb231:		; preds = %bb226
 	store i32 %save_cod_info.1.1, i32* %cod_info.182
 	ret void
 }
-
-	%struct.III_psy_xmin = type { [22 x double], [13 x [3 x double]] }
-	%struct.III_scalefac_t = type { [22 x i32], [13 x [3 x i32]] }
-	%struct.gr_info = type { i32, i32, i32, i32, i32, i32, i32, i32, [3 x i32], [3 x i32], i32, i32, i32, i32, i32, i32, i32, i32, i32, i32*, [4 x i32] }
-	%struct.lame_global_flags = type { i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i8*, i8*, i32, i32, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, float, i32, i32, i32, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32 }
 
 define fastcc void @outer_loop2(%struct.lame_global_flags* %gfp, double* %xr, i32 %targ_bits, double* %best_noise, %struct.III_psy_xmin* %l3_xmin, i32* %l3_enc, %struct.III_scalefac_t* %scalefac, %struct.gr_info* %cod_info, i32 %ch) {
 entry:

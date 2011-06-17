@@ -202,12 +202,12 @@ define i8 @orc_i8_3(i8 %arg1, i8 %arg2) {
 ;        ret <4 x i32> %tmp2
 ;}
 
-define i32 @ori_u32(i32 zeroext  %in) zeroext  {
+define zeroext  i32 @ori_u32(i32 zeroext  %in) {
         %tmp37 = or i32 %in, 37         ; <i32> [#uses=1]
         ret i32 %tmp37
 }
 
-define i32 @ori_i32(i32 signext  %in) signext  {
+define signext  i32 @ori_i32(i32 signext  %in) {
         %tmp38 = or i32 %in, 37         ; <i32> [#uses=1]
         ret i32 %tmp38
 }
@@ -237,12 +237,12 @@ define i32 @ori_i32(i32 signext  %in) signext  {
 ;        ret <8 x i16> %tmp2
 ;}
 
-define i16 @orhi_u16(i16 zeroext  %in) zeroext  {
+define zeroext  i16 @orhi_u16(i16 zeroext  %in) {
         %tmp37 = or i16 %in, 37         ; <i16> [#uses=1]
         ret i16 %tmp37
 }
 
-define i16 @orhi_i16(i16 signext  %in) signext  {
+define signext i16 @orhi_i16(i16 signext  %in) {
         %tmp38 = or i16 %in, 37         ; <i16> [#uses=1]
         ret i16 %tmp38
 }
@@ -255,12 +255,12 @@ define i16 @orhi_i16(i16 signext  %in) signext  {
 ;        ret <16 x i8> %tmp2
 ;}
 
-define i8 @orbi_u8(i8 zeroext  %in) zeroext  {
+define zeroext  i8 @orbi_u8(i8 zeroext  %in) {
         %tmp37 = or i8 %in, 37         ; <i8> [#uses=1]
         ret i8 %tmp37
 }
 
-define i8 @orbi_i8(i8 signext  %in) signext  {
+define signext  i8 @orbi_i8(i8 signext  %in) {
         %tmp38 = or i8 %in, 37         ; <i8> [#uses=1]
         ret i8 %tmp38
 }

@@ -7,15 +7,12 @@
 ; Check that tail merging is not the default on ppc, and that -enable-tail-merge works.
 
 ; ModuleID = 'tail.c'
-target datalayout = "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64"
-target triple = "i686-apple-darwin8"
 
 define i32 @f(i32 %i, i32 %q) {
 entry:
 	%i_addr = alloca i32		; <i32*> [#uses=2]
 	%q_addr = alloca i32		; <i32*> [#uses=2]
 	%retval = alloca i32, align 4		; <i32*> [#uses=1]
-	"alloca point" = bitcast i32 0 to i32		; <i32> [#uses=0]
 	store i32 %i, i32* %i_addr
 	store i32 %q, i32* %q_addr
 	%tmp = load i32* %i_addr		; <i32> [#uses=1]
