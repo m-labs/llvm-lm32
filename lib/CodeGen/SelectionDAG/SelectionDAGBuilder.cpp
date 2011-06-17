@@ -1279,6 +1279,24 @@ bool SelectionDAGBuilder::isExportableFromCurrentBlock(const Value *V,
   return true;
 }
 
+/// Return branch probability calculated by BranchProbabilityInfo for IR blocks.
+uint32_t SelectionDAGBuilder::getEdgeWeight(MachineBasicBlock *Src,
+                                            MachineBasicBlock *Dst) {
+  BranchProbabilityInfo *BPI = FuncInfo.BPI;
+  if (!BPI)
+    return 0;
+  BasicBlock *SrcBB = const_cast<BasicBlock*>(Src->getBasicBlock());
+  BasicBlock *DstBB = const_cast<BasicBlock*>(Dst->getBasicBlock());
+  return BPI->getEdgeWeight(SrcBB, DstBB);
+}
+
+void SelectionDAGBuilder::addSuccessorWithWeight(MachineBasicBlock *Src,
+                                                 MachineBasicBlock *Dst) {
+  uint32_t weight = getEdgeWeight(Src, Dst);
+  Src->addSuccessor(Dst, weight);
+}
+
+
 static bool InBlock(const Value *V, const BasicBlock *BB) {
   if (const Instruction *I = dyn_cast<Instruction>(V))
     return I->getParent() == BB;
@@ -1548,8 +1566,8 @@ void SelectionDAGBuilder::visitSwitchCase(CaseBlock &CB,
   }
 
   // Update successor info
-  SwitchBB->addSuccessor(CB.TrueBB);
-  SwitchBB->addSuccessor(CB.FalseBB);
+  addSuccessorWithWeight(SwitchBB, CB.TrueBB);
+  addSuccessorWithWeight(SwitchBB, CB.FalseBB);
 
   // Set NextBlock to be the MBB immediately after the current one, if any.
   // This is used to avoid emitting unnecessary branches to the next block.
@@ -1693,8 +1711,8 @@ void SelectionDAGBuilder::visitBitTestHeader(BitTestBlock &B,
 
   MachineBasicBlock* MBB = B.Cases[0].ThisBB;
 
-  SwitchBB->addSuccessor(B.Default);
-  SwitchBB->addSuccessor(MBB);
+  addSuccessorWithWeight(SwitchBB, B.Default);
+  addSuccessorWithWeight(SwitchBB, MBB);
 
   SDValue BrRange = DAG.getNode(ISD::BRCOND, getCurDebugLoc(),
                                 MVT::Other, CopyTo, RangeCmp,
@@ -1739,8 +1757,8 @@ void SelectionDAGBuilder::visitBitTestCase(BitTestBlock &BB,
                        ISD::SETNE);
   }
 
-  SwitchBB->addSuccessor(B.TargetBB);
-  SwitchBB->addSuccessor(NextMBB);
+  addSuccessorWithWeight(SwitchBB, B.TargetBB);
+  addSuccessorWithWeight(SwitchBB, NextMBB);
 
   SDValue BrAnd = DAG.getNode(ISD::BRCOND, getCurDebugLoc(),
                               MVT::Other, getControlRoot(),
@@ -1980,8 +1998,9 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec& CR,
   // table.
   MachineBasicBlock *JumpTableBB = CurMF->CreateMachineBasicBlock(LLVMBB);
   CurMF->insert(BBI, JumpTableBB);
-  CR.CaseBB->addSuccessor(Default);
-  CR.CaseBB->addSuccessor(JumpTableBB);
+
+  addSuccessorWithWeight(CR.CaseBB, Default);
+  addSuccessorWithWeight(CR.CaseBB, JumpTableBB);
 
   // Build a vector of destination BBs, corresponding to each target
   // of the jump table. If the value of the jump table slot corresponds to
@@ -2008,7 +2027,7 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec& CR,
          E = DestBBs.end(); I != E; ++I) {
     if (!SuccsHandled[(*I)->getNumber()]) {
       SuccsHandled[(*I)->getNumber()] = true;
-      JumpTableBB->addSuccessor(*I);
+      addSuccessorWithWeight(JumpTableBB, *I);
     }
   }
 
@@ -2427,8 +2446,10 @@ void SelectionDAGBuilder::visitIndirectBr(const IndirectBrInst &I) {
     succs.push_back(I.getSuccessor(i));
   array_pod_sort(succs.begin(), succs.end());
   succs.erase(std::unique(succs.begin(), succs.end()), succs.end());
-  for (unsigned i = 0, e = succs.size(); i != e; ++i)
-    IndirectBrMBB->addSuccessor(FuncInfo.MBBMap[succs[i]]);
+  for (unsigned i = 0, e = succs.size(); i != e; ++i) {
+    MachineBasicBlock *Succ = FuncInfo.MBBMap[succs[i]];
+    addSuccessorWithWeight(IndirectBrMBB, Succ);
+  }
 
   DAG.setRoot(DAG.getNode(ISD::BRIND, getCurDebugLoc(),
                           MVT::Other, getControlRoot(),
@@ -5429,6 +5450,8 @@ isAllocatableRegister(unsigned Reg, MachineFunction &MF,
     EVT ThisVT = MVT::Other;
 
     const TargetRegisterClass *RC = *RCI;
+    if (!RC->isAllocatable())
+      continue;
     // If none of the value types for this register class are valid, we
     // can't use it.  For example, 64-bit reg classes on 32-bit targets.
     for (TargetRegisterClass::vt_iterator I = RC->vt_begin(), E = RC->vt_end();
@@ -5450,15 +5473,14 @@ isAllocatableRegister(unsigned Reg, MachineFunction &MF,
     // frame pointer in functions that need it (due to them not being taken
     // out of allocation, because a variable sized allocation hasn't been seen
     // yet).  This is a slight code pessimization, but should still work.
-    for (TargetRegisterClass::iterator I = RC->allocation_order_begin(MF),
-         E = RC->allocation_order_end(MF); I != E; ++I)
-      if (*I == Reg) {
-        // We found a matching register class.  Keep looking at others in case
-        // we find one with larger registers that this physreg is also in.
-        FoundRC = RC;
-        FoundVT = ThisVT;
-        break;
-      }
+    ArrayRef<unsigned> RawOrder = RC->getRawAllocationOrder(MF);
+    if (std::find(RawOrder.begin(), RawOrder.end(), Reg) != RawOrder.end()) {
+      // We found a matching register class.  Keep looking at others in case
+      // we find one with larger registers that this physreg is also in.
+      FoundRC = RC;
+      FoundVT = ThisVT;
+      break;
+    }
   }
   return FoundRC;
 }
@@ -5605,9 +5627,15 @@ static void GetRegistersForValue(SelectionDAG &DAG,
                                             OpInfo.ConstraintVT);
 
   const TargetRegisterInfo *TRI = DAG.getTarget().getRegisterInfo();
+  BitVector Reserved = TRI->getReservedRegs(MF);
   unsigned NumAllocated = 0;
   for (unsigned i = 0, e = RegClassRegs.size(); i != e; ++i) {
     unsigned Reg = RegClassRegs[i];
+    // Filter out the reserved registers, but note that reserved registers are
+    // not fully determined at this point. We may still decide we need a frame
+    // pointer.
+    if (Reserved.test(Reg))
+      continue;
     // See if this register is available.
     if ((isOutReg && OutputRegs.count(Reg)) ||   // Already used.
         (isInReg  && InputRegs.count(Reg))) {    // Already used.

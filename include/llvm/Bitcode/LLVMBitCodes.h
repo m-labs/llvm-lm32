@@ -112,20 +112,16 @@ namespace bitc {
 
   enum MetadataCodes {
     METADATA_STRING        = 1,   // MDSTRING:      [values]
-    // FIXME: Remove NODE in favor of NODE2 in LLVM 3.0
-    METADATA_NODE          = 2,   // NODE with potentially invalid metadata
-    // FIXME: Remove FN_NODE in favor of FN_NODE2 in LLVM 3.0
-    METADATA_FN_NODE       = 3,   // FN_NODE with potentially invalid metadata
+    // 2 is unused.
+    // 3 is unused.
     METADATA_NAME          = 4,   // STRING:        [values]
-    // FIXME: Remove NAMED_NODE in favor of NAMED_NODE2 in LLVM 3.0
-    METADATA_NAMED_NODE    = 5,   // NAMED_NODE with potentially invalid metadata
+    // 5 is unused.
     METADATA_KIND          = 6,   // [n x [id, name]]
-    // FIXME: Remove ATTACHMENT in favor of ATTACHMENT2 in LLVM 3.0
-    METADATA_ATTACHMENT    = 7,   // ATTACHMENT with potentially invalid metadata
-    METADATA_NODE2         = 8,   // NODE2:         [n x (type num, value num)]
-    METADATA_FN_NODE2      = 9,   // FN_NODE2:      [n x (type num, value num)]
-    METADATA_NAMED_NODE2   = 10,  // NAMED_NODE2:   [n x mdnodes]
-    METADATA_ATTACHMENT2   = 11   // [m x [value, [n x [id, mdnode]]]
+    // 7 is unused.
+    METADATA_NODE          = 8,   // NODE:          [n x (type num, value num)]
+    METADATA_FN_NODE       = 9,   // FN_NODE:       [n x (type num, value num)]
+    METADATA_NAMED_NODE    = 10,  // NAMED_NODE:    [n x mdnodes]
+    METADATA_ATTACHMENT    = 11   // [m x [value, [n x [id, mdnode]]]
   };
   // The constants block (CONSTANTS_BLOCK_ID) describes emission for each
   // constant and maintains an implicit current type value.

@@ -32,7 +32,6 @@ namespace lltok {
     exclaim,           // !
 
     kw_x,
-    kw_begin,   kw_end,
     kw_true,    kw_false,
     kw_declare, kw_define,
     kw_global,  kw_constant,
@@ -122,9 +121,9 @@ namespace lltok {
     kw_ret, kw_br, kw_switch, kw_indirectbr, kw_invoke, kw_unwind,
     kw_unreachable,
 
-    kw_malloc, kw_alloca, kw_free, kw_load, kw_store, kw_getelementptr,
+    kw_alloca, kw_load, kw_store, kw_getelementptr,
 
-    kw_extractelement, kw_insertelement, kw_shufflevector, kw_getresult,
+    kw_extractelement, kw_insertelement, kw_shufflevector,
     kw_extractvalue, kw_insertvalue, kw_blockaddress,
 
     // Unsigned Valued tokens (UIntVal).

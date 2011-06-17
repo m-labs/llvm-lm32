@@ -25,6 +25,11 @@ class raw_ostream;
 class BranchProbabilityInfo : public FunctionPass {
 
   // Default weight value. Used when we don't have information about the edge.
+  // TODO: DEFAULT_WEIGHT makes sense during static predication, when none of
+  // the successors have a weight yet. But it doesn't make sense when providing
+  // weight to an edge that may have siblings with non-zero weights. This can
+  // be handled various ways, but it's probably fine for an edge with unknown
+  // weight to just "inherit" the non-zero weight of an adjacent successor.
   static const uint32_t DEFAULT_WEIGHT = 16;
 
   typedef std::pair<BasicBlock *, BasicBlock *> Edge;

@@ -18,6 +18,7 @@
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include <cassert>
 #include <functional>
@@ -257,6 +258,27 @@ public:
   }
   virtual iterator allocation_order_end(const MachineFunction &MF)   const {
     return end();
+  }
+
+  /// getRawAllocationOrder - Returns the preferred order for allocating
+  /// registers from this register class in MF. The raw order comes directly
+  /// from the .td file and may include reserved registers that are not
+  /// allocatable. Register allocators should also make sure to allocate
+  /// callee-saved registers only after all the volatiles are used. The
+  /// RegisterClassInfo class provides filtered allocation orders with
+  /// callee-saved registers moved to the end.
+  ///
+  /// The MachineFunction argument can be used to tune the allocatable
+  /// registers based on the characteristics of the function, subtarget, or
+  /// other criteria.
+  ///
+  /// By default, this method returns all registers in the class.
+  ///
+  virtual
+  ArrayRef<unsigned> getRawAllocationOrder(const MachineFunction &MF) const {
+    iterator B = allocation_order_begin(MF);
+    iterator E = allocation_order_end(MF);
+    return ArrayRef<unsigned>(B, E - B);
   }
 
   /// getSize - Return the size of the register in bytes, which is also the size
@@ -612,14 +634,17 @@ public:
     return 0;
   }
 
-  /// getAllocationOrder - Returns the register allocation order for a specified
-  /// register class in the form of a pair of TargetRegisterClass iterators.
-  virtual std::pair<TargetRegisterClass::iterator,TargetRegisterClass::iterator>
-  getAllocationOrder(const TargetRegisterClass *RC,
-                     unsigned HintType, unsigned HintReg,
-                     const MachineFunction &MF) const {
-    return std::make_pair(RC->allocation_order_begin(MF),
-                          RC->allocation_order_end(MF));
+  /// getRawAllocationOrder - Returns the register allocation order for a
+  /// specified register class with a target-dependent hint. The returned list
+  /// may contain reserved registers that cannot be allocated.
+  ///
+  /// Register allocators need only call this function to resolve
+  /// target-dependent hints, but it should work without hinting as well.
+  virtual ArrayRef<unsigned>
+  getRawAllocationOrder(const TargetRegisterClass *RC,
+                        unsigned HintType, unsigned HintReg,
+                        const MachineFunction &MF) const {
+    return RC->getRawAllocationOrder(MF);
   }
 
   /// ResolveRegAllocHint - Resolves the specified register allocation hint
