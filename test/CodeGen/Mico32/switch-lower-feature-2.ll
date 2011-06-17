@@ -11,8 +11,6 @@
 ; RUN: grep ja %t | count 1
 ; RUN: grep js %t | count 1
 
-target triple = "i686-pc-linux-gnu"
-
 define i32 @main(i32 %tmp158) {
 entry:
         switch i32 %tmp158, label %bb336 [
