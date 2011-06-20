@@ -1,6 +1,6 @@
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
-; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin -mattr=+v6,+vfp2
+; RUN: llc < %s -mtriple=arm-apple-darwin -mattr=+v6,+vfp2
 
 @accum = external global { double, double }		; <{ double, double }*> [#uses=1]
 @.str = external constant [4 x i8]		; <[4 x i8]*> [#uses=1]

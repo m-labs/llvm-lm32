@@ -1,6 +1,6 @@
 ; RUN: llvm-as < %s | llc -march=mico32
 ; END.
-; RUN: llvm-as < %s | llc -march=arm -mtriple=arm-linux-gnueabi
+; RUN: llc < %s -march=arm -mtriple=arm-linux-gnueabi
 ; PR1279
 
 	%struct.CUMULATIVE_ARGS = type { i32, i32, i32, i32, i32, i32 }

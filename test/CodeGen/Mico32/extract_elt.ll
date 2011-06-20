@@ -1,38 +1,5 @@
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=mico32
 ; END.
-; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
-; RUN: grep shufb   %t1.s | count 39
-; RUN: grep ilhu    %t1.s | count 27
-; RUN: grep iohl    %t1.s | count 27
-; RUN: grep lqa     %t1.s | count 10
-; RUN: grep shlqby  %t1.s | count 12
-; RUN: grep   515   %t1.s | count 1
-; RUN: grep  1029   %t1.s | count 2
-; RUN: grep  1543   %t1.s | count 2
-; RUN: grep  2057   %t1.s | count 2
-; RUN: grep  2571   %t1.s | count 2
-; RUN: grep  3085   %t1.s | count 2
-; RUN: grep  3599   %t1.s | count 2
-; RUN: grep 32768   %t1.s | count 1
-; RUN: grep 32769   %t1.s | count 1
-; RUN: grep 32770   %t1.s | count 1
-; RUN: grep 32771   %t1.s | count 1
-; RUN: grep 32772   %t1.s | count 1
-; RUN: grep 32773   %t1.s | count 1
-; RUN: grep 32774   %t1.s | count 1
-; RUN: grep 32775   %t1.s | count 1
-; RUN: grep 32776   %t1.s | count 1
-; RUN: grep 32777   %t1.s | count 1
-; RUN: grep 32778   %t1.s | count 1
-; RUN: grep 32779   %t1.s | count 1
-; RUN: grep 32780   %t1.s | count 1
-; RUN: grep 32781   %t1.s | count 1
-; RUN: grep 32782   %t1.s | count 1
-; RUN: grep 32783   %t1.s | count 1
-; RUN: grep 32896   %t1.s | count 24
-
-target datalayout = "E-p:32:32:128-f64:64:128-f32:32:128-i64:32:128-i32:32:128-i16:16:128-i8:8:128-i1:8:128-a0:0:128-v128:128:128-s0:128:128"
-target triple = "spu"
 
 define i32 @i32_extract_0(<4 x i32> %v) {
 entry:
