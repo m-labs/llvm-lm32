@@ -337,7 +337,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
 
 #ifndef NDEBUG
   DEBUG(dbgs() << "RRA Uses         : \n");
-  MF.getRegInfo().dumpUses(Mico32::RRA);
+  DEBUG(MF.getRegInfo().dumpUses(Mico32::RRA));
 
   // MFrmInf->dump(MF);
   // Get the frame size.
