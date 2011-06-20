@@ -96,13 +96,16 @@ def CSR : RegisterClass<"Mico32", [i32], 32, (add
 
 
 // General Purpose Register Class.
+// The order specified in the register list is implicitly defined to be the 
+// register allocation order.
+// Reserved registers are reserved by the function
+// Mico32RegisterInfo::getReservedRegs()
 def GPR : RegisterClass<"Mico32", [i32], 32, (add
     // Caller saved:
     R1, R2, R3, R4, R5, R6, R7, R8, R9, R10,
     // Callee saved:
     R11, R12, R13, R14, R15, R16, R17, R18, R19, R20,
     R21, R22, R23, R24, R25,
-    // Unallocated:
     RGP, // global pointer
     RFP, // frame pointer
     R0,  // always zero
@@ -110,17 +113,4 @@ def GPR : RegisterClass<"Mico32", [i32], 32, (add
     RRA, // return address
     REA, // return address for exceptions
     RBA  // return address for breakpoints
-    )>
-{
-//FIXME: do we need to reserve RGP (global pointer) and RFP (frame pointer)?
-  let MethodProtos = [{
-    iterator allocation_order_end(const MachineFunction &MF) const;
-  }];
-  let MethodBodies = [{
-    GPRClass::iterator
-    GPRClass::allocation_order_end(const MachineFunction &MF) const {
-      // The last three registers on the list above are reserved
-      return end()-7;
-    }
-  }];
-}
+    )> ;
