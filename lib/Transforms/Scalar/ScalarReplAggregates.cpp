@@ -293,6 +293,11 @@ AllocaInst *ConvertToScalarInfo::TryConvert(AllocaInst *AI) {
   if (ScalarKind == Unknown)
     ScalarKind = Integer;
 
+  // FIXME: It should be possible to promote the vector type up to the alloca's
+  // size.
+  if (ScalarKind == Vector && VectorTy->getBitWidth() != AllocaSize * 8)
+    ScalarKind = Integer;
+
   // If we were able to find a vector type that can handle this with
   // insert/extract elements, and if there was at least one use that had
   // a vector type, promote this to a vector.  We don't want to promote
@@ -384,7 +389,6 @@ void ConvertToScalarInfo::MergeInTypeForLoadOrStore(const Type *In,
   // Otherwise, we have a case that we can't handle with an optimized vector
   // form.  We can still turn this into a large integer.
   ScalarKind = Integer;
-  VectorTy = 0;
 }
 
 /// MergeInVectorType - Handles the vector case of MergeInTypeForLoadOrStore,
@@ -522,10 +526,22 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset) {
     // If this is a constant sized memset of a constant value (e.g. 0) we can
     // handle it.
     if (MemSetInst *MSI = dyn_cast<MemSetInst>(User)) {
-      // Store of constant value and constant size.
-      if (!isa<ConstantInt>(MSI->getValue()) ||
-          !isa<ConstantInt>(MSI->getLength()))
+      // Store of constant value.
+      if (!isa<ConstantInt>(MSI->getValue()))
         return false;
+
+      // Store of constant size.
+      ConstantInt *Len = dyn_cast<ConstantInt>(MSI->getLength());
+      if (!Len)
+        return false;
+
+      // If the size differs from the alloca, we can only convert the alloca to
+      // an integer bag-of-bits.
+      // FIXME: This should handle all of the cases that are currently accepted
+      // as vector element insertions.
+      if (Len->getZExtValue() != AllocaSize || Offset != 0)
+        ScalarKind = Integer;
+
       IsNotTrivial = true;  // Can't be mem2reg'd.
       HadNonMemTransferAccess = true;
       continue;

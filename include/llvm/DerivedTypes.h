@@ -205,10 +205,10 @@ public:
   /// getTypeAtIndex - Given an index value into the type, return the type of
   /// the element.
   ///
-  virtual const Type *getTypeAtIndex(const Value *V) const = 0;
-  virtual const Type *getTypeAtIndex(unsigned Idx) const = 0;
-  virtual bool indexValid(const Value *V) const = 0;
-  virtual bool indexValid(unsigned Idx) const = 0;
+  const Type *getTypeAtIndex(const Value *V) const;
+  const Type *getTypeAtIndex(unsigned Idx) const;
+  bool indexValid(const Value *V) const;
+  bool indexValid(unsigned Idx) const;
 
   // Methods for support type inquiry through isa, cast, and dyn_cast.
   static inline bool classof(const CompositeType *) { return true; }
@@ -232,19 +232,18 @@ public:
   /// StructType::get - This static method is the primary way to create a
   /// StructType.
   ///
-  static StructType *get(LLVMContext &Context, ArrayRef<const Type*> Params,
+  static StructType *get(LLVMContext &Context, ArrayRef<const Type*> Elements,
                          bool isPacked = false);
 
   /// StructType::get - Create an empty structure type.
   ///
-  static StructType *get(LLVMContext &Context, bool isPacked=false);
+  static StructType *get(LLVMContext &Context, bool isPacked = false);
   
-  /// StructType::get - This static method is a convenience method for
-  /// creating structure types by specifying the elements as arguments.
-  /// Note that this method always returns a non-packed struct.  To get
-  /// an empty struct, pass NULL, NULL.
-  static StructType *get(LLVMContext &Context, 
-                         const Type *type, ...) END_WITH_NULL;
+  /// StructType::get - This static method is a convenience method for creating
+  /// structure types by specifying the elements as arguments.  Note that this
+  /// method always returns a non-packed struct, and requires at least one
+  /// element type.
+  static StructType *get(const Type *elt1, ...) END_WITH_NULL;
 
   /// isValidElementType - Return true if the specified type is valid as a
   /// element type.
@@ -257,20 +256,19 @@ public:
   element_iterator element_begin() const { return ContainedTys; }
   element_iterator element_end() const { return &ContainedTys[NumContainedTys];}
 
+  /// isLayoutIdentical - Return true if this is layout identical to the
+  /// specified struct.
+  bool isLayoutIdentical(const StructType *Other) const {
+    return this == Other;
+  }
+  
+  
   // Random access to the elements
   unsigned getNumElements() const { return NumContainedTys; }
   const Type *getElementType(unsigned N) const {
     assert(N < NumContainedTys && "Element number out of range!");
     return ContainedTys[N];
   }
-
-  /// getTypeAtIndex - Given an index value into the type, return the type of
-  /// the element.  For a structure type, this must be a constant value...
-  ///
-  virtual const Type *getTypeAtIndex(const Value *V) const;
-  virtual const Type *getTypeAtIndex(unsigned Idx) const;
-  virtual bool indexValid(const Value *V) const;
-  virtual bool indexValid(unsigned Idx) const;
 
   // Implement the AbstractTypeUser interface.
   virtual void refineAbstractType(const DerivedType *OldTy, const Type *NewTy);
@@ -306,22 +304,7 @@ protected:
   }
 
 public:
-  inline const Type *getElementType() const { return ContainedTys[0]; }
-
-  virtual bool indexValid(const Value *V) const;
-  virtual bool indexValid(unsigned) const {
-    return true;
-  }
-
-  /// getTypeAtIndex - Given an index value into the type, return the type of
-  /// the element.  For sequential types, there is only one subtype...
-  ///
-  virtual const Type *getTypeAtIndex(const Value *) const {
-    return ContainedTys[0];
-  }
-  virtual const Type *getTypeAtIndex(unsigned) const {
-    return ContainedTys[0];
-  }
+  const Type *getElementType() const { return ContainedTys[0]; }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast.
   static inline bool classof(const SequentialType *) { return true; }

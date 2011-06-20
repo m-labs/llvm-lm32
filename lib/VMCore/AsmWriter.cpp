@@ -140,30 +140,45 @@ static void PrintLLVMName(raw_ostream &OS, const Value *V) {
 // TypePrinting Class: Type printing machinery
 //===----------------------------------------------------------------------===//
 
-static DenseMap<const Type *, std::string> &getTypeNamesMap(void *M) {
-  return *static_cast<DenseMap<const Type *, std::string>*>(M);
-}
+/// TypePrinting - Type printing machinery.
+namespace {
+class TypePrinting {
+  DenseMap<const Type *, std::string> TypeNames;
+  TypePrinting(const TypePrinting &);   // DO NOT IMPLEMENT
+  void operator=(const TypePrinting&);  // DO NOT IMPLEMENT
+public:
+  TypePrinting() {}
+  ~TypePrinting() {}
+  
+  void clear() {
+    TypeNames.clear();
+  }
+  
+  void print(const Type *Ty, raw_ostream &OS, bool IgnoreTopLevelName = false);
+  
+  void printAtLeastOneLevel(const Type *Ty, raw_ostream &OS) {
+    print(Ty, OS, true);
+  }
+  
+  /// hasTypeName - Return true if the type has a name in TypeNames, false
+  /// otherwise.
+  bool hasTypeName(const Type *Ty) const {
+    return TypeNames.count(Ty);
+  }
 
-void TypePrinting::clear() {
-  getTypeNamesMap(TypeNames).clear();
-}
-
-bool TypePrinting::hasTypeName(const Type *Ty) const {
-  return getTypeNamesMap(TypeNames).count(Ty);
-}
-
-void TypePrinting::addTypeName(const Type *Ty, const std::string &N) {
-  getTypeNamesMap(TypeNames).insert(std::make_pair(Ty, N));
-}
-
-
-TypePrinting::TypePrinting() {
-  TypeNames = new DenseMap<const Type *, std::string>();
-}
-
-TypePrinting::~TypePrinting() {
-  delete &getTypeNamesMap(TypeNames);
-}
+  
+  /// addTypeName - Add a name for the specified type if it doesn't already have
+  /// one.  This name will be printed instead of the structural version of the
+  /// type in order to make the output more concise.
+  void addTypeName(const Type *Ty, const std::string &N) {
+    TypeNames.insert(std::make_pair(Ty, N));
+  }
+  
+private:
+  void CalcTypeName(const Type *Ty, SmallVectorImpl<const Type *> &TypeStack,
+                    raw_ostream &OS, bool IgnoreTopLevelName = false);
+};
+} // end anonymous namespace.
 
 /// CalcTypeName - Write the specified type to the specified raw_ostream, making
 /// use of type names or up references to shorten the type name where possible.
@@ -172,7 +187,7 @@ void TypePrinting::CalcTypeName(const Type *Ty,
                                 raw_ostream &OS, bool IgnoreTopLevelName) {
   // Check to see if the type is named.
   if (!IgnoreTopLevelName) {
-    DenseMap<const Type *, std::string> &TM = getTypeNamesMap(TypeNames);
+    DenseMap<const Type *, std::string> &TM = TypeNames;
     DenseMap<const Type *, std::string>::iterator I = TM.find(Ty);
     if (I != TM.end()) {
       OS << I->second;
@@ -283,10 +298,9 @@ void TypePrinting::CalcTypeName(const Type *Ty,
 void TypePrinting::print(const Type *Ty, raw_ostream &OS,
                          bool IgnoreTopLevelName) {
   // Check to see if the type is named.
-  DenseMap<const Type*, std::string> &TM = getTypeNamesMap(TypeNames);
   if (!IgnoreTopLevelName) {
-    DenseMap<const Type*, std::string>::iterator I = TM.find(Ty);
-    if (I != TM.end()) {
+    DenseMap<const Type*, std::string>::iterator I = TypeNames.find(Ty);
+    if (I != TypeNames.end()) {
       OS << I->second;
       return;
     }
@@ -304,7 +318,7 @@ void TypePrinting::print(const Type *Ty, raw_ostream &OS,
 
   // Cache type name for later use.
   if (!IgnoreTopLevelName)
-    TM.insert(std::make_pair(Ty, TypeOS.str()));
+    TypeNames.insert(std::make_pair(Ty, TypeOS.str()));
 }
 
 namespace {
@@ -1891,16 +1905,16 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
       writeOperand(I.getOperand(i), true);
     }
     Out << ']';
-  } else if (isa<PHINode>(I)) {
+  } else if (const PHINode *PN = dyn_cast<PHINode>(&I)) {
     Out << ' ';
     TypePrinter.print(I.getType(), Out);
     Out << ' ';
 
-    for (unsigned op = 0, Eop = I.getNumOperands(); op < Eop; op += 2) {
+    for (unsigned op = 0, Eop = PN->getNumIncomingValues(); op < Eop; ++op) {
       if (op) Out << ", ";
       Out << "[ ";
-      writeOperand(I.getOperand(op  ), false); Out << ", ";
-      writeOperand(I.getOperand(op+1), false); Out << " ]";
+      writeOperand(PN->getIncomingValue(op), false); Out << ", ";
+      writeOperand(PN->getIncomingBlock(op), false); Out << " ]";
     }
   } else if (const ExtractValueInst *EVI = dyn_cast<ExtractValueInst>(&I)) {
     Out << ' ';

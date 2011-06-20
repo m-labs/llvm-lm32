@@ -86,6 +86,7 @@ namespace llvm {
   class CodeGenRegisterClass {
     CodeGenRegister::Set Members;
     const std::vector<Record*> *Elements;
+    std::vector<SmallVector<Record*, 16> > AltOrders;
   public:
     Record *TheDef;
     std::string Namespace;
@@ -96,7 +97,7 @@ namespace llvm {
     bool Allocatable;
     // Map SubRegIndex -> RegisterClass
     DenseMap<Record*,Record*> SubRegClasses;
-    std::string MethodProtos, MethodBodies;
+    std::string AltOrderSelect;
 
     const std::string &getName() const;
     const std::vector<MVT::SimpleValueType> &getValueTypes() const {return VTs;}
@@ -125,9 +126,16 @@ namespace llvm {
 
     // Returns an ordered list of class members.
     // The order of registers is the same as in the .td file.
-    ArrayRef<Record*> getOrder() const {
-      return *Elements;
+    // No = 0 is the default allocation order, No = 1 is the first alternative.
+    ArrayRef<Record*> getOrder(unsigned No = 0) const {
+      if (No == 0)
+        return *Elements;
+      else
+        return AltOrders[No - 1];
     }
+
+    // Return the total number of allocation orders available.
+    unsigned getNumOrders() const { return 1 + AltOrders.size(); }
 
     CodeGenRegisterClass(CodeGenRegBank&, Record *R);
   };
@@ -140,7 +148,7 @@ namespace llvm {
 
     std::vector<Record*> SubRegIndices;
     unsigned NumNamedIndices;
-    std::vector<CodeGenRegister> Registers;
+    std::vector<CodeGenRegister*> Registers;
     DenseMap<Record*, CodeGenRegister*> Def2Reg;
 
     std::vector<CodeGenRegisterClass> RegClasses;
@@ -171,7 +179,7 @@ namespace llvm {
     // Find or create a sub-register index representing the A+B composition.
     Record *getCompositeSubRegIndex(Record *A, Record *B, bool create = false);
 
-    const std::vector<CodeGenRegister> &getRegisters() { return Registers; }
+    const std::vector<CodeGenRegister*> &getRegisters() { return Registers; }
 
     // Find a register from its Record def.
     CodeGenRegister *getReg(Record*);

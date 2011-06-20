@@ -227,8 +227,8 @@ void BasicBlock::removePredecessor(BasicBlock *Pred,
 
       // If the PHI _HAD_ two uses, replace PHI node with its now *single* value
       if (max_idx == 2) {
-        if (PN->getOperand(0) != PN)
-          PN->replaceAllUsesWith(PN->getOperand(0));
+        if (PN->getIncomingValue(0) != PN)
+          PN->replaceAllUsesWith(PN->getIncomingValue(0));
         else
           // We are left with an infinite loop with no entries: kill the PHI.
           PN->replaceAllUsesWith(UndefValue::get(PN->getType()));
@@ -308,3 +308,19 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator I, const Twine &BBName) {
   return New;
 }
 
+void BasicBlock::replaceSuccessorsPhiUsesWith(BasicBlock *New) {
+  TerminatorInst *TI = getTerminator();
+  if (!TI)
+    // Cope with being called on a BasicBlock that doesn't have a terminator
+    // yet. Clang's CodeGenFunction::EmitReturnBlock() likes to do this.
+    return;
+  for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i) {
+    BasicBlock *Succ = TI->getSuccessor(i);
+    for (iterator II = Succ->begin(); PHINode *PN = dyn_cast<PHINode>(II);
+         ++II) {
+      int i;
+      while ((i = PN->getBasicBlockIndex(this)) >= 0)
+        PN->setIncomingBlock(i, New);
+    }
+  }
+}
