@@ -350,9 +350,7 @@ protected:
   ConstantArray(const ArrayType *T, const std::vector<Constant*> &Val);
 public:
   // ConstantArray accessors
-  static Constant *get(const ArrayType *T, const std::vector<Constant*> &V);
-  static Constant *get(const ArrayType *T, Constant *const *Vals, 
-                       unsigned NumVals);
+  static Constant *get(const ArrayType *T, ArrayRef<Constant*> V);
                              
   /// This method constructs a ConstantArray and initializes it with a text
   /// string. The default behavior (AddNull==true) causes a null terminator to
@@ -491,8 +489,6 @@ protected:
 public:
   // ConstantVector accessors
   static Constant *get(ArrayRef<Constant*> V);
-  // FIXME: Eliminate this constructor form.
-  static Constant *get(const VectorType *T, const std::vector<Constant*> &V);
   
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Constant);

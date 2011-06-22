@@ -163,6 +163,13 @@ void PTXAsmPrinter::EmitStartOfAsmFile(Module &M)
   OutStreamer.EmitRawText(Twine("\t.target " + ST.getTargetString() +
                                 (ST.supportsDouble() ? ""
                                                      : ", map_f64_to_f32")));
+  // .address_size directive is optional, but it must immediately follow
+  // the .target directive if present within a module
+  if (ST.supportsPTX23()) {
+    std::string addrSize = ST.is64Bit() ? "64" : "32";
+    OutStreamer.EmitRawText(Twine("\t.address_size " + addrSize));
+  }
+
   OutStreamer.AddBlankLine();
 
   // declare global variables
@@ -197,15 +204,18 @@ void PTXAsmPrinter::EmitFunctionBodyStart() {
   }
 
   const MachineFrameInfo* FrameInfo = MF->getFrameInfo();
-  DEBUG(dbgs() << "Have " << FrameInfo->getNumObjects() << " frame object(s)\n");
+  DEBUG(dbgs() << "Have " << FrameInfo->getNumObjects()
+               << " frame object(s)\n");
   for (unsigned i = 0, e = FrameInfo->getNumObjects(); i != e; ++i) {
     DEBUG(dbgs() << "Size of object: " << FrameInfo->getObjectSize(i) << "\n");
-    std::string def = "\t.reg .b";
-    def += utostr(FrameInfo->getObjectSize(i)*8); // Convert to bits
-    def += " s";
-    def += utostr(i);
-    def += ";";
-    OutStreamer.EmitRawText(Twine(def));
+    if (FrameInfo->getObjectSize(i) > 0) {
+      std::string def = "\t.reg .b";
+      def += utostr(FrameInfo->getObjectSize(i)*8); // Convert to bits
+      def += " s";
+      def += utostr(i);
+      def += ";";
+      OutStreamer.EmitRawText(Twine(def));
+    }
   }
 }
 
