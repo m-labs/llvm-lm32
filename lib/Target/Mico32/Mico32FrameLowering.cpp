@@ -334,24 +334,6 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   const bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
   const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);
 
-
-#ifndef NDEBUG
-  DEBUG(dbgs() << "RRA Uses         : \n");
-  DEBUG(MF.getRegInfo().dumpUses(Mico32::RRA));
-
-  // MFrmInf->dump(MF);
-  // Get the frame size.
-  int FrameSize = MFrmInf->getStackSize();
-  assert(FrameSize%4 == 0 && 
-         "MonarchFrameLowering::emitPrologue Misaligned frame size");
-
-  assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
-         "we should have a frame if LR is used.");
-  assert((DisableFramePointerElim(MF) || (hasFP && FrameSize) || !hasFP) &&
-         "we should have a frame if FP is used.");
-#endif
-
-	
   // LR can be optimized out prior to now:
   if (LRUsed) {
 //FIXME: check this
@@ -392,4 +374,3 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                                         (LRUsed)?-8:-4, true));
   }
 }
-
