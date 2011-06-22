@@ -86,21 +86,12 @@ extern "C" void LLVMInitializeMico32Target() {
 /// Note: DataLayout is described in:
 /// http://www.llvm.org/docs/LangRef.html#datalayout
 ///
-// From MBlaze:
-// DataLayout --> Big-endian, 32-bit pointer/ABI/alignment
-// The stack is always 8 byte aligned
-// On function prologue, the stack is created by decrementing
-// its pointer. Once decremented, all references are done with positive
-// offset from the stack/frame pointer, using StackGrowsUp enables
-// an easier handling.
-// FIXME: I don't like switching the meaning of StackGrowsUp, this
-// is bound to cause problems.
 Mico32TargetMachine::Mico32TargetMachine(const Target &T,
                                          const std::string &TT,
                                          const std::string &FS)
   : LLVMTargetMachine(T, TT), 
     Subtarget(TT, FS),
-    DataLayout("E-p:32:32:32-i8:8:8-i16:16:16"),
+    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32"),
     InstrInfo(*this), 
     FrameLowering(Subtarget),
     TLInfo(*this), TSInfo(*this)
