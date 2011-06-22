@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=arm -disable-cgp-branch-opts | FileCheck %s
+; RUN: llc < %s -mtriple=armv4t-unknown-linux-gnueabi -disable-cgp-branch-opts | FileCheck %s
 
 define i32 @f1() {
 ; CHECK: f1
@@ -44,3 +44,16 @@ define void @f7(i32 %a) {
 r:
         ret void
 }
+
+%t1 = type { <3 x float>, <3 x float> }
+
+@const1 = global %t1 { <3 x float> zeroinitializer,
+                       <3 x float> <float 1.000000e+00,
+                                    float 2.000000e+00,
+                                    float 3.000000e+00> }, align 16
+; CHECK: const1
+; CHECK: .zero 16
+; CHECK: float 1.0
+; CHECK: float 2.0
+; CHECK: float 3.0
+; CHECK: .zero 4
