@@ -36,12 +36,15 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "Mico32GenRegisterDesc.inc"
+#include "Mico32GenRegisterInfo.inc"
 
 using namespace llvm;
 
 Mico32RegisterInfo::
 Mico32RegisterInfo(const Mico32Subtarget &ST, const TargetInstrInfo &tii)
-  : Mico32GenRegisterInfo(Mico32::ADJCALLSTACKDOWN, Mico32::ADJCALLSTACKUP),
+  : Mico32GenRegisterInfo(Mico32RegDesc, Mico32RegInfoDesc,
+                          Mico32::ADJCALLSTACKDOWN, Mico32::ADJCALLSTACKUP),
     Subtarget(ST), TII(tii) {}
 
 
@@ -268,7 +271,3 @@ int Mico32RegisterInfo::getDwarfRegNum(unsigned RegNo, bool isEH) const {
 int Mico32RegisterInfo::getLLVMRegNum(unsigned DwarfRegNo, bool isEH) const {
   return Mico32GenRegisterInfo::getLLVMRegNumFull(DwarfRegNo,0);
 }
-
-
-#include "Mico32GenRegisterInfo.inc"
-
