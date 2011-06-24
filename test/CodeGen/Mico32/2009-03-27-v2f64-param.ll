@@ -1,0 +1,8 @@
+; RUN: llvm-as < %s | llc -march=mico32
+; END.
+; RUN: llvm-as < %s | llc -march=xcore
+; PR3898
+
+define i32 @vector_param(<2 x double> %x) nounwind {
+       ret i32 1;
+}

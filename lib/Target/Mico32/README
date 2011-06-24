@@ -1,0 +1,217 @@
+
+
+This is the Lattice Mico32 backend.
+
+INSTALLATION
+
+Install llvm-gcc and ensure it works.  See the LLVM Getting Started manual for directions:
+http://llvm.org/docs/GettingStarted.html#quickstart
+
+The general project layout will be:
+ $TOPDIR
+    - llvm
+    - build
+    - install
+
+Check out the Mico32 LLVM port and clang from the GIT repository: 
+------------------
+cd $TOPDIR
+git clone git://github.com/milkymist/llvm-lm32.git llvm
+(cd $TOPDIR/llvm/tools ; git clone git://github.com/milkymist/clang-lm32.git clang)
+------------------
+
+Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below. 
+
+Configure with cmake:
+------------------
+mkdir $TOPDIR/build
+( cd $TOPDIR/build ;  cmake ../llvm  -DCMAKE_INSTALL_PREFIX=/Users/jpbonn/Documents/github/install -DCMAKE_BUILD_TYPE=Debug)
+------------------
+
+
+Alternatively, configure with autotools:
+-------------------
+mkdir $TOPDIR/build
+
+(cd $TOPDIR/build ; ../llvm/configure  --with-llvmgccdir=/Users/jpbonn/Documents/llvm/llvm-gcc-4.2-2.7-x86_64-apple-darwin10/bin/x86_64-apple-darwin10-llvm-gcc --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
+-------------------
+
+Once configured build llvm and clang:
+-------------------
+(cd $TOPDIR/build ; make install)
+-------------------
+
+
+LLVM MICO32 CODEGEN TESTS
+
+Run tests with CMAKE configured environment:
+-------------------
+(cd $TOPDIR/build ; ./Debug+Asserts/bin/llvm-lit -sv -j1 test/CodeGen/Mico32/)
+-------------------
+
+Run tests with autools configured environment:
+-------------------
+Do "make check" to run the LLVM tests:
+(cd $TOPDIR/build ; make check )
+
+After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
+
+(cd $TOPDIR/build ; make TESTSUITE=CodeGen/mico32 check)
+--------------------
+
+
+Test Results:
+
+Failing Tests (25):
+    LLVM :: CodeGen/mico32/2005-11-30-vastart-crash.ll
+    LLVM :: CodeGen/mico32/2006-04-04-zextload.ll
+    LLVM :: CodeGen/mico32/2006-10-17-ppc64-alloca.ll
+    LLVM :: CodeGen/mico32/2006-12-07-LargeAlloca.ll
+    LLVM :: CodeGen/mico32/2007-03-06-AddR7.ll
+    LLVM :: CodeGen/mico32/2007-04-03-PEIBug.ll
+    LLVM :: CodeGen/mico32/2007-05-03-BadPostIndexedLd.ll
+    LLVM :: CodeGen/mico32/2007-08-15-ReuseBug.ll
+    LLVM :: CodeGen/mico32/2007-11-16-landingpad-split.ll
+    LLVM :: CodeGen/mico32/2008-02-05-LiveIntervalsAssert.ll
+    LLVM :: CodeGen/mico32/2008-04-11-PHIofImpDef.ll
+    LLVM :: CodeGen/mico32/2008-06-23-LiveVariablesCrash.ll
+    LLVM :: CodeGen/mico32/2008-08-06-Alloca.ll
+    LLVM :: CodeGen/mico32/2008-09-12-CoalescerBug.ll
+    LLVM :: CodeGen/mico32/2008-09-17-CoalescerBug.ll
+    LLVM :: CodeGen/mico32/Frames-alloca.ll
+    LLVM :: CodeGen/mico32/alloca.ll
+    LLVM :: CodeGen/mico32/call_adj.ll
+    LLVM :: CodeGen/mico32/dyn-stackalloc.ll
+    LLVM :: CodeGen/mico32/invalid-memcpy.ll
+    LLVM :: CodeGen/mico32/jmp_table.ll
+    LLVM :: CodeGen/mico32/stack-frame.ll
+    LLVM :: CodeGen/mico32/stacksave-restore.ll
+    LLVM :: CodeGen/mico32/switch-lower-feature-2.ll
+    LLVM :: CodeGen/mico32/vargs2.ll
+
+  Expected Passes    : 472
+  Expected Failures  : 25
+  Unexpected Failures: 25
+
+
+NOTES
+
+Calling conventions
+from GCC lm32.c
+Return values are returned in a register for all non-aggregate types (long double uses two registers for return value). Aggregate types 32bits or less are returned in a register.
+handled
+
+MICO32 ABI
+(observed)
+
+This is intended to suplement the LatticeMico32 Processor Reference Manual (March 2010) description.
+
+Arguments passed on the stack are in the conventional C ABI order for a descending stack. A lexically earlier parameter resides at a lower address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
+
+This convention requires varadic functions to have a prototype in scope, at the point of the call. Conventionally K&R C did not require this, but ANSI C has always required it. We have no requirement to preserve K&R compatibility.
+
+The called function must first initialize its stack frame. Table 1 shows the layout and sizes of the stack frame. How this is initialized is implementation defined.
+
+Once the arguments are evaluated, transfer can be passed to the called function. This initializes RA (R29) with the return address.
+
+The stack pointer (sp) points to the first unused location, and the frame
+pointer (fp) points at the first location used in the active frame.  
+
+The stack grows downwards (decreasing addresses) and the calling function is responsible for creating space on the stack for passed parameters, and for reclaiming it after the called function returns. This stack space need not be allocated and reclaimed around each function call, but allocated once in a function’s prologue and reclaimed in the epilogue.
+
+FIXME: this appears to be only small structures made of ints in GCC - 2 chars are passed by reference.  We should probably change this to 8 byte structs in LLVM, especially since the archman specifies r1 and r2 are used for return values and I don't see GCC ever doing this except wih doubles.
+[Small structures (up to 4 bytes) are returned in the integer registers. Larger structures are returned via an artificial parameter that is prepended to the user specified parameters. This parameter points to an area in the caller’s stack frame in which to store the return value. It is the responsibility of the calling function to allocate this space.]
+
+A floating point type is passed and returned as if it were a small structure. 
+FIXME:[How are doubles returned? How are doubles passed that cross the register/stack parameter boundry?]
+
+Parameters passed in registers occupy one or more registers each. FIXME:[If a type’s alignment is greater than 4 bytes, it will also be aligned into a register pair — possibly leaving an unused register between it and the previous parameter. Integral types are sign or zero extended as appropriate to the register size. Structures occupy one or more integer registers and are aligned at the most significant end. If the structure size is not a multiple of 4 bytes, the final register it occupies has unspecified tail padding.] If the data type is not supported in hardware, it shall be passed and returned as if it were an opaque structure of the correct length.
+
+The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. FIXME:is this correct[ A frame pointer is not mandated for each function, however it is necessary for functions that use alloca.] If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 8 byte alignment) and return a pointer max(Outgoing Parameters) words above this.
+
+Space allocated via alloca() is 8 byte aligned.  Additional space is allocated by alloca if needed to allow 8 byte alignment.
+
+Implementation note: Outgoing parameters on stack are always accessed via SP. If FP is used local workspace and callee saves are accessed via FP.
+
+       stack grows down
+         high address       --------------------------------
+                            |                              |
+                            |    Incoming Parameters       |
+                            |      Passed to Callee        |
+                            |(only ones that don't fit in  |
+                            | registers)                   |
+                            | allocated by caller          |   ^Caller Allocated
+                            --------------------------------   ----------------
+SP in Caller, FP ->         |  Local Workspace             |    Callee Allocated
+(SP pre-prologue in callee, |                              |   
+ FP if used)                --------------------------------
+                            |    Callee Save               |
+                            |    Registers                 |
+                            |(Frame Pointer save if needed)|
+                            |(Link Register save if needed)|
+                            --------------------------------
+                            |       8 byte aligned         |
+                            |          alloca              |
+                            --------------------------------
+                            |                              |
+                            |    Outgoing Parameters       |
+                            | that don't fit in registers  |
+                            |sized for all called functions|
+                            --------------------------------
+                  SP  ->    |                              |
+
+         low address
+TABLE 1
+
+
+
+GAS Relocatable Expression Modifiers
+http://sourceware.org/binutils/docs/as/LM32_002dModifiers.html#LM32_002dModifiers
+
+
+lm32.c:lm32_function_arg()
+vararg parameters are passed on the stack.
+
+from bfd.h:
+/* Lattice Mico32 relocations.  */
+  BFD_RELOC_LM32_CALL,
+  BFD_RELOC_LM32_BRANCH,
+  BFD_RELOC_LM32_16_GOT,
+  BFD_RELOC_LM32_GOTOFF_HI16,
+  BFD_RELOC_LM32_GOTOFF_LO16,
+  BFD_RELOC_LM32_COPY,
+  BFD_RELOC_LM32_GLOB_DAT,
+  BFD_RELOC_LM32_JMP_SLOT,
+  BFD_RELOC_LM32_RELATIVE,
+
+from tc-lm32.c:
+bfd_reloc_code_real_type
+md_cgen_lookup_reloc (const CGEN_INSN *insn ATTRIBUTE_UNUSED,
+		      const CGEN_OPERAND *operand,
+		      fixS *fixP ATTRIBUTE_UNUSED)
+{
+  switch (operand->type)
+    {
+    case LM32_OPERAND_GOT16:
+      return BFD_RELOC_LM32_16_GOT;
+    case LM32_OPERAND_GOTOFFHI16:
+      return BFD_RELOC_LM32_GOTOFF_HI16;
+    case LM32_OPERAND_GOTOFFLO16:
+      return BFD_RELOC_LM32_GOTOFF_LO16;
+    case LM32_OPERAND_GP16:
+      return BFD_RELOC_GPREL16;
+    case LM32_OPERAND_LO16:
+      return BFD_RELOC_LO16;
+    case LM32_OPERAND_HI16:
+      return BFD_RELOC_HI16;
+    case LM32_OPERAND_BRANCH:
+      return BFD_RELOC_LM32_BRANCH;
+    case LM32_OPERAND_CALL:
+      return BFD_RELOC_LM32_CALL;
+    default:
+      break;
+    }
+  return BFD_RELOC_NONE;
+}
+
+
