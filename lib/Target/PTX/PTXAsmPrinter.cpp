@@ -63,6 +63,8 @@ public:
                        const char *Modifier = 0);
   void printParamOperand(const MachineInstr *MI, int opNum, raw_ostream &OS,
                          const char *Modifier = 0);
+  void printReturnOperand(const MachineInstr *MI, int opNum, raw_ostream &OS,
+                          const char *Modifier = 0); 
   void printPredicateOperand(const MachineInstr *MI, raw_ostream &O);
 
   // autogen'd.
@@ -76,6 +78,7 @@ private:
 } // namespace
 
 static const char PARAM_PREFIX[] = "__param_";
+static const char RETURN_PREFIX[] = "__ret_";
 
 static const char *getRegisterTypeName(unsigned RegNo) {
 #define TEST_REGCLS(cls, clsstr)                \
@@ -298,6 +301,11 @@ void PTXAsmPrinter::printParamOperand(const MachineInstr *MI, int opNum,
   OS << PARAM_PREFIX << (int) MI->getOperand(opNum).getImm() + 1;
 }
 
+void PTXAsmPrinter::printReturnOperand(const MachineInstr *MI, int opNum,
+                                       raw_ostream &OS, const char *Modifier) {
+  OS << RETURN_PREFIX << (int) MI->getOperand(opNum).getImm() + 1;
+}
+
 void PTXAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
   // Check to see if this is a special global used by LLVM, if so, emit it.
   if (EmitSpecialLLVMGlobal(gv))
@@ -417,12 +425,14 @@ void PTXAsmPrinter::EmitFunctionDeclaration() {
 
   const PTXMachineFunctionInfo *MFI = MF->getInfo<PTXMachineFunctionInfo>();
   const bool isKernel = MFI->isKernel();
+  const PTXSubtarget& ST = TM.getSubtarget<PTXSubtarget>();
 
   std::string decl = isKernel ? ".entry" : ".func";
 
+  unsigned cnt = 0;
+
   if (!isKernel) {
     decl += " (";
-
     for (PTXMachineFunctionInfo::ret_iterator
          i = MFI->retRegBegin(), e = MFI->retRegEnd(), b = i;
          i != e; ++i) {
@@ -443,7 +453,7 @@ void PTXAsmPrinter::EmitFunctionDeclaration() {
 
   decl += " (";
 
-  unsigned cnt = 0;
+  cnt = 0;
 
   // Print parameters
   for (PTXMachineFunctionInfo::reg_iterator
@@ -452,7 +462,7 @@ void PTXAsmPrinter::EmitFunctionDeclaration() {
     if (i != b) {
       decl += ", ";
     }
-    if (isKernel) {
+    if (isKernel || ST.useParamSpaceForDeviceArgs()) {
       decl += ".param .b";
       decl += utostr(*i);
       decl += " ";
@@ -466,41 +476,6 @@ void PTXAsmPrinter::EmitFunctionDeclaration() {
     }
   }
   decl += ")";
-
-  // // Print parameter list
-  // if (!MFI->argRegEmpty()) {
-  //   decl += " (";
-  //   if (isKernel) {
-  //     unsigned cnt = 0;
-  //     for(PTXMachineFunctionInfo::reg_iterator
-  //         i = MFI->argRegBegin(), e = MFI->argRegEnd(), b = i;
-  //         i != e; ++i) {
-  //       reg = *i;
-  //       assert(reg != PTX::NoRegister && "Not a valid register!");
-  //       if (i != b)
-  //         decl += ", ";
-  //       decl += ".param .";
-  //       decl += getRegisterTypeName(reg);
-  //       decl += " ";
-  //       decl += PARAM_PREFIX;
-  //       decl += utostr(++cnt);
-  //     }
-  //   } else {
-  //     for (PTXMachineFunctionInfo::reg_iterator
-  //          i = MFI->argRegBegin(), e = MFI->argRegEnd(), b = i;
-  //          i != e; ++i) {
-  //       reg = *i;
-  //       assert(reg != PTX::NoRegister && "Not a valid register!");
-  //       if (i != b)
-  //         decl += ", ";
-  //       decl += ".reg .";
-  //       decl += getRegisterTypeName(reg);
-  //       decl += " ";
-  //       decl += getRegisterName(reg);
-  //     }
-  //   }
-  //   decl += ")";
-  // }
 
   OutStreamer.EmitRawText(Twine(decl));
 }

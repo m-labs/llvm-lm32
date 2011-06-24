@@ -26,10 +26,10 @@ def Use32BitAddresses : Predicate<"!getSubtarget().is64Bit()">;
 def Use64BitAddresses : Predicate<"getSubtarget().is64Bit()">;
 
 // Shader Model Support
-def SupportsSM13       : Predicate<"getSubtarget().supportsSM13()">;
-def DoesNotSupportSM13 : Predicate<"!getSubtarget().supportsSM13()">;
-def SupportsSM20       : Predicate<"getSubtarget().supportsSM20()">;
-def DoesNotSupportSM20 : Predicate<"!getSubtarget().supportsSM20()">;
+def FDivNeedsRoundingMode : Predicate<"getSubtarget().fdivNeedsRoundingMode()">;
+def FDivNoRoundingMode : Predicate<"!getSubtarget().fdivNeedsRoundingMode()">;
+def FMadNeedsRoundingMode : Predicate<"getSubtarget().fmadNeedsRoundingMode()">;
+def FMadNoRoundingMode : Predicate<"!getSubtarget().fmadNeedsRoundingMode()">;
 
 // PTX Version Support
 def SupportsPTX21       : Predicate<"getSubtarget().supportsPTX21()">;
@@ -163,6 +163,10 @@ def MEMpi : Operand<i32> {
   let PrintMethod = "printParamOperand";
   let MIOperandInfo = (ops i32imm);
 }
+def MEMret : Operand<i32> {
+  let PrintMethod = "printReturnOperand";
+  let MIOperandInfo = (ops i32imm);
+}
 
 // Branch & call targets have OtherVT type.
 def brtarget   : Operand<OtherVT>;
@@ -180,9 +184,18 @@ def PTXsra : SDNode<"ISD::SRA", SDTIntBinOp>;
 def PTXexit
   : SDNode<"PTXISD::EXIT", SDTNone, [SDNPHasChain]>;
 def PTXret
-  : SDNode<"PTXISD::RET",  SDTNone, [SDNPHasChain]>;
+  : SDNode<"PTXISD::RET",  SDTNone,
+           [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 def PTXcopyaddress
   : SDNode<"PTXISD::COPY_ADDRESS", SDTypeProfile<1, 1, []>, []>;
+
+// Load/store .param space
+def PTXloadparam
+  : SDNode<"PTXISD::LOAD_PARAM", SDTypeProfile<1, 1, [SDTCisVT<1, i32>]>,
+           [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue]>;
+def PTXstoreparam
+  : SDNode<"PTXISD::STORE_PARAM", SDTypeProfile<0, 2, [SDTCisVT<0, i32>]>,
+           [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction Class Templates
@@ -600,43 +613,43 @@ def FDIVrr32SM13 : InstPTX<(outs RegF32:$d),
                        (ins RegF32:$a, RegF32:$b),
                        "div.rn.f32\t$d, $a, $b",
                        [(set RegF32:$d, (fdiv RegF32:$a, RegF32:$b))]>,
-                   Requires<[SupportsSM13]>;
+                   Requires<[FDivNeedsRoundingMode]>;
 def FDIVri32SM13 : InstPTX<(outs RegF32:$d),
                        (ins RegF32:$a, f32imm:$b),
                        "div.rn.f32\t$d, $a, $b",
                        [(set RegF32:$d, (fdiv RegF32:$a, fpimm:$b))]>,
-                   Requires<[SupportsSM13]>;
+                   Requires<[FDivNeedsRoundingMode]>;
 def FDIVrr32SM10 : InstPTX<(outs RegF32:$d),
                        (ins RegF32:$a, RegF32:$b),
                        "div.f32\t$d, $a, $b",
                        [(set RegF32:$d, (fdiv RegF32:$a, RegF32:$b))]>,
-                   Requires<[DoesNotSupportSM13]>;
+                   Requires<[FDivNoRoundingMode]>;
 def FDIVri32SM10 : InstPTX<(outs RegF32:$d),
                        (ins RegF32:$a, f32imm:$b),
                        "div.f32\t$d, $a, $b",
                        [(set RegF32:$d, (fdiv RegF32:$a, fpimm:$b))]>,
-                   Requires<[DoesNotSupportSM13]>;
+                   Requires<[FDivNoRoundingMode]>;
 
 def FDIVrr64SM13 : InstPTX<(outs RegF64:$d),
                            (ins RegF64:$a, RegF64:$b),
                            "div.rn.f64\t$d, $a, $b",
                            [(set RegF64:$d, (fdiv RegF64:$a, RegF64:$b))]>,
-                   Requires<[SupportsSM13]>;
+                   Requires<[FDivNeedsRoundingMode]>;
 def FDIVri64SM13 : InstPTX<(outs RegF64:$d),
                            (ins RegF64:$a, f64imm:$b),
                            "div.rn.f64\t$d, $a, $b",
                            [(set RegF64:$d, (fdiv RegF64:$a, fpimm:$b))]>,
-                   Requires<[SupportsSM13]>;
+                   Requires<[FDivNeedsRoundingMode]>;
 def FDIVrr64SM10 : InstPTX<(outs RegF64:$d),
                            (ins RegF64:$a, RegF64:$b),
                            "div.f64\t$d, $a, $b",
                            [(set RegF64:$d, (fdiv RegF64:$a, RegF64:$b))]>,
-                   Requires<[DoesNotSupportSM13]>;
+                   Requires<[FDivNoRoundingMode]>;
 def FDIVri64SM10 : InstPTX<(outs RegF64:$d),
                            (ins RegF64:$a, f64imm:$b),
                            "div.f64\t$d, $a, $b",
                            [(set RegF64:$d, (fdiv RegF64:$a, fpimm:$b))]>,
-                   Requires<[DoesNotSupportSM13]>;
+                   Requires<[FDivNoRoundingMode]>;
 
 
 
@@ -648,8 +661,10 @@ def FDIVri64SM10 : InstPTX<(outs RegF64:$d),
 // In the short term, mad is supported on all PTX versions and we use a
 // default rounding mode no matter what shader model or PTX version.
 // TODO: Allow the rounding mode to be selectable through llc.
-defm FMADSM13 : PTX_FLOAT_4OP<"mad.rn", fmul, fadd>, Requires<[SupportsSM13, SupportsFMA]>;
-defm FMAD : PTX_FLOAT_4OP<"mad", fmul, fadd>, Requires<[DoesNotSupportSM13, SupportsFMA]>;
+defm FMADSM13 : PTX_FLOAT_4OP<"mad.rn", fmul, fadd>,
+                Requires<[FMadNeedsRoundingMode, SupportsFMA]>;
+defm FMAD : PTX_FLOAT_4OP<"mad", fmul, fadd>,
+            Requires<[FMadNoRoundingMode, SupportsFMA]>;
 
 ///===- Floating-Point Intrinsic Instructions -----------------------------===//
 
@@ -816,17 +831,48 @@ defm LDc : PTX_LD_ALL<"ld.const",  load_constant>;
 defm LDl : PTX_LD_ALL<"ld.local",  load_local>;
 defm LDs : PTX_LD_ALL<"ld.shared", load_shared>;
 
-// This is a special instruction that is manually inserted for kernel parameters
-def LDpiU16 : InstPTX<(outs RegI16:$d), (ins MEMpi:$a),
-                      "ld.param.u16\t$d, [$a]", []>;
-def LDpiU32 : InstPTX<(outs RegI32:$d), (ins MEMpi:$a),
-                      "ld.param.u32\t$d, [$a]", []>;
-def LDpiU64 : InstPTX<(outs RegI64:$d), (ins MEMpi:$a),
-                      "ld.param.u64\t$d, [$a]", []>;
-def LDpiF32 : InstPTX<(outs RegF32:$d), (ins MEMpi:$a),
-                      "ld.param.f32\t$d, [$a]", []>;
-def LDpiF64 : InstPTX<(outs RegF64:$d), (ins MEMpi:$a),
-                      "ld.param.f64\t$d, [$a]", []>;
+// These instructions are used to load/store from the .param space for
+// device and kernel parameters
+
+let hasSideEffects = 1 in {
+  def LDpiPred : InstPTX<(outs RegPred:$d), (ins MEMpi:$a),
+                         "ld.param.pred\t$d, [$a]",
+                         [(set RegPred:$d, (PTXloadparam timm:$a))]>;
+  def LDpiU16  : InstPTX<(outs RegI16:$d), (ins MEMpi:$a),
+                         "ld.param.u16\t$d, [$a]",
+                         [(set RegI16:$d, (PTXloadparam timm:$a))]>;
+  def LDpiU32  : InstPTX<(outs RegI32:$d), (ins MEMpi:$a),
+                         "ld.param.u32\t$d, [$a]",
+                         [(set RegI32:$d, (PTXloadparam timm:$a))]>;
+  def LDpiU64  : InstPTX<(outs RegI64:$d), (ins MEMpi:$a),
+                         "ld.param.u64\t$d, [$a]",
+                         [(set RegI64:$d, (PTXloadparam timm:$a))]>;
+  def LDpiF32  : InstPTX<(outs RegF32:$d), (ins MEMpi:$a),
+                         "ld.param.f32\t$d, [$a]",
+                         [(set RegF32:$d, (PTXloadparam timm:$a))]>;
+  def LDpiF64  : InstPTX<(outs RegF64:$d), (ins MEMpi:$a),
+                         "ld.param.f64\t$d, [$a]",
+                         [(set RegF64:$d, (PTXloadparam timm:$a))]>;
+
+  def STpiPred : InstPTX<(outs), (ins MEMret:$d, RegPred:$a),
+                         "st.param.pred\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegPred:$a)]>;
+  def STpiU16  : InstPTX<(outs), (ins MEMret:$d, RegI16:$a),
+                         "st.param.u16\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegI16:$a)]>;
+  def STpiU32  : InstPTX<(outs), (ins MEMret:$d, RegI32:$a),
+                         "st.param.u32\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegI32:$a)]>;
+  def STpiU64  : InstPTX<(outs), (ins MEMret:$d, RegI64:$a),
+                         "st.param.u64\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegI64:$a)]>;
+  def STpiF32  : InstPTX<(outs), (ins MEMret:$d, RegF32:$a),
+                         "st.param.f32\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegF32:$a)]>;
+  def STpiF64  : InstPTX<(outs), (ins MEMret:$d, RegF64:$a),
+                         "st.param.f64\t[$d], $a",
+                         [(PTXstoreparam timm:$d, RegF64:$a)]>;
+}
 
 // Stores
 defm STg : PTX_ST_ALL<"st.global", store_global>;

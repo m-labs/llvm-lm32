@@ -15,6 +15,7 @@
 #include "PTXISelLowering.h"
 #include "PTXMachineFunctionInfo.h"
 #include "PTXRegisterInfo.h"
+#include "PTXSubtarget.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -104,8 +105,10 @@ const char *PTXTargetLowering::getTargetNodeName(unsigned Opcode) const {
       llvm_unreachable("Unknown opcode");
     case PTXISD::COPY_ADDRESS:
       return "PTXISD::COPY_ADDRESS";
-    case PTXISD::READ_PARAM:
-      return "PTXISD::READ_PARAM";
+    case PTXISD::LOAD_PARAM:
+      return "PTXISD::LOAD_PARAM";
+    case PTXISD::STORE_PARAM:
+      return "PTXISD::STORE_PARAM";
     case PTXISD::EXIT:
       return "PTXISD::EXIT";
     case PTXISD::RET:
@@ -192,6 +195,7 @@ SDValue PTXTargetLowering::
   if (isVarArg) llvm_unreachable("PTX does not support varargs");
 
   MachineFunction &MF = DAG.getMachineFunction();
+  const PTXSubtarget& ST = getTargetMachine().getSubtarget<PTXSubtarget>();
   PTXMachineFunctionInfo *MFI = MF.getInfo<PTXMachineFunctionInfo>();
 
   switch (CallConv) {
@@ -206,13 +210,17 @@ SDValue PTXTargetLowering::
       break;
   }
 
-  if (MFI->isKernel()) {
-    // For kernel functions, we just need to emit the proper READ_PARAM ISDs
+  // We do one of two things here:
+  // IsKernel || SM >= 2.0  ->  Use param space for arguments
+  // SM < 2.0               ->  Use registers for arguments
+  if (MFI->isKernel() || ST.useParamSpaceForDeviceArgs()) {
+    // We just need to emit the proper LOAD_PARAM ISDs
     for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
 
-      assert(Ins[i].VT != MVT::i1 && "Kernels cannot take pred operands");
+      assert((!MFI->isKernel() || Ins[i].VT != MVT::i1) &&
+             "Kernels cannot take pred operands");
 
-      SDValue ArgValue = DAG.getNode(PTXISD::READ_PARAM, dl, Ins[i].VT, Chain,
+      SDValue ArgValue = DAG.getNode(PTXISD::LOAD_PARAM, dl, Ins[i].VT, Chain,
                                      DAG.getTargetConstant(i, MVT::i32));
       InVals.push_back(ArgValue);
 
@@ -299,16 +307,20 @@ SDValue PTXTargetLowering::
 
   MachineFunction& MF = DAG.getMachineFunction();
   PTXMachineFunctionInfo *MFI = MF.getInfo<PTXMachineFunctionInfo>();
-  SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                 getTargetMachine(), RVLocs, *DAG.getContext());
 
   SDValue Flag;
+
+  // Even though we could use the .param space for return arguments for
+  // device functions if SM >= 2.0 and the number of return arguments is
+  // only 1, we just always use registers since this makes the codegen
+  // easier.
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
+  getTargetMachine(), RVLocs, *DAG.getContext());
 
   CCInfo.AnalyzeReturn(Outs, RetCC_PTX);
 
   for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
-
     CCValAssign& VA  = RVLocs[i];
 
     assert(VA.isRegLoc() && "CCValAssign must be RegLoc");
