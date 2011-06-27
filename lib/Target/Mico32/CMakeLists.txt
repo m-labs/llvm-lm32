@@ -1,8 +1,8 @@
 set(LLVM_TARGET_DEFINITIONS Mico32.td)
 
 tablegen(Mico32GenRegisterDesc.inc -gen-register-desc)
-tablegen(Mico32GenRegisterInfo.h.inc -gen-register-desc-header)
-tablegen(Mico32GenRegisterInfo.inc -gen-register-desc)
+tablegen(Mico32GenRegisterInfo.h.inc -gen-register-info-header)
+tablegen(Mico32GenRegisterInfo.inc -gen-register-info)
 tablegen(Mico32GenRegisterNames.inc -gen-register-enums)
 tablegen(Mico32GenInstrNames.inc -gen-instr-enums)
 tablegen(Mico32GenInstrInfo.inc -gen-instr-desc)
