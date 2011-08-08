@@ -92,7 +92,6 @@ static const char *getRegisterTypeName(unsigned RegNo) {
 #define TEST_REGCLS(cls, clsstr)                \
   if (PTX::cls ## RegisterClass->contains(RegNo)) return # clsstr;
   TEST_REGCLS(RegPred, pred);
-  TEST_REGCLS(RegI8,  b8);
   TEST_REGCLS(RegI16, b16);
   TEST_REGCLS(RegI32, b32);
   TEST_REGCLS(RegI64, b64);
@@ -116,7 +115,7 @@ static const char *getStateSpaceName(unsigned addressSpace) {
   return NULL;
 }
 
-static const char *getTypeName(const Type* type) {
+static const char *getTypeName(Type* type) {
   while (true) {
     switch (type->getTypeID()) {
       default: llvm_unreachable("Unknown type");
@@ -125,14 +124,13 @@ static const char *getTypeName(const Type* type) {
       case Type::IntegerTyID:
         switch (type->getPrimitiveSizeInBits()) {
           default: llvm_unreachable("Unknown integer bit-width");
-          case 8:  return ".u8";
           case 16: return ".u16";
           case 32: return ".u32";
           case 64: return ".u64";
         }
       case Type::ArrayTyID:
       case Type::PointerTyID:
-        type = dyn_cast<const SequentialType>(type)->getElementType();
+        type = dyn_cast<SequentialType>(type)->getElementType();
         break;
     }
   }
@@ -408,8 +406,8 @@ void PTXAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
 
 
   if (PointerType::classof(gv->getType())) {
-    const PointerType* pointerTy = dyn_cast<const PointerType>(gv->getType());
-    const Type* elementTy = pointerTy->getElementType();
+    PointerType* pointerTy = dyn_cast<PointerType>(gv->getType());
+    Type* elementTy = pointerTy->getElementType();
 
     decl += ".b8 ";
     decl += gvsym->getName();
@@ -419,14 +417,14 @@ void PTXAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
     {
       assert(elementTy->isArrayTy() && "Only pointers to arrays are supported");
 
-      const ArrayType* arrayTy = dyn_cast<const ArrayType>(elementTy);
+      ArrayType* arrayTy = dyn_cast<ArrayType>(elementTy);
       elementTy = arrayTy->getElementType();
 
       unsigned numElements = arrayTy->getNumElements();
 
       while (elementTy->isArrayTy()) {
 
-        arrayTy = dyn_cast<const ArrayType>(elementTy);
+        arrayTy = dyn_cast<ArrayType>(elementTy);
         elementTy = arrayTy->getElementType();
 
         numElements *= arrayTy->getNumElements();

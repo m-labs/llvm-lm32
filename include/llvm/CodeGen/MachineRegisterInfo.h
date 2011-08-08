@@ -25,17 +25,16 @@ namespace llvm {
 /// registers, including vreg register classes, use/def chains for registers,
 /// etc.
 class MachineRegisterInfo {
+  /// IsSSA - True when the machine function is in SSA form and virtual
+  /// registers have a single def.
+  bool IsSSA;
+
   /// VRegInfo - Information we keep for each virtual register.
   ///
   /// Each element in this list contains the register class of the vreg and the
   /// start of the use/def list for the register.
   IndexedMap<std::pair<const TargetRegisterClass*, MachineOperand*>,
              VirtReg2IndexFunctor> VRegInfo;
-
-  /// RegClassVRegMap - This vector acts as a map from TargetRegisterClass to
-  /// virtual registers. For each target register class, it keeps a list of
-  /// virtual registers belonging to the class.
-  std::vector<unsigned> *RegClass2VRegMap;
 
   /// RegAllocHints - This vector records register allocation hints for virtual
   /// registers. For each virtual register, it keeps a register and hint type
@@ -70,7 +69,23 @@ class MachineRegisterInfo {
 public:
   explicit MachineRegisterInfo(const TargetRegisterInfo &TRI);
   ~MachineRegisterInfo();
-  
+
+  //===--------------------------------------------------------------------===//
+  // Function State
+  //===--------------------------------------------------------------------===//
+
+  // isSSA - Returns true when the machine function is in SSA form. Early
+  // passes require the machine function to be in SSA form where every virtual
+  // register has a single defining instruction.
+  //
+  // The TwoAddressInstructionPass and PHIElimination passes take the machine
+  // function out of SSA form when they introduce multiple defs per virtual
+  // register.
+  bool isSSA() const { return IsSSA; }
+
+  // leaveSSA - Indicates that the machine function is no longer in SSA form.
+  void leaveSSA() { IsSSA = false; }
+
   //===--------------------------------------------------------------------===//
   // Register Info
   //===--------------------------------------------------------------------===//
@@ -216,13 +231,6 @@ public:
   ///
   unsigned getNumVirtRegs() const { return VRegInfo.size(); }
 
-  /// getRegClassVirtRegs - Return the list of virtual registers of the given
-  /// target register class.
-  const std::vector<unsigned> &
-  getRegClassVirtRegs(const TargetRegisterClass *RC) const {
-    return RegClass2VRegMap[RC->getID()];
-  }
-
   /// setRegAllocationHint - Specify a register allocation hint for the
   /// specified virtual register.
   void setRegAllocationHint(unsigned Reg, unsigned Type, unsigned PrefReg) {
@@ -236,6 +244,14 @@ public:
   getRegAllocationHint(unsigned Reg) const {
     return RegAllocHints[Reg];
   }
+
+  /// getSimpleHint - Return the preferred register allocation hint, or 0 if a
+  /// standard simple hint (Type == 0) is not set.
+  unsigned getSimpleHint(unsigned Reg) const {
+    std::pair<unsigned, unsigned> Hint = getRegAllocationHint(Reg);
+    return Hint.first ? 0 : Hint.second;
+  }
+
 
   //===--------------------------------------------------------------------===//
   // Physical Register Use Info

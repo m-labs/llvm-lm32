@@ -12,13 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "ARM.h"
-#include "ARMAddressingModes.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMBaseRegisterInfo.h"
 #include "ARMFrameLowering.h"
 #include "ARMInstrInfo.h"
 #include "ARMMachineFunctionInfo.h"
 #include "ARMSubtarget.h"
+#include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -27,7 +27,6 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/Support/Debug.h"
@@ -39,7 +38,8 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "ARMGenRegisterDesc.inc"
+
+#define GET_REGINFO_TARGET_DESC
 #include "ARMGenRegisterInfo.inc"
 
 using namespace llvm;
@@ -56,9 +56,7 @@ EnableBasePointer("arm-use-base-pointer", cl::Hidden, cl::init(true),
 
 ARMBaseRegisterInfo::ARMBaseRegisterInfo(const ARMBaseInstrInfo &tii,
                                          const ARMSubtarget &sti)
-  : ARMGenRegisterInfo(ARMRegDesc, ARMRegInfoDesc,
-                       ARM::ADJCALLSTACKDOWN, ARM::ADJCALLSTACKUP),
-    TII(tii), STI(sti),
+  : ARMGenRegisterInfo(ARM::LR), TII(tii), STI(sti),
     FramePtr((STI.isTargetDarwin() || STI.isThumb()) ? ARM::R7 : ARM::R11),
     BasePtr(ARM::R6) {
 }
@@ -488,19 +486,19 @@ ARMBaseRegisterInfo::getRawAllocationOrder(const TargetRegisterClass *RC,
 
     if (!TFI->hasFP(MF)) {
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPREven1);
+        return makeArrayRef(GPREven1);
       else
-        return ArrayRef<unsigned>(GPREven4);
+        return makeArrayRef(GPREven4);
     } else if (FramePtr == ARM::R7) {
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPREven2);
+        return makeArrayRef(GPREven2);
       else
-        return ArrayRef<unsigned>(GPREven5);
+        return makeArrayRef(GPREven5);
     } else { // FramePtr == ARM::R11
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPREven3);
+        return makeArrayRef(GPREven3);
       else
-        return ArrayRef<unsigned>(GPREven6);
+        return makeArrayRef(GPREven6);
     }
   } else if (HintType == ARMRI::RegPairOdd) {
     if (isPhysicalRegister(HintReg) && getRegisterPairOdd(HintReg, MF) == 0)
@@ -510,19 +508,19 @@ ARMBaseRegisterInfo::getRawAllocationOrder(const TargetRegisterClass *RC,
 
     if (!TFI->hasFP(MF)) {
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPROdd1);
+        return makeArrayRef(GPROdd1);
       else
-        return ArrayRef<unsigned>(GPROdd4);
+        return makeArrayRef(GPROdd4);
     } else if (FramePtr == ARM::R7) {
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPROdd2);
+        return makeArrayRef(GPROdd2);
       else
-        return ArrayRef<unsigned>(GPROdd5);
+        return makeArrayRef(GPROdd5);
     } else { // FramePtr == ARM::R11
       if (!STI.isR9Reserved())
-        return ArrayRef<unsigned>(GPROdd3);
+        return makeArrayRef(GPROdd3);
       else
-        return ArrayRef<unsigned>(GPROdd6);
+        return makeArrayRef(GPROdd6);
     }
   }
   return RC->getRawAllocationOrder(MF);
@@ -650,10 +648,6 @@ cannotEliminateFrame(const MachineFunction &MF) const {
     || needsStackRealignment(MF);
 }
 
-unsigned ARMBaseRegisterInfo::getRARegister() const {
-  return ARM::LR;
-}
-
 unsigned
 ARMBaseRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
@@ -671,14 +665,6 @@ unsigned ARMBaseRegisterInfo::getEHExceptionRegister() const {
 unsigned ARMBaseRegisterInfo::getEHHandlerRegister() const {
   llvm_unreachable("What is the exception handler register");
   return 0;
-}
-
-int ARMBaseRegisterInfo::getDwarfRegNum(unsigned RegNum, bool isEH) const {
-  return ARMGenRegisterInfo::getDwarfRegNumFull(RegNum, 0);
-}
-
-int ARMBaseRegisterInfo::getLLVMRegNum(unsigned DwarfRegNo, bool isEH) const {
-  return ARMGenRegisterInfo::getLLVMRegNumFull(DwarfRegNo,0);
 }
 
 unsigned ARMBaseRegisterInfo::getRegisterPairEven(unsigned Reg,
@@ -958,7 +944,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 
 int64_t ARMBaseRegisterInfo::
 getFrameIndexInstrOffset(const MachineInstr *MI, int Idx) const {
-  const TargetInstrDesc &Desc = MI->getDesc();
+  const MCInstrDesc &Desc = MI->getDesc();
   unsigned AddrMode = (Desc.TSFlags & ARMII::AddrModeMask);
   int64_t InstrOffs = 0;;
   int Scale = 1;
@@ -1108,11 +1094,11 @@ materializeFrameBaseRegister(MachineBasicBlock *MBB,
   if (Ins != MBB->end())
     DL = Ins->getDebugLoc();
 
-  const TargetInstrDesc &TID = TII.get(ADDriOpc);
+  const MCInstrDesc &MCID = TII.get(ADDriOpc);
   MachineRegisterInfo &MRI = MBB->getParent()->getRegInfo();
-  MRI.constrainRegClass(BaseReg, TID.OpInfo[0].getRegClass(this));
+  MRI.constrainRegClass(BaseReg, TII.getRegClass(MCID, 0, this));
 
-  MachineInstrBuilder MIB = BuildMI(*MBB, Ins, DL, TID, BaseReg)
+  MachineInstrBuilder MIB = BuildMI(*MBB, Ins, DL, MCID, BaseReg)
     .addFrameIndex(FrameIdx).addImm(Offset);
 
   if (!AFI->isThumb1OnlyFunction())
@@ -1148,7 +1134,7 @@ ARMBaseRegisterInfo::resolveFrameIndex(MachineBasicBlock::iterator I,
 
 bool ARMBaseRegisterInfo::isFrameOffsetLegal(const MachineInstr *MI,
                                              int64_t Offset) const {
-  const TargetInstrDesc &Desc = MI->getDesc();
+  const MCInstrDesc &Desc = MI->getDesc();
   unsigned AddrMode = (Desc.TSFlags & ARMII::AddrModeMask);
   unsigned i = 0;
 
@@ -1284,9 +1270,5 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     }
     // Update the original instruction to use the scratch register.
     MI.getOperand(i).ChangeToRegister(ScratchReg, false, false, true);
-    if (MI.getOpcode() == ARM::t2ADDrSPi)
-      MI.setDesc(TII.get(ARM::t2ADDri));
-    else if (MI.getOpcode() == ARM::t2SUBrSPi)
-      MI.setDesc(TII.get(ARM::t2SUBri));
   }
 }

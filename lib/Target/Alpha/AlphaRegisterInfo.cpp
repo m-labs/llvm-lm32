@@ -21,7 +21,6 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -33,14 +32,14 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include <cstdlib>
-#include "AlphaGenRegisterDesc.inc"
+
+#define GET_REGINFO_TARGET_DESC
 #include "AlphaGenRegisterInfo.inc"
+
 using namespace llvm;
 
 AlphaRegisterInfo::AlphaRegisterInfo(const TargetInstrInfo &tii)
-  : AlphaGenRegisterInfo(AlphaRegDesc, AlphaRegInfoDesc,
-                         Alpha::ADJUSTSTACKDOWN, Alpha::ADJUSTSTACKUP),
-    TII(tii) {
+  : AlphaGenRegisterInfo(Alpha::R26), TII(tii) {
 }
 
 static long getUpper16(long l) {
@@ -177,10 +176,6 @@ AlphaRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   }
 }
 
-unsigned AlphaRegisterInfo::getRARegister() const {
-  return Alpha::R26;
-}
-
 unsigned AlphaRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
 
@@ -195,16 +190,6 @@ unsigned AlphaRegisterInfo::getEHExceptionRegister() const {
 unsigned AlphaRegisterInfo::getEHHandlerRegister() const {
   llvm_unreachable("What is the exception handler register");
   return 0;
-}
-
-int AlphaRegisterInfo::getDwarfRegNum(unsigned RegNum, bool isEH) const {
-  llvm_unreachable("What is the dwarf register number");
-  return -1;
-}
-
-int AlphaRegisterInfo::getLLVMRegNum(unsigned DwarfRegNum, bool isEH) const {
-  llvm_unreachable("What is the dwarf register number");
-  return -1;
 }
 
 std::string AlphaRegisterInfo::getPrettyName(unsigned reg)

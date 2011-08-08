@@ -17,7 +17,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/ADT/BitVector.h"
 
-#include "PTXGenRegisterInfo.h.inc"
+#define GET_REGINFO_HEADER
+#include "PTXGenRegisterInfo.inc"
 
 namespace llvm {
 class PTXTargetMachine;
@@ -45,18 +46,6 @@ struct PTXRegisterInfo : public PTXGenRegisterInfo {
   virtual unsigned getFrameRegister(const MachineFunction &MF) const {
     llvm_unreachable("PTX does not have a frame register");
     return 0;
-  }
-
-  virtual unsigned getRARegister() const {
-    llvm_unreachable("PTX does not have a return address register");
-    return 0;
-  }
-
-  virtual int getDwarfRegNum(unsigned RegNum, bool isEH) const {
-    return PTXGenRegisterInfo::getDwarfRegNumFull(RegNum, 0);
-  }
-  virtual int getLLVMRegNum(unsigned RegNum, bool isEH) const {
-    return PTXGenRegisterInfo::getLLVMRegNumFull(RegNum, 0);
   }
 }; // struct PTXRegisterInfo
 } // namespace llvm

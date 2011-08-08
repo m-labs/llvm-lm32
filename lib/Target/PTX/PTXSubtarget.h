@@ -7,17 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the PTX specific subclass of TargetSubtarget.
+// This file declares the PTX specific subclass of TargetSubtargetInfo.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef PTX_SUBTARGET_H
 #define PTX_SUBTARGET_H
 
-#include "llvm/Target/TargetSubtarget.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
+
+#define GET_SUBTARGETINFO_HEADER
+#include "PTXGenSubtargetInfo.inc"
 
 namespace llvm {
-  class PTXSubtarget : public TargetSubtarget {
+class StringRef;
+
+  class PTXSubtarget : public PTXGenSubtargetInfo {
     public:
 
       /**
@@ -74,7 +79,8 @@ namespace llvm {
 
     public:
 
-      PTXSubtarget(const std::string &TT, const std::string &FS, bool is64Bit);
+      PTXSubtarget(const std::string &TT, const std::string &CPU,
+                   const std::string &FS, bool is64Bit);
 
       // Target architecture accessors
       std::string getTargetString() const;
@@ -108,8 +114,7 @@ namespace llvm {
                (PTXTarget >= PTX_COMPUTE_2_0 && PTXTarget < PTX_LAST_COMPUTE);
       }
 
-      std::string ParseSubtargetFeatures(const std::string &FS,
-                                         const std::string &CPU);
+    void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
   }; // class PTXSubtarget
 } // namespace llvm
 

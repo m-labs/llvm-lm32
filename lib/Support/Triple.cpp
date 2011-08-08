@@ -8,15 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Triple.h"
-
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Twine.h"
-#include <cassert>
 #include <cstring>
 using namespace llvm;
-
-//
 
 const char *Triple::getArchTypeName(ArchType Kind) {
   switch (Kind) {
@@ -105,6 +100,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case DragonFly: return "dragonfly";
   case FreeBSD: return "freebsd";
   case IOS: return "ios";
+  case KFreeBSD: return "kfreebsd";
   case Linux: return "linux";
   case Lv2: return "lv2";
   case MacOSX: return "macosx";
@@ -116,6 +112,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case Win32: return "win32";
   case Haiku: return "haiku";
   case Minix: return "minix";
+  case RTEMS: return "rtems";
   }
 
   return "<invalid>";
@@ -152,6 +149,8 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     return msp430;
   if (Name == "ppc64")
     return ppc64;
+  if (Name == "ppc32")
+    return ppc;
   if (Name == "ppc")
     return ppc;
   if (Name == "mblaze")
@@ -211,7 +210,8 @@ Triple::ArchType Triple::getArchTypeForDarwinArchName(StringRef Str) {
 
   // This is derived from the driver driver.
   if (Str == "arm" || Str == "armv4t" || Str == "armv5" || Str == "xscale" ||
-      Str == "armv6" || Str == "armv7")
+      Str == "armv6" || Str == "armv7" || Str == "armv7f" || Str == "armv7k" ||
+      Str == "armv7s")
     return Triple::arm;
 
   if (Str == "ptx32")
@@ -288,7 +288,8 @@ Triple::ArchType Triple::ParseArch(StringRef ArchName) {
     return msp430;
   else if (ArchName == "mico32") 
     return mico32;
-  else if (ArchName == "mips" || ArchName == "mipsallegrex")
+  else if (ArchName == "mips" || ArchName == "mipseb" ||
+           ArchName == "mipsallegrex")
     return mips;
   else if (ArchName == "mipsel" || ArchName == "mipsallegrexel" ||
            ArchName == "psp")
@@ -335,6 +336,8 @@ Triple::OSType Triple::ParseOS(StringRef OSName) {
     return FreeBSD;
   else if (OSName.startswith("ios"))
     return IOS;
+  else if (OSName.startswith("kfreebsd"))
+    return KFreeBSD;
   else if (OSName.startswith("linux"))
     return Linux;
   else if (OSName.startswith("lv2"))
@@ -357,6 +360,8 @@ Triple::OSType Triple::ParseOS(StringRef OSName) {
     return Haiku;
   else if (OSName.startswith("minix"))
     return Minix;
+  else if (OSName.startswith("rtems"))
+    return RTEMS;
   else
     return UnknownOS;
 }

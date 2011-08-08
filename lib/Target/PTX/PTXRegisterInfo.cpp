@@ -17,15 +17,15 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace llvm;
-
-#include "PTXGenRegisterDesc.inc"
+#define GET_REGINFO_TARGET_DESC
 #include "PTXGenRegisterInfo.inc"
 
+using namespace llvm;
 
 PTXRegisterInfo::PTXRegisterInfo(PTXTargetMachine &TM,
                                  const TargetInstrInfo &TII)
-  : PTXGenRegisterInfo(PTXRegDesc, PTXRegInfoDesc) {
+  // PTX does not have a return address register.
+  : PTXGenRegisterInfo(0) {
 }
 
 void PTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,

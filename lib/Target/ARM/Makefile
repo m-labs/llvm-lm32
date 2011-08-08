@@ -12,15 +12,14 @@ LIBRARYNAME = LLVMARMCodeGen
 TARGET = ARM
 
 # Make sure that tblgen is run, first thing.
-BUILT_SOURCES = ARMGenRegisterNames.inc ARMGenRegisterDesc.inc \
-                ARMGenRegisterInfo.h.inc ARMGenRegisterInfo.inc \
-		ARMGenInstrNames.inc ARMGenInstrInfo.inc \
+BUILT_SOURCES = ARMGenRegisterInfo.inc ARMGenInstrInfo.inc \
 		ARMGenAsmWriter.inc ARMGenAsmMatcher.inc \
-                ARMGenDAGISel.inc ARMGenSubtarget.inc \
+                ARMGenDAGISel.inc ARMGenSubtargetInfo.inc \
                 ARMGenCodeEmitter.inc ARMGenCallingConv.inc \
                 ARMGenDecoderTables.inc ARMGenEDInfo.inc \
-                ARMGenFastISel.inc ARMGenMCCodeEmitter.inc
+                ARMGenFastISel.inc ARMGenMCCodeEmitter.inc \
+		ARMGenMCPseudoLowering.inc
 
-DIRS = InstPrinter AsmParser Disassembler TargetInfo
+DIRS = InstPrinter AsmParser Disassembler TargetInfo MCTargetDesc
 
 include $(LEVEL)/Makefile.common

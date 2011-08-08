@@ -175,7 +175,8 @@ class VLDQQWBPseudo<InstrItinClass itin>
                 (ins addrmode6:$addr, am6offset:$offset), itin,
                 "$addr.addr = $wb">;
 class VLDQQQQPseudo<InstrItinClass itin>
-  : PseudoNLdSt<(outs QQQQPR:$dst), (ins addrmode6:$addr, QQQQPR:$src),itin,"">;
+  : PseudoNLdSt<(outs QQQQPR:$dst), (ins addrmode6:$addr, QQQQPR:$src),itin,
+                "$src = $dst">;
 class VLDQQQQWBPseudo<InstrItinClass itin>
   : PseudoNLdSt<(outs QQQQPR:$dst, GPR:$wb),
                 (ins addrmode6:$addr, am6offset:$offset, QQQQPR:$src), itin,
@@ -4214,17 +4215,12 @@ def  VSWPq    : N2VX<0b11, 0b11, 0b00, 0b10, 0b00000, 1, 0,
 // Vector Move Operations.
 
 //   VMOV     : Vector Move (Register)
+def : InstAlias<"vmov${p} $Vd, $Vm",
+                (VORRd DPR:$Vd, DPR:$Vm, DPR:$Vm, pred:$p)>;
+def : InstAlias<"vmov${p} $Vd, $Vm",
+                (VORRq QPR:$Vd, QPR:$Vm, QPR:$Vm, pred:$p)>;
 
 let neverHasSideEffects = 1 in {
-def  VMOVDneon: N3VX<0, 0, 0b10, 0b0001, 0, 1, (outs DPR:$Vd), (ins DPR:$Vm),
-                     N3RegFrm, IIC_VMOV, "vmov", "$Vd, $Vm", "", []> {
-  let Vn{4-0} = Vm{4-0};
-}
-def  VMOVQ    : N3VX<0, 0, 0b10, 0b0001, 1, 1, (outs QPR:$Vd), (ins QPR:$Vm),
-                     N3RegFrm, IIC_VMOV, "vmov", "$Vd, $Vm", "", []> {
-  let Vn{4-0} = Vm{4-0};
-}
-
 // Pseudo vector move instructions for QQ and QQQQ registers. This should
 // be expanded after register allocation is completed.
 def  VMOVQQ   : PseudoInst<(outs QQPR:$dst), (ins QQPR:$src),
@@ -4704,11 +4700,10 @@ def VEXTd32 : VEXTd<"vext", "32", v2i32> {
   let Inst{11-10} = index{1-0};
   let Inst{9-8}    = 0b00;
 }
-def VEXTdf  : VEXTd<"vext", "32", v2f32> {
-  let Inst{11-10}    = index{1-0};
-  let Inst{9-8}  = 0b00;
-
-}
+def : Pat<(v2f32 (NEONvext (v2f32 DPR:$Vn),
+                           (v2f32 DPR:$Vm),
+                           (i32 imm:$index))),
+          (VEXTd32 DPR:$Vn, DPR:$Vm, imm:$index)>;
 
 def VEXTq8  : VEXTq<"vext", "8",  v16i8> {
   let Inst{11-8} = index{3-0};
@@ -4721,10 +4716,10 @@ def VEXTq32 : VEXTq<"vext", "32", v4i32> {
   let Inst{11-10} = index{1-0};
   let Inst{9-8}    = 0b00;
 }
-def VEXTqf  : VEXTq<"vext", "32", v4f32> {
-  let Inst{11-10} = index{1-0};
-  let Inst{9-8}   = 0b00;
-}
+def : Pat<(v4f32 (NEONvext (v4f32 QPR:$Vn),
+                           (v4f32 QPR:$Vm),
+                           (i32 imm:$index))),
+          (VEXTq32 QPR:$Vn, QPR:$Vm, imm:$index)>;
 
 //   VTRN     : Vector Transpose
 

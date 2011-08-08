@@ -16,7 +16,9 @@
 
 #include "ARM.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "ARMGenRegisterInfo.h.inc"
+
+#define GET_REGINFO_HEADER
+#include "ARMGenRegisterInfo.inc"
 
 namespace llvm {
   class ARMSubtarget;
@@ -162,16 +164,12 @@ public:
   bool cannotEliminateFrame(const MachineFunction &MF) const;
 
   // Debug information queries.
-  unsigned getRARegister() const;
   unsigned getFrameRegister(const MachineFunction &MF) const;
   unsigned getBaseRegister() const { return BasePtr; }
 
   // Exception handling queries.
   unsigned getEHExceptionRegister() const;
   unsigned getEHHandlerRegister() const;
-
-  int getDwarfRegNum(unsigned RegNum, bool isEH) const;
-  int getLLVMRegNum(unsigned RegNum, bool isEH) const;
 
   bool isLowRegister(unsigned Reg) const;
 

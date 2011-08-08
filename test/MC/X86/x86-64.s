@@ -219,6 +219,12 @@ inb	$161, %al
 // CHECK: pushq	$1
 push $1
 
+// rdar://9716860
+pushq $1
+// CHECK: encoding: [0x6a,0x01]
+pushq $1111111
+// CHECK: encoding: [0x68,0x47,0xf4,0x10,0x00]
+
 // rdar://8017530
 // CHECK: sldtw	4
 sldt	4
@@ -1148,3 +1154,19 @@ movnti %eax, (%rdi)
 // CHECK: movntiq
 movntiq %rax, (%rdi)
 movnti %rax, (%rdi)
+
+// CHECK: pclmulqdq	$17, %xmm0, %xmm1
+// CHECK: encoding: [0x66,0x0f,0x3a,0x44,0xc8,0x11]
+pclmulhqhqdq %xmm0, %xmm1
+
+// CHECK: pclmulqdq	$1, %xmm0, %xmm1
+// CHECK: encoding: [0x66,0x0f,0x3a,0x44,0xc8,0x01]
+pclmulqdq $1, %xmm0, %xmm1
+
+// CHECK: pclmulqdq	$16, (%rdi), %xmm1
+// CHECK: encoding: [0x66,0x0f,0x3a,0x44,0x0f,0x10]
+pclmullqhqdq (%rdi), %xmm1
+
+// CHECK: pclmulqdq	$0, (%rdi), %xmm1
+// CHECK: encoding: [0x66,0x0f,0x3a,0x44,0x0f,0x00]
+pclmulqdq $0, (%rdi), %xmm1

@@ -298,8 +298,8 @@ height="369">
    of tags are loosely bound to the tag values of DWARF information entries.
    However, that does not restrict the use of the information supplied to DWARF
    targets.  To facilitate versioning of debug information, the tag is augmented
-   with the current debug version (LLVMDebugVersion = 8 &lt;&lt; 16 or 0x80000 or
-   524288.)</a></p>
+   with the current debug version (LLVMDebugVersion = 8 &lt;&lt; 16 or
+   0x80000 or 524288.)</a></p>
 
 <p>The details of the various descriptors follow.</p>  
 
@@ -750,7 +750,9 @@ DW_TAG_inheritance      = 28
   metadata, ;; Reference to file where defined
   i32,      ;; 24 bit - Line number where defined
             ;; 8 bit - Argument number. 1 indicates 1st argument.
-  metadata  ;; Type descriptor
+  metadata, ;; Type descriptor
+  i32,      ;; flags
+  metadata  ;; (optional) Reference to inline location
 }
 </pre>
 </div>

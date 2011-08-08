@@ -1001,7 +1001,7 @@ void DAGCombiner::Run(CombineLevel AtLevel) {
           dbgs() << "\nWith: ";
           RV.getNode()->dump(&DAG);
           dbgs() << '\n');
-    
+
     // Transfer debug value.
     DAG.TransferDbgValues(SDValue(N, 0), RV);
     WorkListRemover DeadNodes(*this);
@@ -1310,16 +1310,6 @@ SDValue combineShlAddConstant(DebugLoc DL, SDValue N0, SDValue N1,
   return SDValue();
 }
 
-/// isCarryMaterialization - Returns true if V is an ADDE node that is known to
-/// return 0 or 1 depending on the carry flag.
-static bool isCarryMaterialization(SDValue V) {
-  if (V.getOpcode() != ISD::ADDE)
-    return false;
-
-  ConstantSDNode *C = dyn_cast<ConstantSDNode>(V.getOperand(0));
-  return C && C->isNullValue() && V.getOperand(0) == V.getOperand(1);
-}
-
 SDValue DAGCombiner::visitADD(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   SDValue N1 = N->getOperand(1);
@@ -1483,18 +1473,6 @@ SDValue DAGCombiner::visitADD(SDNode *N) {
     return DAG.getNode(ISD::SUB, DL, VT, N1, ZExt);
   }
 
-  // add (adde 0, 0, glue), X -> adde X, 0, glue
-  if (N0->hasOneUse() && isCarryMaterialization(N0))
-    return DAG.getNode(ISD::ADDE, N->getDebugLoc(),
-                       DAG.getVTList(VT, MVT::Glue), N1, N0.getOperand(0),
-                       N0.getOperand(2));
-
-  // add X, (adde 0, 0, glue) -> adde X, 0, glue
-  if (N1->hasOneUse() && isCarryMaterialization(N1))
-    return DAG.getNode(ISD::ADDE, N->getDebugLoc(),
-                       DAG.getVTList(VT, MVT::Glue), N0, N1.getOperand(0),
-                       N1.getOperand(2));
-
   return SDValue();
 }
 
@@ -1537,16 +1515,6 @@ SDValue DAGCombiner::visitADDC(SDNode *N) {
                        DAG.getNode(ISD::CARRY_FALSE,
                                    N->getDebugLoc(), MVT::Glue));
   }
-
-  // addc (adde 0, 0, glue), X -> adde X, 0, glue
-  if (N0->hasOneUse() && isCarryMaterialization(N0))
-    return DAG.getNode(ISD::ADDE, N->getDebugLoc(), N->getVTList(), N1,
-                       DAG.getConstant(0, VT), N0.getOperand(2));
-
-  // addc X, (adde 0, 0, glue) -> adde X, 0, glue
-  if (N1->hasOneUse() && isCarryMaterialization(N1))
-    return DAG.getNode(ISD::ADDE, N->getDebugLoc(), N->getVTList(), N0,
-                       DAG.getConstant(0, VT), N1.getOperand(2));
 
   return SDValue();
 }
@@ -1598,6 +1566,8 @@ SDValue DAGCombiner::visitSUB(SDNode *N) {
   SDValue N1 = N->getOperand(1);
   ConstantSDNode *N0C = dyn_cast<ConstantSDNode>(N0.getNode());
   ConstantSDNode *N1C = dyn_cast<ConstantSDNode>(N1.getNode());
+  ConstantSDNode *N1C1 = N1.getOpcode() != ISD::ADD ? 0 :
+    dyn_cast<ConstantSDNode>(N1.getOperand(1).getNode());
   EVT VT = N0.getValueType();
 
   // fold vector ops
@@ -1629,6 +1599,12 @@ SDValue DAGCombiner::visitSUB(SDNode *N) {
   // fold (A+B)-B -> A
   if (N0.getOpcode() == ISD::ADD && N0.getOperand(1) == N1)
     return N0.getOperand(0);
+  // fold C2-(A+C1) -> (C2-C1)-A
+  if (N1.getOpcode() == ISD::ADD && N0C && N1C1) {
+    SDValue NewC = DAG.getConstant((N0C->getAPIntValue() - N1C1->getAPIntValue()), VT);
+    return DAG.getNode(ISD::SUB, N->getDebugLoc(), VT, NewC,
+		       N1.getOperand(0));
+  }
   // fold ((A+(B+or-C))-B) -> A+or-C
   if (N0.getOpcode() == ISD::ADD &&
       (N0.getOperand(1).getOpcode() == ISD::SUB ||
@@ -2603,7 +2579,7 @@ SDValue DAGCombiner::MatchBSwapHWordLow(SDNode *N, SDValue N0, SDValue N1,
       (!LookPassAnd0 || !LookPassAnd1) &&
       !DAG.MaskedValueIsZero(N10, APInt::getHighBitsSet(OpSizeInBits, 16)))
     return SDValue();
-  
+
   SDValue Res = DAG.getNode(ISD::BSWAP, N->getDebugLoc(), VT, N00);
   if (OpSizeInBits > 16)
     Res = DAG.getNode(ISD::SRL, N->getDebugLoc(), VT, Res,
@@ -5961,12 +5937,17 @@ bool DAGCombiner::CombineToPreIndexedLoadStore(SDNode *N) {
 
   // Now check for #3 and #4.
   bool RealUse = false;
+
+  // Caches for hasPredecessorHelper
+  SmallPtrSet<const SDNode *, 32> Visited;
+  SmallVector<const SDNode *, 16> Worklist;
+
   for (SDNode::use_iterator I = Ptr.getNode()->use_begin(),
          E = Ptr.getNode()->use_end(); I != E; ++I) {
     SDNode *Use = *I;
     if (Use == N)
       continue;
-    if (Use->isPredecessorOf(N))
+    if (N->hasPredecessorHelper(Use, Visited, Worklist))
       return false;
 
     if (!((Use->getOpcode() == ISD::LOAD &&
@@ -6498,7 +6479,7 @@ SDValue DAGCombiner::ReduceLoadOpStoreWidth(SDNode *N) {
         PtrOff = (BitWidth + 7 - NewBW) / 8 - PtrOff;
 
       unsigned NewAlign = MinAlign(LD->getAlignment(), PtrOff);
-      const Type *NewVTTy = NewVT.getTypeForEVT(*DAG.getContext());
+      Type *NewVTTy = NewVT.getTypeForEVT(*DAG.getContext());
       if (NewAlign < TLI.getTargetData()->getABITypeAlignment(NewVTTy))
         return SDValue();
 
@@ -6561,7 +6542,7 @@ SDValue DAGCombiner::TransformFPLoadStorePair(SDNode *N) {
 
     unsigned LDAlign = LD->getAlignment();
     unsigned STAlign = ST->getAlignment();
-    const Type *IntVTTy = IntVT.getTypeForEVT(*DAG.getContext());
+    Type *IntVTTy = IntVT.getTypeForEVT(*DAG.getContext());
     unsigned ABIAlign = TLI.getTargetData()->getABITypeAlignment(IntVTTy);
     if (LDAlign < ABIAlign || STAlign < ABIAlign)
       return SDValue();
@@ -6915,7 +6896,7 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
 
     // If Idx was -1 above, Elt is going to be -1, so just return undef.
     if (Elt == -1)
-      return DAG.getUNDEF(LN0->getBasePtr().getValueType());
+      return DAG.getUNDEF(LVT);
 
     unsigned Align = LN0->getAlignment();
     if (NewLoad) {
@@ -7466,7 +7447,7 @@ SDValue DAGCombiner::SimplifySelectCC(DebugLoc DL, SDValue N0, SDValue N1,
           const_cast<ConstantFP*>(FV->getConstantFPValue()),
           const_cast<ConstantFP*>(TV->getConstantFPValue())
         };
-        const Type *FPTy = Elts[0]->getType();
+        Type *FPTy = Elts[0]->getType();
         const TargetData &TD = *TLI.getTargetData();
 
         // Create a ConstantArray of the two constants.

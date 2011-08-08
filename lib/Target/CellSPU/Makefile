@@ -10,13 +10,11 @@
 LEVEL = ../../..
 LIBRARYNAME = LLVMCellSPUCodeGen
 TARGET = SPU
-BUILT_SOURCES = SPUGenInstrNames.inc \
+BUILT_SOURCES = SPUGenInstrInfo.inc SPUGenRegisterInfo.inc \
 		SPUGenAsmWriter.inc SPUGenCodeEmitter.inc \
-		SPUGenRegisterNames.inc SPUGenRegisterDesc.inc \
-		SPUGenRegisterInfo.h.inc SPUGenRegisterInfo.inc \
-		SPUGenInstrInfo.inc SPUGenDAGISel.inc \
-		SPUGenSubtarget.inc SPUGenCallingConv.inc
+		SPUGenDAGISel.inc \
+		SPUGenSubtargetInfo.inc SPUGenCallingConv.inc
 
-DIRS = TargetInfo
+DIRS = TargetInfo MCTargetDesc
 
 include $(LEVEL)/Makefile.common

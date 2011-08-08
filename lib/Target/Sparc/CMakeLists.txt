@@ -1,15 +1,12 @@
 set(LLVM_TARGET_DEFINITIONS Sparc.td)
 
-tablegen(SparcGenRegisterNames.inc -gen-register-enums)
-tablegen(SparcGenRegisterDesc.inc -gen-register-desc)
-tablegen(SparcGenRegisterInfo.h.inc -gen-register-info-header)
 tablegen(SparcGenRegisterInfo.inc -gen-register-info)
-tablegen(SparcGenInstrNames.inc -gen-instr-enums)
-tablegen(SparcGenInstrInfo.inc -gen-instr-desc)
+tablegen(SparcGenInstrInfo.inc -gen-instr-info)
 tablegen(SparcGenAsmWriter.inc -gen-asm-writer)
 tablegen(SparcGenDAGISel.inc -gen-dag-isel)
-tablegen(SparcGenSubtarget.inc -gen-subtarget)
+tablegen(SparcGenSubtargetInfo.inc -gen-subtarget)
 tablegen(SparcGenCallingConv.inc -gen-callingconv)
+add_public_tablegen_target(SparcCommonTableGen)
 
 add_llvm_target(SparcCodeGen
   DelaySlotFiller.cpp
@@ -19,11 +16,23 @@ add_llvm_target(SparcCodeGen
   SparcISelDAGToDAG.cpp
   SparcISelLowering.cpp
   SparcFrameLowering.cpp
-  SparcMCAsmInfo.cpp
   SparcRegisterInfo.cpp
   SparcSubtarget.cpp
   SparcTargetMachine.cpp
   SparcSelectionDAGInfo.cpp
   )
 
+add_llvm_library_dependencies(LLVMSparcCodeGen
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSparcDesc
+  LLVMSparcInfo
+  LLVMSupport
+  LLVMTarget
+  )
+
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)
