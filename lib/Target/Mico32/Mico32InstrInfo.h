@@ -19,6 +19,9 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "Mico32RegisterInfo.h"
 
+#define GET_INSTRINFO_HEADER
+#include "Mico32GenInstrInfo.inc"
+
 namespace llvm {
 
 namespace Mico32 {
@@ -47,7 +50,7 @@ namespace Mico32 {
 }
 
 
-class Mico32InstrInfo : public TargetInstrInfoImpl {
+class Mico32InstrInfo : public Mico32GenInstrInfo {
   Mico32TargetMachine &TM;
   const Mico32RegisterInfo RI;
 public:

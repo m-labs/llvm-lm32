@@ -18,10 +18,7 @@
 #include "Mico32InstrInfo.h"
 #include "Mico32ISelLowering.h"
 #include "Mico32SelectionDAGInfo.h"
-//#include "Mico32IntrinsicInfo.h"
 #include "Mico32FrameLowering.h"
-//#include "Mico32ELFWriterInfo.h"
-
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetData.h"
@@ -41,9 +38,10 @@ namespace llvm {
     //Mico32ELFWriterInfo    ELFWriterInfo;
     
   public:
-    Mico32TargetMachine(const Target &T, const std::string &TT,
-                         const std::string &FS);
-  
+    Mico32TargetMachine(const Target &T, StringRef TT,
+                        StringRef CPU, StringRef FS,
+                        Reloc::Model RM, CodeModel::Model CM);
+
     virtual const Mico32InstrInfo *getInstrInfo() const {
       return &InstrInfo;
     }

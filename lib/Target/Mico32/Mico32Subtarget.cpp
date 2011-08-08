@@ -13,20 +13,29 @@
 
 #include "Mico32Subtarget.h"
 #include "Mico32.h"
+#include "Mico32RegisterInfo.h"
 #include "llvm/Module.h"
 #include "llvm/Target/TargetMachine.h"
-#include "Mico32GenSubtarget.inc"
+
+#define GET_SUBTARGETINFO_TARGET_DESC
+#define GET_SUBTARGETINFO_CTOR
+#include "Mico32GenSubtargetInfo.inc"
+
 using namespace llvm;
 
-Mico32Subtarget::Mico32Subtarget(const std::string &TT, const std::string &FS) 
+Mico32Subtarget::Mico32Subtarget(const std::string &TT, 
+                                 const std::string &CPU,
+                                 const std::string &FS) 
+  : Mico32GenSubtargetInfo(TT, CPU, FS)
 {
   HasSDIV = false;
   HasDIV = true;
   HasMUL = true;
   HasBarrel = true;
-  std::string CPU = "mico32";
 
   // Parse features string.
-  ParseSubtargetFeatures(FS, CPU);
-
+  std::string CPUName = CPU;
+  if (CPUName.empty())
+    CPUName = "mico32";
+  ParseSubtargetFeatures(CPUName, FS);
 }

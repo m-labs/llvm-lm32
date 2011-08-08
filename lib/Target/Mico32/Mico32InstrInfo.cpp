@@ -18,15 +18,16 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "Mico32GenInstrInfo.inc"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#define GET_INSTRINFO_CTOR
+#include "Mico32GenInstrInfo.inc"
 
 using namespace llvm;
 
 Mico32InstrInfo::Mico32InstrInfo(Mico32TargetMachine &tm)
-  : TargetInstrInfoImpl(Mico32Insts, array_lengthof(Mico32Insts)),
+  : Mico32GenInstrInfo(Mico32::ADJCALLSTACKDOWN, Mico32::ADJCALLSTACKUP),
     TM(tm), RI(*TM.getSubtargetImpl(), *this) {}
 
 #if 0

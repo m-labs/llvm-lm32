@@ -25,7 +25,6 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -36,16 +35,15 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "Mico32GenRegisterDesc.inc"
+
+#define GET_REGINFO_TARGET_DESC
 #include "Mico32GenRegisterInfo.inc"
 
 using namespace llvm;
 
 Mico32RegisterInfo::
 Mico32RegisterInfo(const Mico32Subtarget &ST, const TargetInstrInfo &tii)
-  : Mico32GenRegisterInfo(Mico32RegDesc, Mico32RegInfoDesc,
-                          Mico32::ADJCALLSTACKDOWN, Mico32::ADJCALLSTACKUP),
-    Subtarget(ST), TII(tii) {}
+  : Mico32GenRegisterInfo(Mico32::RRA), Subtarget(ST), TII(tii) {}
 
 
 //===----------------------------------------------------------------------===//
@@ -262,12 +260,4 @@ unsigned Mico32RegisterInfo::getEHExceptionRegister() const {
 unsigned Mico32RegisterInfo::getEHHandlerRegister() const {
   llvm_unreachable("What is the exception handler register");
   return 0;
-}
-
-int Mico32RegisterInfo::getDwarfRegNum(unsigned RegNo, bool isEH) const {
-  return Mico32GenRegisterInfo::getDwarfRegNumFull(RegNo,0);
-}
-
-int Mico32RegisterInfo::getLLVMRegNum(unsigned DwarfRegNo, bool isEH) const {
-  return Mico32GenRegisterInfo::getLLVMRegNumFull(DwarfRegNo,0);
 }

@@ -1,4 +1,4 @@
-//===-- Mico32MCAsmInfo.cpp - Mico32 asm properties -----------------------===//
+//===-- Mico32MCAsmInfo.cpp - Mico32 asm properties -------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,8 +14,9 @@
 #include "Mico32MCAsmInfo.h"
 using namespace llvm;
 
-Mico32ELFMCAsmInfo::Mico32ELFMCAsmInfo(const Target &T, const StringRef &TT)
+Mico32MCAsmInfo::Mico32MCAsmInfo()
 {
+  IsLittleEndian = false;
 // These are from MBlaze.
   SupportsDebugInformation    = true;
 //  AlignmentIsInBytes          = false;
@@ -59,3 +60,6 @@ This is from the old MonarchTargetAsmInfo.cpp
   WeakRefDirective = "\t.weak\t";
 #endif
 }
+
+
+

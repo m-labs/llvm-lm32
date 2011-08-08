@@ -1,4 +1,4 @@
-//=====-- Mico32MCAsmInfo.h - Mico32 asm properties -----------*- C++ -*--====//
+//====-- Mico32MCAsmInfo.h - Mico32 asm properties -------------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -20,10 +20,11 @@
 namespace llvm {
   class Target;
 
-  class Mico32ELFMCAsmInfo : public MCAsmInfo {
+  class Mico32MCAsmInfo : public MCAsmInfo {
   public:
-    explicit Mico32ELFMCAsmInfo(const Target &T, const StringRef &TT);
+    explicit Mico32MCAsmInfo();
   };
+
 
 } // namespace llvm
 

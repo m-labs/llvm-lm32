@@ -15,6 +15,7 @@
 #ifndef TARGET_MICO32_H
 #define TARGET_MICO32_H
 
+#include "MCTargetDesc/Mico32MCTargetDesc.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
@@ -35,12 +36,5 @@ namespace llvm {
 
   extern Target TheMico32Target;
 } // end namespace llvm;
-
-// Defines symbolic names for Mico32 registers.  This defines a mapping from
-// register name to register number.
-#include "Mico32GenRegisterNames.inc"
-
-// Defines symbolic names for the Mico32 instructions.
-#include "Mico32GenInstrNames.inc"
 
 #endif

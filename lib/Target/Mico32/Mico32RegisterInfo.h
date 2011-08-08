@@ -17,7 +17,10 @@
 
 #include "Mico32.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "Mico32GenRegisterInfo.h.inc"
+
+#define GET_REGINFO_HEADER
+#include "Mico32GenRegisterInfo.inc"
+
 
 namespace llvm {
 class Mico32Subtarget;
@@ -94,9 +97,6 @@ struct Mico32RegisterInfo : public Mico32GenRegisterInfo {
   /// Exception handling queries.
   unsigned getEHExceptionRegister() const;
   unsigned getEHHandlerRegister() const;
-
-  int getDwarfRegNum(unsigned RegNum, bool isEH) const;
-  int getLLVMRegNum(unsigned RegNum, bool isEH) const;
 };
 
 } // end namespace llvm
