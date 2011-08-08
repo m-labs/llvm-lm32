@@ -1,5 +1,4 @@
 
-
 This is the Lattice Mico32 backend.
 
 INSTALLATION
@@ -20,7 +19,7 @@ git clone git://github.com/milkymist/llvm-lm32.git llvm
 (cd $TOPDIR/llvm/tools ; git clone git://github.com/milkymist/clang-lm32.git clang)
 ------------------
 
-Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below. 
+Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below.  (I'm not sure llvm-gcc, --with-llvmgccdir, is really needed - that may only be for Dragonegg, but I haven't tested it.)
 
 Configure with cmake:
 ------------------
