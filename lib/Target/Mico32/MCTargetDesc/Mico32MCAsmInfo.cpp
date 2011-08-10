@@ -21,7 +21,7 @@ Mico32MCAsmInfo::Mico32MCAsmInfo()
   SupportsDebugInformation    = true;
 //  AlignmentIsInBytes          = false;
   AlignmentIsInBytes          = true;
-  PrivateGlobalPrefix         = "$";
+  PrivateGlobalPrefix         = ".L";
   GPRel32Directive            = "\t.gpword\t";
 
 #if 0
