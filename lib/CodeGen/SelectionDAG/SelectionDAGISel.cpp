@@ -463,6 +463,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
     GroupName = "Instruction Selection and Scheduling";
   std::string BlockName;
   int BlockNumber = -1;
+  (void)BlockNumber;
 #ifdef NDEBUG
   if (ViewDAGCombine1 || ViewLegalizeTypesDAGs || ViewLegalizeDAGs ||
       ViewDAGCombine2 || ViewDAGCombineLT || ViewISelDAGs || ViewSchedDAGs ||
@@ -754,6 +755,11 @@ bool SelectionDAGISel::TryToFoldFastISelLoad(const LoadInst *LI,
     TheUser = TheUser->use_back();
   }
   
+  // If we didn't find the fold instruction, then we failed to collapse the
+  // sequence.
+  if (TheUser != FoldInst)
+    return false;
+  
   // Don't try to fold volatile loads.  Target has to deal with alignment
   // constraints.
   if (LI->isVolatile()) return false;
@@ -802,6 +808,7 @@ static bool isFoldedOrDeadInstruction(const Instruction *I,
   return !I->mayWriteToMemory() && // Side-effecting instructions aren't folded.
          !isa<TerminatorInst>(I) && // Terminators aren't folded.
          !isa<DbgInfoIntrinsic>(I) &&  // Debug instructions aren't folded.
+         !isa<LandingPadInst>(I) &&    // Landingpad instructions aren't folded.
          !FuncInfo->isExportedInst(I); // Exported instrs must be computed.
 }
 

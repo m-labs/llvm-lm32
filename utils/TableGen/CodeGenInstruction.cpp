@@ -424,6 +424,13 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
 
   // Handle explicit registers.
   if (ADI && ADI->getDef()->isSubClassOf("Register")) {
+    if (InstOpRec->isSubClassOf("OptionalDefOperand")) {
+      DagInit *DI = InstOpRec->getValueAsDag("MIOperandInfo");
+      // The operand info should only have a single (register) entry. We
+      // want the register class of it.
+      InstOpRec = dynamic_cast<DefInit*>(DI->getArg(0))->getDef();
+    }
+
     if (InstOpRec->isSubClassOf("RegisterOperand"))
       InstOpRec = InstOpRec->getValueAsDef("RegClass");
 
@@ -432,8 +439,8 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
 
     if (!T.getRegisterClass(InstOpRec)
         .contains(T.getRegBank().getReg(ADI->getDef())))
-      throw TGError(Loc, "fixed register " +ADI->getDef()->getName()
-                    + " is not a member of the " + InstOpRec->getName() +
+      throw TGError(Loc, "fixed register " + ADI->getDef()->getName() +
+                    " is not a member of the " + InstOpRec->getName() +
                     " register class!");
 
     if (!Result->getArgName(AliasOpNo).empty())

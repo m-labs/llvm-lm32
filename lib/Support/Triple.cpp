@@ -39,6 +39,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case mblaze:  return "mblaze";
   case ptx32:   return "ptx32";
   case ptx64:   return "ptx64";
+  case le32:    return "le32";
   }
 
   return "<invalid>";
@@ -75,6 +76,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
 
   case ptx32:   return "ptx";
   case ptx64:   return "ptx";
+
+  case le32:    return "le32";
   }
 }
 
@@ -113,6 +116,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case Haiku: return "haiku";
   case Minix: return "minix";
   case RTEMS: return "rtems";
+  case NativeClient: return "nacl";
   }
 
   return "<invalid>";
@@ -175,6 +179,8 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     return ptx32;
   if (Name == "ptx64")
     return ptx64;
+  if (Name == "le32")
+    return le32;
 
   return UnknownArch;
 }
@@ -253,6 +259,8 @@ const char *Triple::getArchNameForAssembler() {
     return "ptx32";
   if (Str == "ptx64")
     return "ptx64";
+  if (Str == "le32")
+    return "le32";
   return NULL;
 }
 
@@ -308,6 +316,8 @@ Triple::ArchType Triple::ParseArch(StringRef ArchName) {
     return ptx32;
   else if (ArchName == "ptx64")
     return ptx64;
+  else if (ArchName == "le32")
+    return le32;
   else
     return UnknownArch;
 }
@@ -362,6 +372,8 @@ Triple::OSType Triple::ParseOS(StringRef OSName) {
     return Minix;
   else if (OSName.startswith("rtems"))
     return RTEMS;
+  else if (OSName.startswith("nacl"))
+    return NativeClient;
   else
     return UnknownOS;
 }

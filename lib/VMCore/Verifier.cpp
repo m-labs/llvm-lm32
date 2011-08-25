@@ -35,6 +35,12 @@
 //  * It is illegal to have a ret instruction that returns a value that does not
 //    agree with the function return value type.
 //  * Function call argument types match the function prototype
+//  * A landing pad is defined by a landingpad instruction, and can be jumped to
+//    only by the unwind edge of an invoke instruction.
+//  * A landingpad instruction must be the first non-PHI instruction in the
+//    block.
+//  * All landingpad instructions must use the same personality function with
+//    the same function.
 //  * All other things that are tested by asserts spread about the code...
 //
 //===----------------------------------------------------------------------===//
@@ -131,18 +137,22 @@ namespace {
     /// already.
     SmallPtrSet<MDNode *, 32> MDNodes;
 
+    /// PersonalityFn - The personality function referenced by the
+    /// LandingPadInsts. All LandingPadInsts within the same function must use
+    /// the same personality function.
+    const Value *PersonalityFn;
+
     Verifier()
-      : FunctionPass(ID), 
-      Broken(false), RealPass(true), action(AbortProcessAction),
-      Mod(0), Context(0), DT(0), MessagesStr(Messages) {
-        initializeVerifierPass(*PassRegistry::getPassRegistry());
-      }
+      : FunctionPass(ID), Broken(false), RealPass(true),
+        action(AbortProcessAction), Mod(0), Context(0), DT(0),
+        MessagesStr(Messages), PersonalityFn(0) {
+      initializeVerifierPass(*PassRegistry::getPassRegistry());
+    }
     explicit Verifier(VerifierFailureAction ctn)
-      : FunctionPass(ID), 
-      Broken(false), RealPass(true), action(ctn), Mod(0), Context(0), DT(0),
-      MessagesStr(Messages) {
-        initializeVerifierPass(*PassRegistry::getPassRegistry());
-      }
+      : FunctionPass(ID), Broken(false), RealPass(true), action(ctn), Mod(0),
+        Context(0), DT(0), MessagesStr(Messages), PersonalityFn(0) {
+      initializeVerifierPass(*PassRegistry::getPassRegistry());
+    }
 
     bool doInitialization(Module &M) {
       Mod = &M;
@@ -165,6 +175,7 @@ namespace {
 
       visit(F);
       InstsInThisBlock.clear();
+      PersonalityFn = 0;
 
       // If this is a real pass, in a pass manager, we must abort before
       // returning back to the pass manager, or else the pass manager may try to
@@ -284,6 +295,7 @@ namespace {
     void visitAllocaInst(AllocaInst &AI);
     void visitExtractValueInst(ExtractValueInst &EVI);
     void visitInsertValueInst(InsertValueInst &IVI);
+    void visitLandingPadInst(LandingPadInst &LPI);
 
     void VerifyCallSite(CallSite CS);
     bool PerformTypeCheck(Intrinsic::ID ID, Function *F, Type *Ty,
@@ -1297,6 +1309,15 @@ void Verifier::visitLoadInst(LoadInst &LI) {
   Type *ElTy = PTy->getElementType();
   Assert2(ElTy == LI.getType(),
           "Load result type does not match pointer operand type!", &LI, ElTy);
+  if (LI.isAtomic()) {
+    Assert1(LI.getOrdering() != Release && LI.getOrdering() != AcquireRelease,
+            "Load cannot have Release ordering", &LI);
+    Assert1(LI.getAlignment() != 0,
+            "Atomic load must specify explicit alignment", &LI);
+  } else {
+    Assert1(LI.getSynchScope() == CrossThread,
+            "Non-atomic load cannot have SynchronizationScope specified", &LI);
+  }
   visitInstruction(LI);
 }
 
@@ -1307,6 +1328,15 @@ void Verifier::visitStoreInst(StoreInst &SI) {
   Assert2(ElTy == SI.getOperand(0)->getType(),
           "Stored value type does not match pointer operand type!",
           &SI, ElTy);
+  if (SI.isAtomic()) {
+    Assert1(SI.getOrdering() != Acquire && SI.getOrdering() != AcquireRelease,
+            "Store cannot have Acquire ordering", &SI);
+    Assert1(SI.getAlignment() != 0,
+            "Atomic store must specify explicit alignment", &SI);
+  } else {
+    Assert1(SI.getSynchScope() == CrossThread,
+            "Non-atomic store cannot have SynchronizationScope specified", &SI);
+  }
   visitInstruction(SI);
 }
 
@@ -1361,7 +1391,7 @@ void Verifier::visitFenceInst(FenceInst &FI) {
   Assert1(Ordering == Acquire || Ordering == Release ||
           Ordering == AcquireRelease || Ordering == SequentiallyConsistent,
           "fence instructions may only have "
-          " acquire, release, acq_rel, or seq_cst ordering.", &FI);
+          "acquire, release, acq_rel, or seq_cst ordering.", &FI);
   visitInstruction(FI);
 }
 
@@ -1381,6 +1411,39 @@ void Verifier::visitInsertValueInst(InsertValueInst &IVI) {
           "Invalid InsertValueInst operands!", &IVI);
   
   visitInstruction(IVI);
+}
+
+void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
+  BasicBlock *BB = LPI.getParent();
+
+  // The landingpad instruction is ill-formed if it doesn't have any clauses and
+  // isn't a cleanup.
+  Assert1(LPI.getNumClauses() > 0 || LPI.isCleanup(),
+          "LandingPadInst needs at least one clause or to be a cleanup.", &LPI);
+
+  // The landingpad instruction defines its parent as a landing pad block. The
+  // landing pad block may be branched to only by the unwind edge of an invoke.
+  for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
+    const InvokeInst *II = dyn_cast<InvokeInst>((*I)->getTerminator());
+    Assert1(II && II->getUnwindDest() == BB,
+            "Block containing LandingPadInst must be jumped to "
+            "only by the unwind edge of an invoke.", &LPI);
+  }
+
+  // The landingpad instruction must be the first non-PHI instruction in the
+  // block.
+  Assert1(LPI.getParent()->getLandingPadInst() == &LPI,
+          "LandingPadInst not the first non-PHI instruction in the block.",
+          &LPI);
+
+  // The personality functions for all landingpad instructions within the same
+  // function should match.
+  if (PersonalityFn)
+    Assert1(LPI.getPersonalityFn() == PersonalityFn,
+            "Personality function doesn't match others in function", &LPI);
+  PersonalityFn = LPI.getPersonalityFn();
+
+  visitInstruction(LPI);
 }
 
 /// verifyInstruction - Verify that an instruction is well formed.

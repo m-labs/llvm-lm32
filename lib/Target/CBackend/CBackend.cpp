@@ -42,7 +42,6 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Target/TargetData.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/CFG.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -50,6 +49,7 @@
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/InstVisitor.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Config/config.h"
 #include <algorithm>
@@ -363,7 +363,7 @@ static std::string CBEMangle(const std::string &S) {
 }
 
 std::string CWriter::getStructName(StructType *ST) {
-  if (!ST->isAnonymous() && !ST->getName().empty())
+  if (!ST->isLiteral() && !ST->getName().empty())
     return CBEMangle("l_"+ST->getName().str());
   
   return "l_unnamed_" + utostr(UnnamedStructIDs[ST]);
@@ -2052,7 +2052,7 @@ void CWriter::printModuleTypes() {
   for (unsigned i = 0, e = StructTypes.size(); i != e; ++i) {
     StructType *ST = StructTypes[i];
 
-    if (ST->isAnonymous() || ST->getName().empty())
+    if (ST->isLiteral() || ST->getName().empty())
       UnnamedStructIDs[ST] = NextTypeID++;
 
     std::string Name = getStructName(ST);

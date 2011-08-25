@@ -2983,8 +2983,8 @@ static SDValue LowerVectorINT_TO_FP(SDValue Op, SelectionDAG &DAG) {
   EVT VT = Op.getValueType();
   DebugLoc dl = Op.getDebugLoc();
 
-  EVT OperandVT = Op.getOperand(0).getValueType();
-  assert(OperandVT == MVT::v4i16 && "Invalid type for custom lowering!");
+  assert(Op.getOperand(0).getValueType() == MVT::v4i16 &&
+         "Invalid type for custom lowering!");
   if (VT != MVT::v4f32)
     return DAG.UnrollVectorOp(Op.getNode());
 
@@ -5291,7 +5291,7 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   }
   case ARM::STRi_preidx:
   case ARM::STRBi_preidx: {
-    unsigned NewOpc = MI->getOpcode() == ARM::STRr_preidx ?
+    unsigned NewOpc = MI->getOpcode() == ARM::STRi_preidx ?
       ARM::STR_PRE_IMM : ARM::STRB_PRE_IMM;
     // Decode the offset.
     unsigned Offset = MI->getOperand(4).getImm();
@@ -5300,20 +5300,28 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     if (isSub)
       Offset = -Offset;
 
+    MachineMemOperand *MMO = *MI->memoperands_begin();
     MachineInstrBuilder MIB = BuildMI(*BB, MI, dl, TII->get(NewOpc))
       .addOperand(MI->getOperand(0))  // Rn_wb
       .addOperand(MI->getOperand(1))  // Rt
       .addOperand(MI->getOperand(2))  // Rn
       .addImm(Offset)                 // offset (skip GPR==zero_reg)
       .addOperand(MI->getOperand(5))  // pred
-      .addOperand(MI->getOperand(6));
+      .addOperand(MI->getOperand(6))
+      .addMemOperand(MMO);
     MI->eraseFromParent();
     return BB;
   }
   case ARM::STRr_preidx:
-  case ARM::STRBr_preidx: {
-    unsigned NewOpc = MI->getOpcode() == ARM::STRr_preidx ?
-      ARM::STR_PRE_REG : ARM::STRB_PRE_REG;
+  case ARM::STRBr_preidx:
+  case ARM::STRH_preidx: {
+    unsigned NewOpc;
+    switch (MI->getOpcode()) {
+    default: llvm_unreachable("unexpected opcode!");
+    case ARM::STRr_preidx: NewOpc = ARM::STR_PRE_REG; break;
+    case ARM::STRBr_preidx: NewOpc = ARM::STRB_PRE_REG; break;
+    case ARM::STRH_preidx: NewOpc = ARM::STRH_PRE; break;
+    }
     MachineInstrBuilder MIB = BuildMI(*BB, MI, dl, TII->get(NewOpc));
     for (unsigned i = 0; i < MI->getNumOperands(); ++i)
       MIB.addOperand(MI->getOperand(i));

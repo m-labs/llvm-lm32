@@ -166,6 +166,88 @@ Value *PHINode::hasConstantValue() const {
   return ConstantValue;
 }
 
+//===----------------------------------------------------------------------===//
+//                       LandingPadInst Implementation
+//===----------------------------------------------------------------------===//
+
+LandingPadInst::LandingPadInst(Type *RetTy, Value *PersonalityFn,
+                               unsigned NumReservedValues, const Twine &NameStr,
+                               Instruction *InsertBefore)
+  : Instruction(RetTy, Instruction::LandingPad, 0, 0, InsertBefore) {
+  init(PersonalityFn, 1 + NumReservedValues, NameStr);
+}
+
+LandingPadInst::LandingPadInst(Type *RetTy, Value *PersonalityFn,
+                               unsigned NumReservedValues, const Twine &NameStr,
+                               BasicBlock *InsertAtEnd)
+  : Instruction(RetTy, Instruction::LandingPad, 0, 0, InsertAtEnd) {
+  init(PersonalityFn, 1 + NumReservedValues, NameStr);
+}
+
+LandingPadInst::LandingPadInst(const LandingPadInst &LP)
+  : Instruction(LP.getType(), Instruction::LandingPad,
+                allocHungoffUses(LP.getNumOperands()), LP.getNumOperands()),
+    ReservedSpace(LP.getNumOperands()) {
+  Use *OL = OperandList, *InOL = LP.OperandList;
+  for (unsigned I = 0, E = ReservedSpace; I != E; ++I)
+    OL[I] = InOL[I];
+
+  setCleanup(LP.isCleanup());
+}
+
+LandingPadInst::~LandingPadInst() {
+  dropHungoffUses();
+}
+
+LandingPadInst *LandingPadInst::Create(Type *RetTy, Value *PersonalityFn,
+                                       unsigned NumReservedClauses,
+                                       const Twine &NameStr,
+                                       Instruction *InsertBefore) {
+  return new LandingPadInst(RetTy, PersonalityFn, NumReservedClauses, NameStr,
+                            InsertBefore);
+}
+
+LandingPadInst *LandingPadInst::Create(Type *RetTy, Value *PersonalityFn,
+                                       unsigned NumReservedClauses,
+                                       const Twine &NameStr,
+                                       BasicBlock *InsertAtEnd) {
+  return new LandingPadInst(RetTy, PersonalityFn, NumReservedClauses, NameStr,
+                            InsertAtEnd);
+}
+
+void LandingPadInst::init(Value *PersFn, unsigned NumReservedValues,
+                          const Twine &NameStr) {
+  ReservedSpace = NumReservedValues;
+  NumOperands = 1;
+  OperandList = allocHungoffUses(ReservedSpace);
+  OperandList[0] = PersFn;
+  setName(NameStr);
+  setCleanup(false);
+}
+
+/// growOperands - grow operands - This grows the operand list in response to a
+/// push_back style of operation. This grows the number of ops by 2 times.
+void LandingPadInst::growOperands(unsigned Size) {
+  unsigned e = getNumOperands();
+  if (ReservedSpace >= e + Size) return;
+  ReservedSpace = (e + Size / 2) * 2;
+
+  Use *NewOps = allocHungoffUses(ReservedSpace);
+  Use *OldOps = OperandList;
+  for (unsigned i = 0; i != e; ++i)
+      NewOps[i] = OldOps[i];
+
+  OperandList = NewOps;
+  Use::zap(OldOps, OldOps + e, true);
+}
+
+void LandingPadInst::addClause(Value *Val) {
+  unsigned OpNo = getNumOperands();
+  growOperands(1);
+  assert(OpNo < ReservedSpace && "Growing didn't work!");
+  ++NumOperands;
+  OperandList[OpNo] = Val;
+}
 
 //===----------------------------------------------------------------------===//
 //                        CallInst Implementation
@@ -494,6 +576,9 @@ void InvokeInst::removeAttribute(unsigned i, Attributes attr) {
   setAttributes(PAL);
 }
 
+LandingPadInst *InvokeInst::getLandingPadInst() const {
+  return cast<LandingPadInst>(getUnwindDest()->getFirstNonPHI());
+}
 
 //===----------------------------------------------------------------------===//
 //                        ReturnInst Implementation
@@ -822,6 +907,8 @@ bool AllocaInst::isStaticAlloca() const {
 void LoadInst::AssertOK() {
   assert(getOperand(0)->getType()->isPointerTy() &&
          "Ptr must have pointer type.");
+  assert(!(isAtomic() && getAlignment() == 0) &&
+         "Alignment required for atomic load");
 }
 
 LoadInst::LoadInst(Value *Ptr, const Twine &Name, Instruction *InsertBef)
@@ -829,6 +916,7 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, Instruction *InsertBef)
                      Load, Ptr, InsertBef) {
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   setName(Name);
 }
@@ -838,6 +926,7 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, BasicBlock *InsertAE)
                      Load, Ptr, InsertAE) {
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   setName(Name);
 }
@@ -848,6 +937,18 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                      Load, Ptr, InsertBef) {
   setVolatile(isVolatile);
   setAlignment(0);
+  setAtomic(NotAtomic);
+  AssertOK();
+  setName(Name);
+}
+
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
+                   BasicBlock *InsertAE)
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertAE) {
+  setVolatile(isVolatile);
+  setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   setName(Name);
 }
@@ -858,6 +959,7 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                      Load, Ptr, InsertBef) {
   setVolatile(isVolatile);
   setAlignment(Align);
+  setAtomic(NotAtomic);
   AssertOK();
   setName(Name);
 }
@@ -868,27 +970,43 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                      Load, Ptr, InsertAE) {
   setVolatile(isVolatile);
   setAlignment(Align);
+  setAtomic(NotAtomic);
   AssertOK();
   setName(Name);
 }
 
-LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile, 
+                   unsigned Align, AtomicOrdering Order,
+                   SynchronizationScope SynchScope,
+                   Instruction *InsertBef)
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertBef) {
+  setVolatile(isVolatile);
+  setAlignment(Align);
+  setAtomic(Order, SynchScope);
+  AssertOK();
+  setName(Name);
+}
+
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile, 
+                   unsigned Align, AtomicOrdering Order,
+                   SynchronizationScope SynchScope,
                    BasicBlock *InsertAE)
   : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
                      Load, Ptr, InsertAE) {
   setVolatile(isVolatile);
-  setAlignment(0);
+  setAlignment(Align);
+  setAtomic(Order, SynchScope);
   AssertOK();
   setName(Name);
 }
-
-
 
 LoadInst::LoadInst(Value *Ptr, const char *Name, Instruction *InsertBef)
   : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
                      Load, Ptr, InsertBef) {
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -898,6 +1016,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, BasicBlock *InsertAE)
                      Load, Ptr, InsertAE) {
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -908,6 +1027,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, bool isVolatile,
                    Load, Ptr, InsertBef) {
   setVolatile(isVolatile);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -918,6 +1038,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, bool isVolatile,
                      Load, Ptr, InsertAE) {
   setVolatile(isVolatile);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -926,7 +1047,7 @@ void LoadInst::setAlignment(unsigned Align) {
   assert((Align & (Align-1)) == 0 && "Alignment is not a power of 2!");
   assert(Align <= MaximumAlignment &&
          "Alignment is greater than MaximumAlignment!");
-  setInstructionSubclassData((getSubclassDataFromInstruction() & 1) |
+  setInstructionSubclassData((getSubclassDataFromInstruction() & ~(31 << 1)) |
                              ((Log2_32(Align)+1)<<1));
   assert(getAlignment() == Align && "Alignment representation error!");
 }
@@ -942,6 +1063,8 @@ void StoreInst::AssertOK() {
   assert(getOperand(0)->getType() ==
                  cast<PointerType>(getOperand(1)->getType())->getElementType()
          && "Ptr must be a pointer to Val type!");
+  assert(!(isAtomic() && getAlignment() == 0) &&
+         "Alignment required for atomic load");
 }
 
 
@@ -954,6 +1077,7 @@ StoreInst::StoreInst(Value *val, Value *addr, Instruction *InsertBefore)
   Op<1>() = addr;
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
 }
 
@@ -966,6 +1090,7 @@ StoreInst::StoreInst(Value *val, Value *addr, BasicBlock *InsertAtEnd)
   Op<1>() = addr;
   setVolatile(false);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
 }
 
@@ -979,6 +1104,7 @@ StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
   Op<1>() = addr;
   setVolatile(isVolatile);
   setAlignment(0);
+  setAtomic(NotAtomic);
   AssertOK();
 }
 
@@ -992,19 +1118,23 @@ StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
   Op<1>() = addr;
   setVolatile(isVolatile);
   setAlignment(Align);
+  setAtomic(NotAtomic);
   AssertOK();
 }
 
 StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
-                     unsigned Align, BasicBlock *InsertAtEnd)
+                     unsigned Align, AtomicOrdering Order,
+                     SynchronizationScope SynchScope,
+                     Instruction *InsertBefore)
   : Instruction(Type::getVoidTy(val->getContext()), Store,
                 OperandTraits<StoreInst>::op_begin(this),
                 OperandTraits<StoreInst>::operands(this),
-                InsertAtEnd) {
+                InsertBefore) {
   Op<0>() = val;
   Op<1>() = addr;
   setVolatile(isVolatile);
   setAlignment(Align);
+  setAtomic(Order, SynchScope);
   AssertOK();
 }
 
@@ -1018,6 +1148,37 @@ StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
   Op<1>() = addr;
   setVolatile(isVolatile);
   setAlignment(0);
+  setAtomic(NotAtomic);
+  AssertOK();
+}
+
+StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
+                     unsigned Align, BasicBlock *InsertAtEnd)
+  : Instruction(Type::getVoidTy(val->getContext()), Store,
+                OperandTraits<StoreInst>::op_begin(this),
+                OperandTraits<StoreInst>::operands(this),
+                InsertAtEnd) {
+  Op<0>() = val;
+  Op<1>() = addr;
+  setVolatile(isVolatile);
+  setAlignment(Align);
+  setAtomic(NotAtomic);
+  AssertOK();
+}
+
+StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
+                     unsigned Align, AtomicOrdering Order,
+                     SynchronizationScope SynchScope,
+                     BasicBlock *InsertAtEnd)
+  : Instruction(Type::getVoidTy(val->getContext()), Store,
+                OperandTraits<StoreInst>::op_begin(this),
+                OperandTraits<StoreInst>::operands(this),
+                InsertAtEnd) {
+  Op<0>() = val;
+  Op<1>() = addr;
+  setVolatile(isVolatile);
+  setAlignment(Align);
+  setAtomic(Order, SynchScope);
   AssertOK();
 }
 
@@ -1025,7 +1186,7 @@ void StoreInst::setAlignment(unsigned Align) {
   assert((Align & (Align-1)) == 0 && "Alignment is not a power of 2!");
   assert(Align <= MaximumAlignment &&
          "Alignment is greater than MaximumAlignment!");
-  setInstructionSubclassData((getSubclassDataFromInstruction() & 1) |
+  setInstructionSubclassData((getSubclassDataFromInstruction() & ~(31 << 1)) |
                              ((Log2_32(Align)+1) << 1));
   assert(getAlignment() == Align && "Alignment representation error!");
 }
@@ -3158,14 +3319,14 @@ AllocaInst *AllocaInst::clone_impl() const {
 }
 
 LoadInst *LoadInst::clone_impl() const {
-  return new LoadInst(getOperand(0),
-                      Twine(), isVolatile(),
-                      getAlignment());
+  return new LoadInst(getOperand(0), Twine(), isVolatile(),
+                      getAlignment(), getOrdering(), getSynchScope());
 }
 
 StoreInst *StoreInst::clone_impl() const {
-  return new StoreInst(getOperand(0), getOperand(1),
-                       isVolatile(), getAlignment());
+  return new StoreInst(getOperand(0), getOperand(1), isVolatile(),
+                       getAlignment(), getOrdering(), getSynchScope());
+  
 }
 
 AtomicCmpXchgInst *AtomicCmpXchgInst::clone_impl() const {
@@ -3266,6 +3427,10 @@ ShuffleVectorInst *ShuffleVectorInst::clone_impl() const {
 
 PHINode *PHINode::clone_impl() const {
   return new PHINode(*this);
+}
+
+LandingPadInst *LandingPadInst::clone_impl() const {
+  return new LandingPadInst(*this);
 }
 
 ReturnInst *ReturnInst::clone_impl() const {

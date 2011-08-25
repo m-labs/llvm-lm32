@@ -25,6 +25,16 @@ using namespace llvm;
 #define GET_INSTRUCTION_NAME
 #include "ARMGenAsmWriter.inc"
 
+/// translateShiftImm - Convert shift immediate from 0-31 to 1-32 for printing.
+///
+/// getSORegOffset returns an integer from 0-31, but '0' should actually be printed
+/// 32 as the immediate shouldbe within the range 1-32.
+static unsigned translateShiftImm(unsigned imm) {
+  if (imm == 0)
+    return 32;
+  return imm;
+}
+
 StringRef ARMInstPrinter::getOpcodeName(unsigned Opcode) const {
   return getInstructionName(Opcode);
 }
@@ -72,7 +82,7 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
     if (ARM_AM::getSORegShOp(MO2.getImm()) == ARM_AM::rrx)
       return;
 
-    O << ", #" << ARM_AM::getSORegOffset(MO2.getImm());
+    O << ", #" << translateShiftImm(ARM_AM::getSORegOffset(MO2.getImm()));
     return;
   }
 
@@ -88,6 +98,13 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
     printRegisterList(MI, 4, O);
     return;
   }
+  if (Opcode == ARM::STR_PRE_IMM && MI->getOperand(2).getReg() == ARM::SP &&
+      MI->getOperand(3).getImm() == -4) {
+    O << '\t' << "push";
+    printPredicateOperand(MI, 4, O);
+    O << "\t{" << getRegisterName(MI->getOperand(1).getReg()) << "}";
+    return;
+  }
 
   // A8.6.122 POP
   if ((Opcode == ARM::LDMIA_UPD || Opcode == ARM::t2LDMIA_UPD) &&
@@ -100,6 +117,14 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
     printRegisterList(MI, 4, O);
     return;
   }
+  if (Opcode == ARM::LDR_POST_IMM && MI->getOperand(2).getReg() == ARM::SP &&
+      MI->getOperand(4).getImm() == 4) {
+    O << '\t' << "pop";
+    printPredicateOperand(MI, 5, O);
+    O << "\t{" << getRegisterName(MI->getOperand(0).getReg()) << "}";
+    return;
+  }
+
 
   // A8.6.355 VPUSH
   if ((Opcode == ARM::VSTMSDB_UPD || Opcode == ARM::VSTMDDB_UPD) &&
@@ -121,7 +146,7 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
     return;
   }
 
-  if (Opcode == ARM::tLDMIA || Opcode == ARM::tSTMIA) {
+  if (Opcode == ARM::tLDMIA) {
     bool Writeback = true;
     unsigned BaseReg = MI->getOperand(0).getReg();
     for (unsigned i = 3; i < MI->getNumOperands(); ++i) {
@@ -129,18 +154,21 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
         Writeback = false;
     }
 
-    if (Opcode == ARM::tLDMIA)
-      O << "\tldmia";
-    else if (Opcode == ARM::tSTMIA)
-      O << "\tstmia";
-    else
-      llvm_unreachable("Unknown opcode!");
+    O << "\tldm";
 
     printPredicateOperand(MI, 1, O);
     O << '\t' << getRegisterName(BaseReg);
     if (Writeback) O << "!";
     O << ", ";
     printRegisterList(MI, 3, O);
+    return;
+  }
+
+  // Thumb1 NOP
+  if (Opcode == ARM::tMOVr && MI->getOperand(0).getReg() == ARM::R8 &&
+      MI->getOperand(1).getReg() == ARM::R8) {
+    O << "\tnop";
+    printPredicateOperand(MI, 2, O);
     return;
   }
 
@@ -196,7 +224,7 @@ void ARMInstPrinter::printSORegImmOperand(const MCInst *MI, unsigned OpNum,
   O << ", " << ARM_AM::getShiftOpcStr(ShOpc);
   if (ShOpc == ARM_AM::rrx)
     return;
-  O << " #" << ARM_AM::getSORegOffset(MO2.getImm());
+  O << " #" << translateShiftImm(ARM_AM::getSORegOffset(MO2.getImm()));
 }
 
 
@@ -614,7 +642,13 @@ void ARMInstPrinter::printPCLabel(const MCInst *MI, unsigned OpNum,
 
 void ARMInstPrinter::printThumbS4ImmOperand(const MCInst *MI, unsigned OpNum,
                                             raw_ostream &O) {
-  O << "#" <<  MI->getOperand(OpNum).getImm() * 4;
+  O << "#" << MI->getOperand(OpNum).getImm() * 4;
+}
+
+void ARMInstPrinter::printThumbSRImm(const MCInst *MI, unsigned OpNum,
+                                     raw_ostream &O) {
+  unsigned Imm = MI->getOperand(OpNum).getImm();
+  O << "#" << (Imm == 0 ? 32 : Imm);
 }
 
 void ARMInstPrinter::printThumbITMask(const MCInst *MI, unsigned OpNum,
@@ -707,7 +741,7 @@ void ARMInstPrinter::printT2SOOperand(const MCInst *MI, unsigned OpNum,
   ARM_AM::ShiftOpc ShOpc = ARM_AM::getSORegShOp(MO2.getImm());
   O << ", " << ARM_AM::getShiftOpcStr(ShOpc);
   if (ShOpc != ARM_AM::rrx)
-    O << " #" << ARM_AM::getSORegOffset(MO2.getImm());
+    O << " #" << translateShiftImm(ARM_AM::getSORegOffset(MO2.getImm()));
 }
 
 void ARMInstPrinter::printAddrModeImm12Operand(const MCInst *MI, unsigned OpNum,
@@ -869,8 +903,8 @@ void ARMInstPrinter::printRotImmOperand(const MCInst *MI, unsigned OpNum,
   O << ", ror #";
   switch (Imm) {
   default: assert (0 && "illegal ror immediate!");
-  case 1: O << "8\n"; break;
-  case 2: O << "16\n"; break;
-  case 3: O << "24\n"; break;
+  case 1: O << "8"; break;
+  case 2: O << "16"; break;
+  case 3: O << "24"; break;
   }
 }

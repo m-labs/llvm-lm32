@@ -64,6 +64,7 @@ public:
     mblaze,  // MBlaze: mblaze
     ptx32,   // PTX: ptx (32-bit)
     ptx64,   // PTX: ptx (64-bit)
+    le32,    // le32: generic little-endian 32-bit CPU (PNaCl / Emscripten)
 
     InvalidArch
   };
@@ -95,7 +96,8 @@ public:
     Win32,
     Haiku,
     Minix,
-    RTEMS
+    RTEMS,
+    NativeClient
   };
   enum EnvironmentType {
     UnknownEnvironment,

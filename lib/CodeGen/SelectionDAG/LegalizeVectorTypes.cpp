@@ -44,7 +44,8 @@ void DAGTypeLegalizer::ScalarizeVectorResult(SDNode *N, unsigned ResNo) {
     N->dump(&DAG);
     dbgs() << "\n";
 #endif
-    llvm_unreachable("Do not know how to scalarize the result of this operator!");
+    report_fatal_error("Do not know how to scalarize the result of this "
+                       "operator!\n");
 
   case ISD::BITCAST:           R = ScalarizeVecRes_BITCAST(N); break;
   case ISD::BUILD_VECTOR:      R = N->getOperand(0); break;
@@ -1969,6 +1970,7 @@ SDValue DAGTypeLegalizer::WidenVecRes_VSETCC(SDNode *N) {
   assert(InOp1.getValueType() == WidenInVT &&
          InOp2.getValueType() == WidenInVT &&
          "Input not widened to expected type!");
+  (void)WidenInVT;
   return DAG.getNode(ISD::VSETCC, N->getDebugLoc(),
                      WidenVT, InOp1, InOp2, N->getOperand(2));
 }

@@ -20,7 +20,6 @@
 #include "RenderMachineFunction.h"
 #include "Spiller.h"
 #include "VirtRegMap.h"
-#include "RegisterCoalescer.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -160,7 +159,7 @@ void RABasic::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addPreserved<LiveDebugVariables>();
   if (StrongPHIElim)
     AU.addRequiredID(StrongPHIEliminationID);
-  AU.addRequiredTransitive<RegisterCoalescer>();
+  AU.addRequiredTransitiveID(RegisterCoalescerPassID);
   AU.addRequired<CalculateSpillWeights>();
   AU.addRequired<LiveStacks>();
   AU.addPreserved<LiveStacks>();
@@ -499,8 +498,9 @@ unsigned RABasic::selectOrSplit(LiveInterval &VirtReg,
       // Found an available register.
       return PhysReg;
     }
+    Queries[interfReg].collectInterferingVRegs(1);
     LiveInterval *interferingVirtReg =
-      Queries[interfReg].firstInterference().liveUnionPos().value();
+      Queries[interfReg].interferingVRegs().front();
 
     // The current VirtReg must either be spillable, or one of its interferences
     // must have less spill weight.

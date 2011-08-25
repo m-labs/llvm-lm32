@@ -22,6 +22,7 @@
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/Support/CommandLine.h"
@@ -35,10 +36,10 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetSelect.h"
 #include <algorithm>
 #include <cstring>
 using namespace llvm;
@@ -165,6 +166,8 @@ static void DisassembleInput(const StringRef &Filename) {
     return;
   }
   const MCInstrInfo *InstrInfo = TheTarget->createMCInstrInfo();
+  OwningPtr<MCInstrAnalysis>
+    InstrAnalysis(TheTarget->createMCInstrAnalysis(InstrInfo));
 
   outs() << '\n';
   outs() << Filename
@@ -248,27 +251,74 @@ static void DisassembleInput(const StringRef &Filename) {
         raw_ostream &DebugOut = nulls();
 #endif
 
-      for (Index = Start; Index < End; Index += Size) {
-        MCInst Inst;
-        if (DisAsm->getInstruction(Inst, Size, memoryObject, Index, DebugOut)) {
-          uint64_t addr;
-          if (error(i->getAddress(addr))) break;
-          outs() << format("%8x:\t", addr + Index);
-          DumpBytes(StringRef(Bytes.data() + Index, Size));
-          IP->printInst(&Inst, outs());
-          outs() << "\n";
-        } else {
-          errs() << ToolName << ": warning: invalid instruction encoding\n";
-          if (Size == 0)
-            Size = 1; // skip illegible bytes
+      if (!CFG) {
+        for (Index = Start; Index < End; Index += Size) {
+          MCInst Inst;
+          if (DisAsm->getInstruction(Inst, Size, memoryObject, Index,
+                                     DebugOut)) {
+            uint64_t addr;
+            if (error(i->getAddress(addr))) break;
+            outs() << format("%8x:\t", addr + Index);
+            DumpBytes(StringRef(Bytes.data() + Index, Size));
+            IP->printInst(&Inst, outs());
+            outs() << "\n";
+          } else {
+            errs() << ToolName << ": warning: invalid instruction encoding\n";
+            if (Size == 0)
+              Size = 1; // skip illegible bytes
+          }
         }
-      }
 
-      if (CFG) {
+      } else {
+        // Create CFG and use it for disassembly.
         MCFunction f =
           MCFunction::createFunctionFromMC(Symbols[si].second, DisAsm.get(),
-                                           memoryObject, Start, End, InstrInfo,
-                                           DebugOut);
+                                           memoryObject, Start, End,
+                                           InstrAnalysis.get(), DebugOut);
+
+        for (MCFunction::iterator fi = f.begin(), fe = f.end(); fi != fe; ++fi){
+          bool hasPreds = false;
+          // Only print blocks that have predecessors.
+          // FIXME: Slow.
+          for (MCFunction::iterator pi = f.begin(), pe = f.end(); pi != pe;
+              ++pi)
+            if (pi->second.contains(&fi->second)) {
+              hasPreds = true;
+              break;
+            }
+
+          // Data block.
+          if (!hasPreds && fi != f.begin()) {
+            uint64_t End = llvm::next(fi) == fe ? SectSize :
+                                                  llvm::next(fi)->first;
+            uint64_t addr;
+            if (error(i->getAddress(addr))) break;
+            outs() << "# " << End-fi->first << " bytes of data:\n";
+            for (unsigned pos = fi->first; pos != End; ++pos) {
+              outs() << format("%8x:\t", addr + pos);
+              DumpBytes(StringRef(Bytes.data() + pos, 1));
+              outs() << format("\t.byte 0x%02x\n", (uint8_t)Bytes[pos]);
+            }
+            continue;
+          }
+
+          if (fi->second.contains(&fi->second))
+            outs() << "# Loop begin:\n";
+
+          for (unsigned ii = 0, ie = fi->second.getInsts().size(); ii != ie;
+               ++ii) {
+            uint64_t addr;
+            if (error(i->getAddress(addr))) break;
+            const MCDecodedInst &Inst = fi->second.getInsts()[ii];
+            outs() << format("%8x:\t", addr + Inst.Address);
+            DumpBytes(StringRef(Bytes.data() + Inst.Address, Inst.Size));
+            // Simple loops.
+            if (fi->second.contains(&fi->second))
+              outs() << '\t';
+            IP->printInst(&Inst.Inst, outs());
+            outs() << '\n';
+          }
+        }
 
         // Start a new dot file.
         std::string Error;

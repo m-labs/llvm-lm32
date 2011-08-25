@@ -506,6 +506,11 @@ public:
 
   /// getAsString - Convert this value to a string form.
   virtual std::string getAsString() const = 0;
+  /// getAsUnquotedString - Convert this value to a string form,
+  /// without adding quote markers.  This primaruly affects
+  /// StringInits where we will not surround the string value with
+  /// quotes.
+  virtual std::string getAsUnquotedString() const { return getAsString(); }  
 
   /// dump - Debugging method that may be called through a debugger, just
   /// invokes print on stderr.
@@ -757,6 +762,7 @@ public:
   }
 
   virtual std::string getAsString() const { return "\"" + Value + "\""; }
+  virtual std::string getAsUnquotedString() const { return Value; }
 
   /// resolveBitReference - This method is used to implement
   /// VarBitInit::resolveReferences.  If the bit is able to be resolved, we
@@ -1367,7 +1373,7 @@ class Record {
 
   // Unique record ID.
   unsigned ID;
-  std::string Name;
+  Init *Name;
   SMLoc Loc;
   std::vector<std::string> TemplateArgs;
   std::vector<RecordVal> Values;
@@ -1378,11 +1384,13 @@ class Record {
 
   DefInit *TheInit;
 
+  void checkName();
+
 public:
 
   // Constructs a record.
   explicit Record(const std::string &N, SMLoc loc, RecordKeeper &records) :
-    ID(LastID++), Name(N), Loc(loc), TrackedRecords(records), TheInit(0) {}
+    ID(LastID++), Name(StringInit::get(N)), Loc(loc), TrackedRecords(records), TheInit(0) {}
   ~Record() {}
 
 
@@ -1391,7 +1399,8 @@ public:
 
   unsigned getID() const { return ID; }
 
-  const std::string &getName() const { return Name; }
+  const std::string &getName() const;
+  void setName(Init *Name);               // Also updates RecordKeeper.
   void setName(const std::string &Name);  // Also updates RecordKeeper.
 
   SMLoc getLoc() const { return Loc; }

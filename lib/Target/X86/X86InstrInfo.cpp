@@ -397,8 +397,6 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::Int_CVTSI2SS64rr,X86::Int_CVTSI2SS64rm, 0 },
     { X86::Int_CVTSI2SSrr,  X86::Int_CVTSI2SSrm, 0 },
     { X86::Int_CVTSS2SDrr,  X86::Int_CVTSS2SDrm, 0 },
-    { X86::Int_CVTSS2SI64rr,X86::Int_CVTSS2SI64rm, 0 },
-    { X86::Int_CVTSS2SIrr,  X86::Int_CVTSS2SIrm, 0 },
     { X86::CVTTPD2DQrr,     X86::CVTTPD2DQrm, 16 },
     { X86::CVTTPS2DQrr,     X86::CVTTPS2DQrm, 16 },
     { X86::Int_CVTTSD2SI64rr,X86::Int_CVTTSD2SI64rm, 0 },
@@ -856,24 +854,6 @@ unsigned X86InstrInfo::isLoadFromStackSlotPostFE(const MachineInstr *MI,
   return 0;
 }
 
-bool X86InstrInfo::hasLoadFromStackSlot(const MachineInstr *MI,
-                                        const MachineMemOperand *&MMO,
-                                        int &FrameIndex) const {
-  for (MachineInstr::mmo_iterator o = MI->memoperands_begin(),
-         oe = MI->memoperands_end();
-       o != oe;
-       ++o) {
-    if ((*o)->isLoad() && (*o)->getValue())
-      if (const FixedStackPseudoSourceValue *Value =
-          dyn_cast<const FixedStackPseudoSourceValue>((*o)->getValue())) {
-        FrameIndex = Value->getFrameIndex();
-        MMO = *o;
-        return true;
-      }
-  }
-  return false;
-}
-
 unsigned X86InstrInfo::isStoreToStackSlot(const MachineInstr *MI,
                                           int &FrameIndex) const {
   if (isFrameStoreOpcode(MI->getOpcode()))
@@ -894,24 +874,6 @@ unsigned X86InstrInfo::isStoreToStackSlotPostFE(const MachineInstr *MI,
     return hasStoreToStackSlot(MI, Dummy, FrameIndex);
   }
   return 0;
-}
-
-bool X86InstrInfo::hasStoreToStackSlot(const MachineInstr *MI,
-                                       const MachineMemOperand *&MMO,
-                                       int &FrameIndex) const {
-  for (MachineInstr::mmo_iterator o = MI->memoperands_begin(),
-         oe = MI->memoperands_end();
-       o != oe;
-       ++o) {
-    if ((*o)->isStore() && (*o)->getValue())
-      if (const FixedStackPseudoSourceValue *Value =
-          dyn_cast<const FixedStackPseudoSourceValue>((*o)->getValue())) {
-        FrameIndex = Value->getFrameIndex();
-        MMO = *o;
-        return true;
-      }
-  }
-  return false;
 }
 
 /// regIsPICBase - Return true if register is PIC base (i.e.g defined by

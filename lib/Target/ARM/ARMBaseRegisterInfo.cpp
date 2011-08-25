@@ -1098,11 +1098,11 @@ materializeFrameBaseRegister(MachineBasicBlock *MBB,
   MachineRegisterInfo &MRI = MBB->getParent()->getRegInfo();
   MRI.constrainRegClass(BaseReg, TII.getRegClass(MCID, 0, this));
 
-  MachineInstrBuilder MIB = BuildMI(*MBB, Ins, DL, MCID, BaseReg)
-    .addFrameIndex(FrameIdx).addImm(Offset);
+  MachineInstrBuilder MIB = AddDefaultPred(BuildMI(*MBB, Ins, DL, MCID, BaseReg)
+    .addFrameIndex(FrameIdx).addImm(Offset));
 
   if (!AFI->isThumb1OnlyFunction())
-    AddDefaultCC(AddDefaultPred(MIB));
+    AddDefaultCC(MIB);
 }
 
 void
@@ -1130,6 +1130,7 @@ ARMBaseRegisterInfo::resolveFrameIndex(MachineBasicBlock::iterator I,
     Done = rewriteT2FrameIndex(MI, i, BaseReg, Off, TII);
   }
   assert (Done && "Unable to resolve frame index!");
+  (void)Done;
 }
 
 bool ARMBaseRegisterInfo::isFrameOffsetLegal(const MachineInstr *MI,

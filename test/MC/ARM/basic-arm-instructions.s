@@ -664,9 +664,6 @@ Lforward:
 @ CHECK: ldmda r2!, {r1, r3, r4, r5, r6, sp} @ encoding: [0x7a,0x20,0x32,0xe8]
 @ CHECK: ldmdb r2!, {r1, r3, r4, r5, r6, sp} @ encoding: [0x7a,0x20,0x32,0xe9]
 
-@------------------------------------------------------------------------------
-@ FIXME: LDR*
-@------------------------------------------------------------------------------
 
 @------------------------------------------------------------------------------
 @ LDREX/LDREXB/LDREXH/LDREXD
@@ -1064,8 +1061,7 @@ Lforward:
         pop {r7}
         pop {r7, r8, r9, r10}
 
-@ FIXME: pop of a single register should encode as "ldr r7, [sp], #4"
-@ CHECK-FIXME: pop	{r7}                    @ encoding: [0x04,0x70,0x9d,0xe4]
+@ CHECK: pop	{r7}                    @ encoding: [0x04,0x70,0x9d,0xe4]
 @ CHECK: pop	{r7, r8, r9, r10}       @ encoding: [0x80,0x07,0xbd,0xe8]
 
 
@@ -1075,8 +1071,7 @@ Lforward:
         push {r7}
         push {r7, r8, r9, r10}
 
-@ FIXME: push of a single register should encode as "str r7, [sp, #-4]!"
-@ CHECK-FIXME: push	{r7}                    @ encoding: [0x04,0x70,0x2d,0xe5]
+@ CHECK: push	{r7}                    @ encoding: [0x04,0x70,0x2d,0xe5]
 @ CHECK: push	{r7, r8, r9, r10}       @ encoding: [0x80,0x07,0x2d,0xe9]
 
 
@@ -1860,9 +1855,6 @@ Lforward:
 
 
 @------------------------------------------------------------------------------
-@ FIXME:STR*
-@------------------------------------------------------------------------------
-@------------------------------------------------------------------------------
 @ STREX/STREXB/STREXH/STREXD
 @------------------------------------------------------------------------------
         strexb  r1, r3, [r4]
@@ -2205,8 +2197,8 @@ Lforward:
         umaal r3, r4, r5, r6
         umaallt r3, r4, r5, r6
 
-@ CHECK: umaal	r3, r4, r5, r6          @ encoding: [0x95,0x46,0x43,0xe0]
-@ CHECK: umaallt	r3, r4, r5, r6  @ encoding: [0x95,0x46,0x43,0xb0]
+@ CHECK: umaal	r3, r4, r5, r6          @ encoding: [0x95,0x36,0x44,0xe0]
+@ CHECK: umaallt	r3, r4, r5, r6          @ encoding: [0x95,0x36,0x44,0xb0]
 
 
 @------------------------------------------------------------------------------
@@ -2322,8 +2314,8 @@ Lforward:
         usat16	r2, #2, r7
         usat16	r3, #15, r5
 
-@ CHECK: usat16	r2, #2, r7              @ encoding: [0x32,0x2f,0xe2,0xe6]
-@ CHECK: usat16	r3, #15, r5             @ encoding: [0x33,0x3f,0xef,0xe6]
+@ CHECK: usat16	r2, #2, r7              @ encoding: [0x37,0x2f,0xe2,0xe6]
+@ CHECK: usat16	r3, #15, r5             @ encoding: [0x35,0x3f,0xef,0xe6]
 
 
 @------------------------------------------------------------------------------

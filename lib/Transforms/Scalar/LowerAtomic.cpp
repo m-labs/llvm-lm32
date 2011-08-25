@@ -115,7 +115,7 @@ static bool LowerAtomicIntrinsic(IntrinsicInst *II) {
   return true;
 }
 
-bool LowerAtomicCmpXchgInst(AtomicCmpXchgInst *CXI) {
+static bool LowerAtomicCmpXchgInst(AtomicCmpXchgInst *CXI) {
   IRBuilder<> Builder(CXI->getParent(), CXI);
   Value *Ptr = CXI->getPointerOperand();
   Value *Cmp = CXI->getCompareOperand();
@@ -131,7 +131,7 @@ bool LowerAtomicCmpXchgInst(AtomicCmpXchgInst *CXI) {
   return true;
 }
 
-bool LowerAtomicRMWInst(AtomicRMWInst *RMWI) {
+static bool LowerAtomicRMWInst(AtomicRMWInst *RMWI) {
   IRBuilder<> Builder(RMWI->getParent(), RMWI);
   Value *Ptr = RMWI->getPointerOperand();
   Value *Val = RMWI->getValOperand();
@@ -190,6 +190,16 @@ static bool LowerFenceInst(FenceInst *FI) {
   return true;
 }
 
+static bool LowerLoadInst(LoadInst *LI) {
+  LI->setAtomic(NotAtomic);
+  return true;
+}
+
+static bool LowerStoreInst(StoreInst *SI) {
+  SI->setAtomic(NotAtomic);
+  return true;
+}
+
 namespace {
   struct LowerAtomic : public BasicBlockPass {
     static char ID;
@@ -208,6 +218,13 @@ namespace {
           Changed |= LowerAtomicCmpXchgInst(CXI);
         else if (AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(Inst))
           Changed |= LowerAtomicRMWInst(RMWI);
+        else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+          if (LI->isAtomic())
+            LowerLoadInst(LI);
+        } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+          if (SI->isAtomic())
+            LowerStoreInst(SI);
+        }
       }
       return Changed;
     }

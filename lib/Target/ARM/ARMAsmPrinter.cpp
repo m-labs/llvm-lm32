@@ -45,13 +45,13 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cctype>
 using namespace llvm;
@@ -100,13 +100,41 @@ namespace {
   };
 
   class ObjectAttributeEmitter : public AttributeEmitter {
+    // This structure holds all attributes, accounting for
+    // their string/numeric value, so we can later emmit them
+    // in declaration order, keeping all in the same vector
+    struct AttributeItemType {
+      enum {
+        HiddenAttribute = 0,
+        NumericAttribute,
+        TextAttribute
+      } Type;
+      unsigned Tag;
+      unsigned IntValue;
+      StringRef StringValue;
+    } AttributeItem;
+
     MCObjectStreamer &Streamer;
     StringRef CurrentVendor;
-    SmallString<64> Contents;
+    SmallVector<AttributeItemType, 64> Contents;
+
+    // Account for the ULEB/String size of each item,
+    // not just the number of items
+    size_t ContentsSize;
+    // FIXME: this should be in a more generic place, but
+    // getULEBSize() is in MCAsmInfo and will be moved to MCDwarf
+    size_t getULEBSize(int Value) {
+      size_t Size = 0;
+      do {
+        Value >>= 7;
+        Size += sizeof(int8_t); // Is this really necessary?
+      } while (Value);
+      return Size;
+    }
 
   public:
     ObjectAttributeEmitter(MCObjectStreamer &Streamer_) :
-      Streamer(Streamer_), CurrentVendor("") { }
+      Streamer(Streamer_), CurrentVendor(""), ContentsSize(0) { }
 
     void MaybeSwitchVendor(StringRef Vendor) {
       assert(!Vendor.empty() && "Vendor cannot be empty.");
@@ -124,20 +152,32 @@ namespace {
     }
 
     void EmitAttribute(unsigned Attribute, unsigned Value) {
-      // FIXME: should be ULEB
-      Contents += Attribute;
-      Contents += Value;
+      AttributeItemType attr = {
+        AttributeItemType::NumericAttribute,
+        Attribute,
+        Value,
+        StringRef("")
+      };
+      ContentsSize += getULEBSize(Attribute);
+      ContentsSize += getULEBSize(Value);
+      Contents.push_back(attr);
     }
 
     void EmitTextAttribute(unsigned Attribute, StringRef String) {
-      Contents += Attribute;
-      Contents += UppercaseString(String);
-      Contents += 0;
+      AttributeItemType attr = {
+        AttributeItemType::TextAttribute,
+        Attribute,
+        0,
+        String
+      };
+      ContentsSize += getULEBSize(Attribute);
+      // String + \0
+      ContentsSize += String.size()+1;
+
+      Contents.push_back(attr);
     }
 
     void Finish() {
-      const size_t ContentsSize = Contents.size();
-
       // Vendor size + Vendor name + '\0'
       const size_t VendorHeaderSize = 4 + CurrentVendor.size() + 1;
 
@@ -151,7 +191,23 @@ namespace {
       Streamer.EmitIntValue(ARMBuildAttrs::File, 1);
       Streamer.EmitIntValue(TagHeaderSize + ContentsSize, 4);
 
-      Streamer.EmitBytes(Contents, 0);
+      // Size should have been accounted for already, now
+      // emit each field as its type (ULEB or String)
+      for (unsigned int i=0; i<Contents.size(); ++i) {
+        AttributeItemType item = Contents[i];
+        Streamer.EmitULEB128IntValue(item.Tag, 0);
+        switch (item.Type) {
+        case AttributeItemType::NumericAttribute:
+          Streamer.EmitULEB128IntValue(item.IntValue, 0);
+          break;
+        case AttributeItemType::TextAttribute:
+          Streamer.EmitBytes(UppercaseString(item.StringValue), 0);
+          Streamer.EmitIntValue(0, 1); // '\0'
+          break;
+        default:
+          assert(0 && "Invalid attribute type");
+        }
+      }
 
       Contents.clear();
     }
@@ -413,14 +469,34 @@ bool ARMAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
 
       return false;
     }
+    case 'R': // The most significant register of a pair.
+    case 'Q': { // The least significant register of a pair.
+      if (OpNum == 0)
+        return true;
+      const MachineOperand &FlagsOP = MI->getOperand(OpNum - 1);
+      if (!FlagsOP.isImm())
+        return true;
+      unsigned Flags = FlagsOP.getImm();
+      unsigned NumVals = InlineAsm::getNumOperandRegisters(Flags);
+      if (NumVals != 2)
+        return true;
+      unsigned RegOp = ExtraCode[0] == 'Q' ? OpNum : OpNum + 1;
+      if (RegOp >= MI->getNumOperands())
+        return true;
+      const MachineOperand &MO = MI->getOperand(RegOp);
+      if (!MO.isReg())
+        return true;
+      unsigned Reg = MO.getReg();
+      O << ARMInstPrinter::getRegisterName(Reg);
+      return false;
+    }
+
     // These modifiers are not yet supported.
     case 'p': // The high single-precision register of a VFP double-precision
               // register.
     case 'e': // The low doubleword register of a NEON quad register.
     case 'f': // The high doubleword register of a NEON quad register.
     case 'h': // A range of VFP/NEON registers suitable for VLD1/VST1.
-    case 'Q': // The least significant register of a pair.
-    case 'R': // The most significant register of a pair.
     case 'H': // The highest-numbered register of a pair.
       return true;
     }
@@ -1075,6 +1151,10 @@ extern cl::opt<bool> EnableARMEHABI;
 #include "ARMGenMCPseudoLowering.inc"
 
 void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
+  // Emit unwinding stuff for frame-related instructions
+  if (EnableARMEHABI && MI->getFlag(MachineInstr::FrameSetup))
+    EmitUnwindingInstruction(MI);
+
   // Do any auto-generated pseudo lowerings.
   if (emitPseudoExpansionLowering(OutStreamer, MI))
     return;
@@ -1804,10 +1884,6 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   MCInst TmpInst;
   LowerARMMachineInstrToMCInst(MI, TmpInst, *this);
-
-  // Emit unwinding stuff for frame-related instructions
-  if (EnableARMEHABI && MI->getFlag(MachineInstr::FrameSetup))
-    EmitUnwindingInstruction(MI);
 
   OutStreamer.EmitInstruction(TmpInst);
 }

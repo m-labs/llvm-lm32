@@ -630,8 +630,8 @@ def #NAME#64mi8 : RIi8<{ImmOpc8{7}, ImmOpc8{6}, ImmOpc8{5}, ImmOpc8{4},
 defm LOCK_ADD : LOCK_ArithBinOp<0x00, 0x80, 0x83, MRM0m, "add">;
 defm LOCK_SUB : LOCK_ArithBinOp<0x28, 0x80, 0x83, MRM5m, "sub">;
 defm LOCK_OR  : LOCK_ArithBinOp<0x08, 0x80, 0x83, MRM1m, "or">;
-defm LOCK_AND : LOCK_ArithBinOp<0x08, 0x80, 0x83, MRM4m, "and">;
-defm LOCK_XOR : LOCK_ArithBinOp<0x08, 0x80, 0x83, MRM6m, "xor">;
+defm LOCK_AND : LOCK_ArithBinOp<0x20, 0x80, 0x83, MRM4m, "and">;
+defm LOCK_XOR : LOCK_ArithBinOp<0x30, 0x80, 0x83, MRM6m, "xor">;
 
 // Optimized codegen when the non-memory output is not used.
 let Defs = [EFLAGS], mayLoad = 1, mayStore = 1, isCodeGenOnly = 1 in {
@@ -758,6 +758,24 @@ let Uses = [EFLAGS], usesCustomInserter = 1 in {
                     "#CMOV_V2I64 PSEUDO!",
                     [(set VR128:$dst,
                       (v2i64 (X86cmov VR128:$t, VR128:$f, imm:$cond,
+                                          EFLAGS)))]>;
+  def CMOV_V8F32 : I<0, Pseudo,
+                    (outs VR256:$dst), (ins VR256:$t, VR256:$f, i8imm:$cond),
+                    "#CMOV_V8F32 PSEUDO!",
+                    [(set VR256:$dst,
+                      (v8f32 (X86cmov VR256:$t, VR256:$f, imm:$cond,
+                                          EFLAGS)))]>;
+  def CMOV_V4F64 : I<0, Pseudo,
+                    (outs VR256:$dst), (ins VR256:$t, VR256:$f, i8imm:$cond),
+                    "#CMOV_V4F64 PSEUDO!",
+                    [(set VR256:$dst,
+                      (v4f64 (X86cmov VR256:$t, VR256:$f, imm:$cond,
+                                          EFLAGS)))]>;
+  def CMOV_V4I64 : I<0, Pseudo,
+                    (outs VR256:$dst), (ins VR256:$t, VR256:$f, i8imm:$cond),
+                    "#CMOV_V4I64 PSEUDO!",
+                    [(set VR256:$dst,
+                      (v4i64 (X86cmov VR256:$t, VR256:$f, imm:$cond,
                                           EFLAGS)))]>;
 }
 
@@ -1673,3 +1691,17 @@ def : Pat<(and GR64:$src1, i64immSExt8:$src2),
           (AND64ri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(and GR64:$src1, i64immSExt32:$src2),
           (AND64ri32 GR64:$src1, i64immSExt32:$src2)>;
+
+def : Pat<(atomic_load_8 addr:$src), (MOV8rm addr:$src)>;
+def : Pat<(atomic_load_16 addr:$src), (MOV16rm addr:$src)>;
+def : Pat<(atomic_load_32 addr:$src), (MOV32rm addr:$src)>;
+def : Pat<(atomic_load_64 addr:$src), (MOV64rm addr:$src)>;
+
+def : Pat<(atomic_store_8 addr:$ptr, GR8:$val),
+          (MOV8mr addr:$ptr, GR8:$val)>;
+def : Pat<(atomic_store_16 addr:$ptr, GR16:$val),
+          (MOV16mr addr:$ptr, GR16:$val)>;
+def : Pat<(atomic_store_32 addr:$ptr, GR32:$val),
+          (MOV32mr addr:$ptr, GR32:$val)>;
+def : Pat<(atomic_store_64 addr:$ptr, GR64:$val),
+          (MOV64mr addr:$ptr, GR64:$val)>;

@@ -29,7 +29,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/config.h"
 #include <algorithm>
@@ -470,6 +470,9 @@ void CppWriter::printAttributes(const AttrListPtr &PAL,
       HANDLE_ATTR(NoImplicitFloat);
       HANDLE_ATTR(Naked);
       HANDLE_ATTR(InlineHint);
+      HANDLE_ATTR(Hotpatch);
+      HANDLE_ATTR(UWTable);
+      HANDLE_ATTR(NonLazyBind);
 #undef HANDLE_ATTR
       if (attrs & Attribute::StackAlignment)
         Out << " | Attribute::constructStackAlignmentFromInt("
@@ -530,9 +533,9 @@ void CppWriter::printType(Type* Ty) {
   }
   case Type::StructTyID: {
     StructType* ST = cast<StructType>(Ty);
-    if (!ST->isAnonymous()) {
+    if (!ST->isLiteral()) {
       Out << "StructType *" << typeName << " = ";
-      Out << "StructType::createNamed(mod->getContext(), \"";
+      Out << "StructType::create(mod->getContext(), \"";
       printEscapedString(ST->getName());
       Out << "\");";
       nl(Out);
@@ -553,7 +556,7 @@ void CppWriter::printType(Type* Ty) {
       nl(Out);
     }
 
-    if (ST->isAnonymous()) {
+    if (ST->isLiteral()) {
       Out << "StructType *" << typeName << " = ";
       Out << "StructType::get(" << "mod->getContext(), ";
     } else {

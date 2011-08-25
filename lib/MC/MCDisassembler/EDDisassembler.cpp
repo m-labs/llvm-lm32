@@ -33,8 +33,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetSelect.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 using namespace llvm;
 
 bool EDDisassembler::sInitialized = false;
@@ -362,7 +362,7 @@ int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
   sourceMgr.AddNewSourceBuffer(buf, SMLoc()); // ownership of buf handed over
   MCContext context(*AsmInfo, *MRI, NULL);
   OwningPtr<MCStreamer> streamer(createNullStreamer(context));
-  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(*Tgt, sourceMgr,
+  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(sourceMgr,
                                                          context, *streamer,
                                                          *AsmInfo));
 

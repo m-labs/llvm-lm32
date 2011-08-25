@@ -21,9 +21,9 @@
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MemoryObject.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define GET_REGINFO_ENUM
@@ -106,11 +106,12 @@ static void logger(void* arg, const char* log) {
 // Public interface for the disassembler
 //
 
-bool X86GenericDisassembler::getInstruction(MCInst &instr,
-                                            uint64_t &size,
-                                            const MemoryObject &region,
-                                            uint64_t address,
-                                            raw_ostream &vStream) const {
+MCDisassembler::DecodeStatus
+X86GenericDisassembler::getInstruction(MCInst &instr,
+                                       uint64_t &size,
+                                       const MemoryObject &region,
+                                       uint64_t address,
+                                       raw_ostream &vStream) const {
   InternalInstruction internalInstr;
   
   int ret = decodeInstruction(&internalInstr,
@@ -123,11 +124,11 @@ bool X86GenericDisassembler::getInstruction(MCInst &instr,
 
   if (ret) {
     size = internalInstr.readerCursor - address;
-    return false;
+    return Fail;
   }
   else {
     size = internalInstr.length;
-    return !translateInstruction(instr, internalInstr);
+    return (!translateInstruction(instr, internalInstr)) ? Success : Fail;
   }
 }
 

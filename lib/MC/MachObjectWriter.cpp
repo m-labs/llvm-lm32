@@ -291,7 +291,7 @@ void MachObjectWriter::WriteNlist(MachSymbolData &MSD,
   const MCSymbol &Symbol = Data.getSymbol();
   uint8_t Type = 0;
   uint16_t Flags = Data.getFlags();
-  uint32_t Address = 0;
+  uint64_t Address = 0;
 
   // Set the N_TYPE bits. See <mach-o/nlist.h>.
   //
@@ -595,9 +595,13 @@ IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
       return false;
   }
 
-  const MCFragment &FA = *Asm.getSymbolData(SA).getFragment();
+  const MCFragment *FA = Asm.getSymbolData(SA).getFragment();
 
-  A_Base = FA.getAtom();
+  // Bail if the symbol has no fragment.
+  if (!FA)
+    return false;
+
+  A_Base = FA->getAtom();
   if (!A_Base)
     return false;
 

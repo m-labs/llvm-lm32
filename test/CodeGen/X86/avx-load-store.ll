@@ -22,3 +22,59 @@ entry:
 
 declare void @dummy(<4 x double>, <8 x float>, <4 x i64>)
 
+;;
+;; The two tests below check that we must fold load + scalar_to_vector
+;; + ins_subvec+ zext into only a single vmovss or vmovsd
+
+; CHECK: vmovss (%
+define <8 x float> @mov00(<8 x float> %v, float * %ptr) nounwind {
+  %val = load float* %ptr
+  %i0 = insertelement <8 x float> zeroinitializer, float %val, i32 0
+  ret <8 x float> %i0
+}
+
+; CHECK: vmovsd (%
+define <4 x double> @mov01(<4 x double> %v, double * %ptr) nounwind {
+  %val = load double* %ptr
+  %i0 = insertelement <4 x double> zeroinitializer, double %val, i32 0
+  ret <4 x double> %i0
+}
+
+; CHECK: vmovaps  %ymm
+define void @storev16i16(<16 x i16> %a) nounwind {
+  store <16 x i16> %a, <16 x i16>* undef, align 32
+  unreachable
+}
+
+; CHECK: vmovups  %ymm
+define void @storev16i16_01(<16 x i16> %a) nounwind {
+  store <16 x i16> %a, <16 x i16>* undef, align 4
+  unreachable
+}
+
+; CHECK: vmovaps  %ymm
+define void @storev32i8(<32 x i8> %a) nounwind {
+  store <32 x i8> %a, <32 x i8>* undef, align 32
+  unreachable
+}
+
+; CHECK: vmovups  %ymm
+define void @storev32i8_01(<32 x i8> %a) nounwind {
+  store <32 x i8> %a, <32 x i8>* undef, align 4
+  unreachable
+}
+
+; It is faster to make two saves, if the data is already in XMM registers. For
+; example, after making an integer operation.
+; CHECK: _double_save
+; CHECK-NOT: vinsertf128 $1
+; CHECK-NOT: vinsertf128 $0
+; CHECK: vmovaps %xmm
+; CHECK: vmovaps %xmm
+define void @double_save(<4 x i32> %A, <4 x i32> %B, <8 x i32>* %P) nounwind ssp {
+entry:
+  %Z = shufflevector <4 x i32>%A, <4 x i32>%B, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+  store <8 x i32> %Z, <8 x i32>* %P, align 16
+  ret void
+}
+
