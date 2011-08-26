@@ -33,7 +33,8 @@ using namespace llvm;
 Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &subtarget)
   : TargetFrameLowering(TargetFrameLowering::StackGrowsDown,
                         4 /*StackAlignment*/, 
-                        0 /*LocalAreaOffset*/),
+                        0 /*LocalAreaOffset*/,
+                        4 /*TransientStackAlignment*/),
       Subtarget(subtarget) {
   // Do nothing
 }
@@ -336,8 +337,6 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
 
   // LR can be optimized out prior to now:
   if (LRUsed) {
-//FIXME: check this
-//	  assert(0 && "I think offset of -4 below is wrong");
     MF.getRegInfo().setPhysRegUnused(Mico32::RRA);
     
     bool isVarArg = MF.getFunction()->isVarArg();
@@ -356,6 +355,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     MFuncInf->setUsesLR(FrameIdx);
     MFuncInf->setLRSpillSlot(FrameIdx);
   }
+
   if (RegInfo->requiresRegisterScavenging(MF)) {
     assert(0 && "Test register scavenging.");
     // Reserve a slot close to SP or frame pointer.
@@ -363,6 +363,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                                        RC->getAlignment(),
                                                        false));
   }
+
   if (hasFP) {
     // FP is a callee save register.
     // This needs saving / restoring in the epilogue / prologue.
