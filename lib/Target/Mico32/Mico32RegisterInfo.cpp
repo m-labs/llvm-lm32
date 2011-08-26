@@ -134,20 +134,13 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   MachineFunction &MF = *MBB.getParent();
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
-  bool FP = TFI->hasFP(MF);
+  bool useFP = TFI->hasFP(MF);
 
-  // SP points to the top of stack, FP points between outgoing params (or
-  // alloca) and local variables. Calculate the offset of the FP from the
-  // SP. Use this offset to bias frame indices when using an FP instead of SP.
-  // Alloca allocations are done dynamically later on so we just offset FPBias
-  // by the size of the outgoing arguments.
+  // SP points to the top of stack, FP points to the callee save registers at
+  // top of the frame (the SP prior to entering the function).
   unsigned FPReg = Mico32::RSP;
-  unsigned FPbias = 0;
-  if (FP) {
-    FPbias = MFrmInf->getMaxCallFrameSize();
+  if (useFP) {
     FPReg = Mico32::RFP;
-    assert((FPbias % 4) == 0 && 
-           "The outgoing arguments section should be 4 byte aligned.");
   }
 
   // Find the frame index operand.
@@ -160,7 +153,6 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   int FrameIndex = FrameOp.getIndex();
 
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
-  DEBUG(dbgs() << "getObjectOffset()  : " << Offset << "\n");
   assert(Offset%4 == 0 && "Object has misaligned stack offset");
 
   int StackSize = MF.getFrameInfo()->getStackSize();
@@ -176,7 +168,6 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
   DEBUG(dbgs() << "FPreg              : "
                << ((Mico32::RFP == FPReg) ? "FP" : "SP") << "\n");
-  DEBUG(dbgs() << "FPbias             : " << FPbias << "\n");
   DEBUG(dbgs() << "getImm()           : "
                <<  MI.getOperand(i + 1).getImm() << "\n");
   DEBUG(dbgs() << "isFixed            : "
@@ -187,12 +178,15 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
                << MFrmInf->isSpillSlotObjectIndex(FrameIndex) << "\n");
 #endif
 
-  Offset += StackSize - FPbias;
+  if (!useFP) {
+    // We're using the SP - it points to the bottom of the frame, offset to top.
+    Offset += StackSize;
+  }
   assert(Offset%4 == 0 && "Misaligned stack offset");
 
   // Fold constant into offset.
-  // Currently the constant offset is always zero, but this may 
-  // change with wideword.
+  // I believe this can happen with vector code - it needs to be checked.
+//  assert(MI.getOperand(i + 1).getImm() == 0 && "need to check this code path");
   Offset += MI.getOperand(i + 1).getImm();
   MI.getOperand(i + 1).ChangeToImmediate(0);
 
@@ -200,26 +194,25 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   //  assert(Offset%4 == 0 && "Misaligned stack offset");
 
 #ifndef NDEBUG
-  DEBUG(dbgs() << "Offset             : " << Offset << "\n");
-  DEBUG(dbgs() << "<--------->\n");
+  DEBUG(dbgs() << "Offset from FP/SP : " << Offset << "\n");
 #endif
 
   // Replace frame index with a stack/frame pointer reference.
   if (Offset >= -32768 && Offset <= 32767) {
     // If the offset is small enough to fit in the immediate field, directly
     // encode it.
-    // Use the appropriate frame pointer register R1 (SP) or R30 (FP).
+    // Replace the FrameIndex with the appropriate frame pointer 
+    // register R1 (SP) or R30 (FP).
     FrameOp.ChangeToRegister(FPReg, false);
-    //MI.getOperand(i).ChangeToRegister(Monarch::R1, false);
     MI.getOperand(i+1).ChangeToImmediate(Offset);
   } else {
     assert( 0 && "Unimplemented - frame index limited to 32767 byte offset.");
   }
-  DEBUG(errs() << "<--------->\n");
+#ifndef NDEBUG
   DEBUG(errs() << "<--RESULT->\n");
-DEBUG(MI.print(errs()));
+  DEBUG(MI.print(errs()));
   DEBUG(errs() << "<--------->\n");
-  DEBUG(errs() << "<--------->\n");
+#endif
 
   return;
 }
