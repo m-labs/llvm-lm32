@@ -183,13 +183,17 @@ namespace llvm {
     getRegClassForInlineAsmConstraint(const std::string &Constraint,
               EVT VT) const;
 
+#endif
+    /// isOffsetFoldingLegal - Return true if folding a constant offset
+    /// with the given GlobalAddress is legal.  It is frequently not legal in
+    /// PIC relocation models. This will merge a global address with an
+    /// (added) offset into a GEP instruction.  
     virtual bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const;
 
     /// isFPImmLegal - Returns true if the target can instruction select the
     /// specified FP immediate natively. If false, the legalizer will
     /// materialize the FP immediate as a load from a constant pool.
     virtual bool isFPImmLegal(const APFloat &Imm, EVT VT) const;
-#endif
   };
 }
 

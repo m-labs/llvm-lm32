@@ -966,16 +966,12 @@ getRegClassForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
 }
 #endif
 
-#if 0
 bool Mico32TargetLowering::
 isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
   // The Mico32 target isn't yet aware of offsets.
   return false;
 }
-#endif
 
-#if 0
 bool Mico32TargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   return VT != MVT::f32;
 }
-#endif
