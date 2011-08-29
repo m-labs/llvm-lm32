@@ -64,7 +64,7 @@ getCalleeSavedRegs(const MachineFunction *MF) const {
     Mico32::R15, Mico32::R16, Mico32::R17, Mico32::R18,
     Mico32::R19, Mico32::R20, Mico32::R21, Mico32::R22,
     Mico32::R23, Mico32::R24, Mico32::R25, 
-    Mico32::RSP, Mico32::RRA, 
+//    Mico32::RSP, Mico32::RRA, 
     0
   };
 
