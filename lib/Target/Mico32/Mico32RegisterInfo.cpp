@@ -64,7 +64,7 @@ getCalleeSavedRegs(const MachineFunction *MF) const {
     Mico32::R15, Mico32::R16, Mico32::R17, Mico32::R18,
     Mico32::R19, Mico32::R20, Mico32::R21, Mico32::R22,
     Mico32::R23, Mico32::R24, Mico32::R25, 
-//    Mico32::RSP, Mico32::RRA, 
+    // R26 - R31 are reserved.
     0
   };
 
@@ -81,9 +81,9 @@ getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
   Reserved.set(Mico32::R0);  // Always 0
   Reserved.set(Mico32::RGP); // R26 - GP register
-//  Reserved.set(Mico32::RFP); // R27 - Frame Pointer (GCC not fixed)
+  Reserved.set(Mico32::RFP); // R27 - Frame Pointer (GCC not fixed)
   Reserved.set(Mico32::RSP); // R28 - Stack Pointer
-//  Reserved.set(Mico32::RRA); // R29 - Return Address (GCC not fixed)
+  Reserved.set(Mico32::RRA); // R29 - Return Address (GCC not fixed)
   Reserved.set(Mico32::REA); // R30 - Exception Address
   Reserved.set(Mico32::RBA); // R31 - Breakpoint Address
   return Reserved;
