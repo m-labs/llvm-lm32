@@ -394,7 +394,7 @@ let isBranch = 1, isTerminator=1, hasCtrlDep = 1, isBarrier = 1 in {
 
 def BE     : CBranch<0x11, "be      ", seteq>;
 def BG     : CBranch<0x12, "bg      ", setgt>;
-def BGE    : CBranch<0x13, "bg      ", setge>;
+def BGE    : CBranch<0x13, "bge     ", setge>;
 def BGEU   : CBranch<0x14, "bgeu    ", setuge>;
 def BGU    : CBranch<0x15, "bgu     ", setugt>;
 def BNE    : CBranch<0x17, "bne     ", setne>;
@@ -402,13 +402,13 @@ def BNE    : CBranch<0x17, "bne     ", setne>;
 // Derived from MBlaze:
 // Reverse the sense of the test and the order of the operands.
 def : Pat<(brcond (setlt  GPR:$L, GPR:$R), bb:$T),
-          (BGE GPR:$R, GPR:$L, bb:$T)>;
-def : Pat<(brcond (setle GPR:$L, GPR:$R), bb:$T),
           (BG GPR:$R, GPR:$L, bb:$T)>;
+def : Pat<(brcond (setle GPR:$L, GPR:$R), bb:$T),
+          (BGE GPR:$R, GPR:$L, bb:$T)>;
 def : Pat<(brcond (setult  GPR:$L, GPR:$R), bb:$T),
-          (BGEU GPR:$R, GPR:$L, bb:$T)>;
-def : Pat<(brcond (setule GPR:$L, GPR:$R), bb:$T),
           (BGU GPR:$R, GPR:$L, bb:$T)>;
+def : Pat<(brcond (setule GPR:$L, GPR:$R), bb:$T),
+          (BGEU GPR:$R, GPR:$L, bb:$T)>;
 
 // brcond patterns - also from MIPS
 def : Pat<(brcond GPR:$cond, bb:$dst),
@@ -544,10 +544,10 @@ def CMPGU   : ArithFRR<0x3d, "cmpgu   ", setugt, IICmp>;
 def CMPNE   : ArithFRR<0x3f, "cmpne   ", setne, IICmp>;
 
 // Reverse the sense of the test and the order of the operands.
-def : Pat<(setlt  GPR:$L, GPR:$R), (CMPGE GPR:$R, GPR:$L)>;
-def : Pat<(setle  GPR:$L, GPR:$R), (CMPG GPR:$R, GPR:$L)>;
-def : Pat<(setult GPR:$L, GPR:$R), (CMPGEU GPR:$R, GPR:$L)>;
-def : Pat<(setule GPR:$L, GPR:$R), (CMPGU GPR:$R, GPR:$L)>;
+def : Pat<(setlt  GPR:$L, GPR:$R), (CMPG  GPR:$R, GPR:$L)>;
+def : Pat<(setle  GPR:$L, GPR:$R), (CMPGE   GPR:$R, GPR:$L)>;
+def : Pat<(setult GPR:$L, GPR:$R), (CMPGU GPR:$R, GPR:$L)>;
+def : Pat<(setule GPR:$L, GPR:$R), (CMPGEU  GPR:$R, GPR:$L)>;
 
 
 
