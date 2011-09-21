@@ -309,7 +309,9 @@ def int_eh_selector  : Intrinsic<[llvm_i32_ty],
                                  [llvm_ptr_ty, llvm_ptr_ty, llvm_vararg_ty]>;
 def int_eh_resume    : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty], [Throws]>;
 
-def int_eh_typeid_for : Intrinsic<[llvm_i32_ty], [llvm_ptr_ty]>;
+// The result of eh.typeid.for depends on the enclosing function, but inside a
+// given function it is 'const' and may be CSE'd etc.
+def int_eh_typeid_for : Intrinsic<[llvm_i32_ty], [llvm_ptr_ty], [IntrNoMem]>;
 
 def int_eh_return_i32 : Intrinsic<[], [llvm_i32_ty, llvm_ptr_ty]>;
 def int_eh_return_i64 : Intrinsic<[], [llvm_i64_ty, llvm_ptr_ty]>;
@@ -344,10 +346,14 @@ def int_annotation : Intrinsic<[llvm_anyint_ty],
 
 //===------------------------ Trampoline Intrinsics -----------------------===//
 //
-def int_init_trampoline : Intrinsic<[llvm_ptr_ty],
+def int_init_trampoline : Intrinsic<[],
                                     [llvm_ptr_ty, llvm_ptr_ty, llvm_ptr_ty],
-                                    [IntrReadWriteArgMem]>,
-                          GCCBuiltin<"__builtin_init_trampoline">;
+                                    [IntrReadWriteArgMem, NoCapture<0>]>,
+                                   GCCBuiltin<"__builtin_init_trampoline">;
+
+def int_adjust_trampoline : Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty],
+                                      [IntrReadArgMem]>,
+                                     GCCBuiltin<"__builtin_adjust_trampoline">;
 
 //===------------------------ Overflow Intrinsics -------------------------===//
 //

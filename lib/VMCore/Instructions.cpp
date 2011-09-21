@@ -2022,7 +2022,7 @@ bool CastInst::isNoopCast(Instruction::CastOps Opcode,
                           Type *IntPtrTy) {
   switch (Opcode) {
     default:
-      assert(!"Invalid CastOp");
+      assert(0 && "Invalid CastOp");
     case Instruction::Trunc:
     case Instruction::ZExt:
     case Instruction::SExt: 
@@ -2059,8 +2059,7 @@ bool CastInst::isNoopCast(Type *IntPtrTy) const {
 /// If no such cast is permited, the function returns 0.
 unsigned CastInst::isEliminableCastPair(
   Instruction::CastOps firstOp, Instruction::CastOps secondOp,
-  Type *SrcTy, Type *MidTy, Type *DstTy, Type *IntPtrTy)
-{
+  Type *SrcTy, Type *MidTy, Type *DstTy, Type *IntPtrTy) {
   // Define the 144 possibilities for these two cast instructions. The values
   // in this matrix determine what to do in a given situation and select the
   // case in the switch below.  The rows correspond to firstOp, the columns 
@@ -2113,12 +2112,16 @@ unsigned CastInst::isEliminableCastPair(
   };
   
   // If either of the casts are a bitcast from scalar to vector, disallow the
-  // merging.
-  if ((firstOp == Instruction::BitCast &&
-       isa<VectorType>(SrcTy) != isa<VectorType>(MidTy)) ||
-      (secondOp == Instruction::BitCast &&
-       isa<VectorType>(MidTy) != isa<VectorType>(DstTy)))
-    return 0; // Disallowed
+  // merging. However, bitcast of A->B->A are allowed.
+  bool isFirstBitcast  = (firstOp == Instruction::BitCast);
+  bool isSecondBitcast = (secondOp == Instruction::BitCast);
+  bool chainedBitcast  = (SrcTy == DstTy && isFirstBitcast && isSecondBitcast);
+
+  // Check if any of the bitcasts convert scalars<->vectors.
+  if ((isFirstBitcast  && isa<VectorType>(SrcTy) != isa<VectorType>(MidTy)) ||
+      (isSecondBitcast && isa<VectorType>(MidTy) != isa<VectorType>(DstTy)))
+    // Unless we are bitcasing to the original type, disallow optimizations.
+    if (!chainedBitcast) return 0;
 
   int ElimCase = CastResults[firstOp-Instruction::CastOpsBegin]
                             [secondOp-Instruction::CastOpsBegin];
@@ -2212,10 +2215,10 @@ unsigned CastInst::isEliminableCastPair(
     case 99: 
       // cast combination can't happen (error in input). This is for all cases
       // where the MidTy is not the same for the two cast instructions.
-      assert(!"Invalid Cast Combination");
+      assert(0 && "Invalid Cast Combination");
       return 0;
     default:
-      assert(!"Error in CastResults table!!!");
+      assert(0 && "Error in CastResults table!!!");
       return 0;
   }
   return 0;
@@ -2239,7 +2242,7 @@ CastInst *CastInst::Create(Instruction::CastOps op, Value *S, Type *Ty,
     case IntToPtr: return new IntToPtrInst (S, Ty, Name, InsertBefore);
     case BitCast:  return new BitCastInst  (S, Ty, Name, InsertBefore);
     default:
-      assert(!"Invalid opcode provided");
+      assert(0 && "Invalid opcode provided");
   }
   return 0;
 }
@@ -2262,7 +2265,7 @@ CastInst *CastInst::Create(Instruction::CastOps op, Value *S, Type *Ty,
     case IntToPtr: return new IntToPtrInst (S, Ty, Name, InsertAtEnd);
     case BitCast:  return new BitCastInst  (S, Ty, Name, InsertAtEnd);
     default:
-      assert(!"Invalid opcode provided");
+      assert(0 && "Invalid opcode provided");
   }
   return 0;
 }
@@ -2546,17 +2549,17 @@ CastInst::getCastOpcode(
     } else if (SrcTy->isIntegerTy()) {
       return IntToPtr;                              // int -> ptr
     } else {
-      assert(!"Casting pointer to other than pointer or int");
+      assert(0 && "Casting pointer to other than pointer or int");
     }
   } else if (DestTy->isX86_MMXTy()) {
     if (SrcTy->isVectorTy()) {
       assert(DestBits == SrcBits && "Casting vector of wrong width to X86_MMX");
       return BitCast;                               // 64-bit vector to MMX
     } else {
-      assert(!"Illegal cast to X86_MMX");
+      assert(0 && "Illegal cast to X86_MMX");
     }
   } else {
-    assert(!"Casting to type that is not first-class");
+    assert(0 && "Casting to type that is not first-class");
   }
 
   // If we fall through to here we probably hit an assertion cast above
@@ -2866,7 +2869,7 @@ bool CmpInst::isEquality() const {
 
 CmpInst::Predicate CmpInst::getInversePredicate(Predicate pred) {
   switch (pred) {
-    default: assert(!"Unknown cmp predicate!");
+    default: assert(0 && "Unknown cmp predicate!");
     case ICMP_EQ: return ICMP_NE;
     case ICMP_NE: return ICMP_EQ;
     case ICMP_UGT: return ICMP_ULE;
@@ -2899,7 +2902,7 @@ CmpInst::Predicate CmpInst::getInversePredicate(Predicate pred) {
 
 ICmpInst::Predicate ICmpInst::getSignedPredicate(Predicate pred) {
   switch (pred) {
-    default: assert(! "Unknown icmp predicate!");
+    default: assert(0 && "Unknown icmp predicate!");
     case ICMP_EQ: case ICMP_NE: 
     case ICMP_SGT: case ICMP_SLT: case ICMP_SGE: case ICMP_SLE: 
        return pred;
@@ -2912,7 +2915,7 @@ ICmpInst::Predicate ICmpInst::getSignedPredicate(Predicate pred) {
 
 ICmpInst::Predicate ICmpInst::getUnsignedPredicate(Predicate pred) {
   switch (pred) {
-    default: assert(! "Unknown icmp predicate!");
+    default: assert(0 && "Unknown icmp predicate!");
     case ICMP_EQ: case ICMP_NE: 
     case ICMP_UGT: case ICMP_ULT: case ICMP_UGE: case ICMP_ULE: 
        return pred;
@@ -2988,7 +2991,7 @@ ICmpInst::makeConstantRange(Predicate pred, const APInt &C) {
 
 CmpInst::Predicate CmpInst::getSwappedPredicate(Predicate pred) {
   switch (pred) {
-    default: assert(!"Unknown cmp predicate!");
+    default: assert(0 && "Unknown cmp predicate!");
     case ICMP_EQ: case ICMP_NE:
       return pred;
     case ICMP_SGT: return ICMP_SLT;

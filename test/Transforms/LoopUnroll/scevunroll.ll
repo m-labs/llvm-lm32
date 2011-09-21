@@ -1,4 +1,4 @@
-; RUN: opt < %s -S -indvars -loop-unroll -verify-loop-info -unroll-scev | FileCheck %s
+; RUN: opt < %s -S -indvars -loop-unroll -verify-loop-info | FileCheck %s
 ;
 ; Unit tests for loop unrolling using ScalarEvolution to compute trip counts.
 ;
@@ -67,7 +67,7 @@ exit2:
 ; SCEV properly unrolls multi-exit loops.
 ;
 ; CHECK: @multiExit
-; CHECK: getelementptr i32* %base, i64 10
+; CHECK: getelementptr i32* %base, i32 10
 ; CHECK-NEXT: load i32*
 ; CHECK: br i1 false, label %l2.10, label %exit1
 ; CHECK: l2.10:

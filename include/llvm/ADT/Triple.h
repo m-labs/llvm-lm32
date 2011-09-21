@@ -50,6 +50,8 @@ public:
     mico32,  // Mico32: mico32
     mips,    // MIPS: mips, mipsallegrex
     mipsel,  // MIPSEL: mipsel, mipsallegrexel, psp
+    mips64,  // MIPS64: mips64
+    mips64el,// MIPS64EL: mips64el
     msp430,  // MSP430: msp430
     ppc,     // PPC: powerpc
     ppc64,   // PPC64: powerpc64, ppu
@@ -65,6 +67,7 @@ public:
     ptx32,   // PTX: ptx (32-bit)
     ptx64,   // PTX: ptx (64-bit)
     le32,    // le32: generic little-endian 32-bit CPU (PNaCl / Emscripten)
+    amdil,   // amdil: amd IL
 
     InvalidArch
   };

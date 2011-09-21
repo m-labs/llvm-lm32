@@ -88,6 +88,7 @@ MipsTargetLowering(MipsTargetMachine &TM)
   // Mips does not have i1 type, so use i32 for
   // setcc operations results (slt, sgt, ...).
   setBooleanContents(ZeroOrOneBooleanContent);
+  setBooleanVectorContents(ZeroOrOneBooleanContent); // FIXME: Is this correct?
 
   // Set up the register classes
   addRegisterClass(MVT::i32, Mips::CPURegsRegisterClass);
@@ -142,7 +143,7 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::CTTZ,              MVT::i32,   Expand);
   setOperationAction(ISD::ROTL,              MVT::i32,   Expand);
 
-  if (!Subtarget->isMips32r2())
+  if (!Subtarget->hasMips32r2())
     setOperationAction(ISD::ROTR, MVT::i32,   Expand);
 
   setOperationAction(ISD::SHL_PARTS,         MVT::i32,   Expand);
@@ -177,6 +178,9 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   setOperationAction(ISD::MEMBARRIER,        MVT::Other, Custom);
   setOperationAction(ISD::ATOMIC_FENCE,      MVT::Other, Custom);  
+
+  setOperationAction(ISD::ATOMIC_LOAD,       MVT::i32,    Expand);  
+  setOperationAction(ISD::ATOMIC_STORE,      MVT::i32,    Expand);  
 
   setInsertFencesForAtomic(true);
 
@@ -216,7 +220,7 @@ bool MipsTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
   return SVT == MVT::i32 || SVT == MVT::i16; 
 }
 
-MVT::SimpleValueType MipsTargetLowering::getSetCCResultType(EVT VT) const {
+EVT MipsTargetLowering::getSetCCResultType(EVT VT) const {
   return MVT::i32;
 }
 
@@ -374,7 +378,7 @@ static SDValue PerformADDECombine(SDNode *N, SelectionDAG& DAG,
   if (DCI.isBeforeLegalize())
     return SDValue();
 
-  if (Subtarget->isMips32() && SelectMadd(N, &DAG))
+  if (Subtarget->hasMips32() && SelectMadd(N, &DAG))
     return SDValue(N, 0);
 
   return SDValue();
@@ -386,7 +390,7 @@ static SDValue PerformSUBECombine(SDNode *N, SelectionDAG& DAG,
   if (DCI.isBeforeLegalize())
     return SDValue();
 
-  if (Subtarget->isMips32() && SelectMsub(N, &DAG))
+  if (Subtarget->hasMips32() && SelectMsub(N, &DAG))
     return SDValue(N, 0);
 
   return SDValue();
@@ -522,7 +526,7 @@ static SDValue PerformANDCombine(SDNode *N, SelectionDAG& DAG,
   // Pattern match EXT.
   //  $dst = and ((sra or srl) $src , pos), (2**size - 1)
   //  => ext $dst, $src, size, pos
-  if (DCI.isBeforeLegalizeOps() || !Subtarget->isMips32r2())
+  if (DCI.isBeforeLegalizeOps() || !Subtarget->hasMips32r2())
     return SDValue();
 
   SDValue ShiftRight = N->getOperand(0), Mask = N->getOperand(1);
@@ -563,7 +567,7 @@ static SDValue PerformORCombine(SDNode *N, SelectionDAG& DAG,
   //  $dst = or (and $src1 , mask0), (and (shl $src, pos), mask1),
   //  where mask1 = (2**size - 1) << pos, mask0 = ~mask1 
   //  => ins $dst, $src, size, pos, $src1
-  if (DCI.isBeforeLegalizeOps() || !Subtarget->isMips32r2())
+  if (DCI.isBeforeLegalizeOps() || !Subtarget->hasMips32r2())
     return SDValue();
 
   SDValue And0 = N->getOperand(0), And1 = N->getOperand(1);
@@ -1795,7 +1799,7 @@ static const unsigned O32IntRegs[] = {
 
 // Write ByVal Arg to arg registers and stack.
 static void
-WriteByValArg(SDValue& Chain, DebugLoc dl,
+WriteByValArg(SDValue& ByValChain, SDValue Chain, DebugLoc dl,
               SmallVector<std::pair<unsigned, SDValue>, 16>& RegsToPass,
               SmallVector<SDValue, 8>& MemOpChains, int& LastFI,
               MachineFrameInfo *MFI, SelectionDAG &DAG, SDValue Arg,
@@ -1878,19 +1882,18 @@ WriteByValArg(SDValue& Chain, DebugLoc dl,
                             DAG.getConstant(Offset, MVT::i32));
   LastFI = MFI->CreateFixedObject(RemainingSize, LocMemOffset, true);
   SDValue Dst = DAG.getFrameIndex(LastFI, PtrType);
-  Chain = DAG.getMemcpy(Chain, dl, Dst, Src,
-                        DAG.getConstant(RemainingSize, MVT::i32),
-                        std::min(ByValAlign, (unsigned)4),
-                        /*isVolatile=*/false, /*AlwaysInline=*/false,
-                        MachinePointerInfo(0), MachinePointerInfo(0));
-  MemOpChains.push_back(Chain);
+  ByValChain = DAG.getMemcpy(ByValChain, dl, Dst, Src,
+                             DAG.getConstant(RemainingSize, MVT::i32),
+                             std::min(ByValAlign, (unsigned)4),
+                             /*isVolatile=*/false, /*AlwaysInline=*/false,
+                             MachinePointerInfo(0), MachinePointerInfo(0));
 }
 
 /// LowerCall - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
 /// TODO: isTailCall.
 SDValue
-MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
+MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
                               CallingConv::ID CallConv, bool isVarArg,
                               bool &isTailCall,
                               const SmallVectorImpl<ISD::OutputArg> &Outs,
@@ -1920,8 +1923,13 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NextStackOffset = CCInfo.getNextStackOffset();
 
-  Chain = DAG.getCALLSEQ_START(Chain, DAG.getIntPtrConstant(NextStackOffset,
-                                                            true));
+  // Chain is the output chain of the last Load/Store or CopyToReg node.
+  // ByValChain is the output chain of the last Memcpy node created for copying
+  // byval arguments to the stack.
+  SDValue Chain, CallSeqStart, ByValChain;
+  SDValue NextStackOffsetVal = DAG.getIntPtrConstant(NextStackOffset, true);
+  Chain = CallSeqStart = DAG.getCALLSEQ_START(InChain, NextStackOffsetVal);
+  ByValChain = InChain;
 
   // If this is the first call, create a stack frame object that points to
   // a location to which .cprestore saves $gp.
@@ -2015,8 +2023,8 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
              "No support for ByVal args by ABIs other than O32 yet.");
       assert(Flags.getByValSize() &&
              "ByVal args of size 0 should have been ignored by front-end.");
-      WriteByValArg(Chain, dl, RegsToPass, MemOpChains, LastFI, MFI, DAG, Arg,
-                    VA, Flags, getPointerTy(), Subtarget->isLittle());
+      WriteByValArg(ByValChain, Chain, dl, RegsToPass, MemOpChains, LastFI, MFI,
+                    DAG, Arg, VA, Flags, getPointerTy(), Subtarget->isLittle());
       continue;
     }
 
@@ -2037,6 +2045,12 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
   // created.
   if (LastFI)
     MipsFI->extendOutArgFIRange(FirstFI, LastFI);
+
+  // If a memcpy has been created to copy a byval arg to a stack, replace the
+  // chain input of CallSeqStart with ByValChain.
+  if (InChain != ByValChain)
+    DAG.UpdateNodeOperands(CallSeqStart.getNode(), ByValChain,
+                           NextStackOffsetVal);
 
   // Transform all store nodes into one single node because all store
   // nodes are independent of each other.

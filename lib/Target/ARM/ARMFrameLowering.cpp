@@ -414,6 +414,9 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
         MIB.addExternalSymbol(JumpTarget.getSymbolName(),
                               JumpTarget.getTargetFlags());
       }
+
+      // Add the default predicate in Thumb mode.
+      if (STI.isThumb()) MIB.addImm(ARMCC::AL).addReg(0);
     } else if (RetOpcode == ARM::TCRETURNri) {
       BuildMI(MBB, MBBI, dl,
               TII.get(STI.isThumb() ? ARM::tTAILJMPr : ARM::TAILJMPr)).
@@ -684,7 +687,8 @@ bool ARMFrameLowering::spillCalleeSavedRegisters(MachineBasicBlock &MBB,
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
 
   unsigned PushOpc = AFI->isThumbFunction() ? ARM::t2STMDB_UPD : ARM::STMDB_UPD;
-  unsigned PushOneOpc = AFI->isThumbFunction() ? ARM::t2STR_PRE : ARM::STR_PRE_IMM;
+  unsigned PushOneOpc = AFI->isThumbFunction() ?
+    ARM::t2STR_PRE : ARM::STR_PRE_IMM;
   unsigned FltOpc = ARM::VSTMDDB_UPD;
   emitPushInst(MBB, MI, CSI, PushOpc, PushOneOpc, false, &isARMArea1Register,
                MachineInstr::FrameSetup);
@@ -708,7 +712,7 @@ bool ARMFrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
   bool isVarArg = AFI->getVarArgsRegSaveSize() > 0;
 
   unsigned PopOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_UPD : ARM::LDMIA_UPD;
-  unsigned LdrOpc = AFI->isThumbFunction() ? ARM::t2LDR_POST : ARM::LDR_POST_IMM;
+  unsigned LdrOpc = AFI->isThumbFunction() ? ARM::t2LDR_POST :ARM::LDR_POST_IMM;
   unsigned FltOpc = ARM::VLDMDIA_UPD;
   emitPopInst(MBB, MI, CSI, FltOpc, 0, isVarArg, true, &isARMArea3Register);
   emitPopInst(MBB, MI, CSI, PopOpc, LdrOpc, isVarArg, false,

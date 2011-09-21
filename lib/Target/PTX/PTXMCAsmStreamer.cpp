@@ -132,7 +132,9 @@ public:
   ///
   /// @param Symbol - The common symbol to emit.
   /// @param Size - The size of the common symbol.
-  virtual void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size);
+  /// @param ByteAlignment - The alignment of the common symbol in bytes.
+  virtual void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+                                     unsigned ByteAlignment);
 
   virtual void EmitZerofill(const MCSection *Section, MCSymbol *Symbol = 0,
                             unsigned Size = 0, unsigned ByteAlignment = 0);
@@ -283,7 +285,8 @@ void PTXMCAsmStreamer::EmitELFSize(MCSymbol *Symbol, const MCExpr *Value) {}
 void PTXMCAsmStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                         unsigned ByteAlignment) {}
 
-void PTXMCAsmStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size) {}
+void PTXMCAsmStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+                                             unsigned ByteAlignment) {}
 
 void PTXMCAsmStreamer::EmitZerofill(const MCSection *Section, MCSymbol *Symbol,
                                     unsigned Size, unsigned ByteAlignment) {}
@@ -510,7 +513,7 @@ void PTXMCAsmStreamer::EmitInstruction(const MCInst &Inst) {
 
   // If we have an AsmPrinter, use that to print, otherwise print the MCInst.
   if (InstPrinter)
-    InstPrinter->printInst(&Inst, OS);
+    InstPrinter->printInst(&Inst, OS, "");
   else
     Inst.print(OS, &MAI);
   EmitEOL();

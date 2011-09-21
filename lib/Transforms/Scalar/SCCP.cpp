@@ -1433,15 +1433,25 @@ bool SCCPSolver::ResolvedUndefsIn(Function &F) {
       if (I->getType()->isVoidTy()) continue;
       
       if (StructType *STy = dyn_cast<StructType>(I->getType())) {
-        // Only a few things that can be structs matter for undef.  Just send
-        // all their results to overdefined.  We could be more precise than this
-        // but it isn't worth bothering.
-        if (!isa<ExtractValueInst>(I) && !isa<InsertValueInst>(I)) {
-          for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i) {
-            LatticeVal &LV = getStructValueState(I, i);
-            if (LV.isUndefined())
-              markOverdefined(LV, I);
-          }
+        // Only a few things that can be structs matter for undef.
+
+        // Tracked calls must never be marked overdefined in ResolvedUndefsIn.
+        if (CallSite CS = CallSite(I))
+          if (Function *F = CS.getCalledFunction())
+            if (MRVFunctionsTracked.count(F))
+              continue;
+
+        // extractvalue and insertvalue don't need to be marked; they are
+        // tracked as precisely as their operands. 
+        if (isa<ExtractValueInst>(I) || isa<InsertValueInst>(I))
+          continue;
+
+        // Send the results of everything else to overdefined.  We could be
+        // more precise than this but it isn't worth bothering.
+        for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i) {
+          LatticeVal &LV = getStructValueState(I, i);
+          if (LV.isUndefined())
+            markOverdefined(LV, I);
         }
         continue;
       }
@@ -1594,6 +1604,22 @@ bool SCCPSolver::ResolvedUndefsIn(Function &F) {
           break;
         markOverdefined(I);
         return true;
+      case Instruction::Call:
+      case Instruction::Invoke: {
+        // There are two reasons a call can have an undef result
+        // 1. It could be tracked.
+        // 2. It could be constant-foldable.
+        // Because of the way we solve return values, tracked calls must
+        // never be marked overdefined in ResolvedUndefsIn.
+        if (Function *F = CallSite(I).getCalledFunction())
+          if (TrackedRetVals.count(F))
+            break;
+
+        // If the call is constant-foldable, we mark it overdefined because
+        // we do not know what return values are valid.
+        markOverdefined(I);
+        return true;
+      }
       default:
         // If we don't know what should happen here, conservatively mark it
         // overdefined.
@@ -1681,15 +1707,25 @@ FunctionPass *llvm::createSCCPPass() {
 static void DeleteInstructionInBlock(BasicBlock *BB) {
   DEBUG(dbgs() << "  BasicBlock Dead:" << *BB);
   ++NumDeadBlocks;
-  
-  // Delete the instructions backwards, as it has a reduced likelihood of
-  // having to update as many def-use and use-def chains.
-  while (!isa<TerminatorInst>(BB->begin())) {
-    Instruction *I = --BasicBlock::iterator(BB->getTerminator());
-    
-    if (!I->use_empty())
-      I->replaceAllUsesWith(UndefValue::get(I->getType()));
-    BB->getInstList().erase(I);
+
+  // Check to see if there are non-terminating instructions to delete.
+  if (isa<TerminatorInst>(BB->begin()))
+    return;
+
+  // Delete the instructions backwards, as it has a reduced likelihood of having
+  // to update as many def-use and use-def chains.
+  Instruction *EndInst = BB->getTerminator(); // Last not to be deleted.
+  while (EndInst != BB->begin()) {
+    // Delete the next to last instruction.
+    BasicBlock::iterator I = EndInst;
+    Instruction *Inst = --I;
+    if (!Inst->use_empty())
+      Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
+    if (isa<LandingPadInst>(Inst)) {
+      EndInst = Inst;
+      continue;
+    }
+    BB->getInstList().erase(Inst);
     ++NumInstRemoved;
   }
 }

@@ -97,31 +97,16 @@ if [ "$ARM_HOSTED_BUILD" = yes ]; then
     echo 'exec '$T' "$@"' >> $P || exit 1
     chmod a+x $P || exit 1
   done
-  # Try to use the platform llvm-gcc. Fall back to gcc if it's not available.
-  for prog in gcc g++ ; do
+  # Set up the links for clang.
+  for prog in clang clang++ ; do
     P=$DIR/bin/arm-apple-darwin$DARWIN_VERS-${prog}
-    T=`xcrun -sdk $SDKROOT -find llvm-${prog}`
-    if [ "x$T" = "x" ] ; then
-      T=`xcrun -sdk $SDKROOT -find ${prog}`
-    fi
+    T=`xcrun -sdk $SDKROOT -find ${prog}`
     echo '#!/bin/sh' > $P || exit 1
     echo 'exec '$T' -arch armv7 -isysroot '${SDKROOT}' "$@"' >> $P || exit 1
     chmod a+x $P || exit 1
   done
 
   PATH=$DIR/bin:$PATH
-# otherwise, try to use clang if it's available
-elif [ $DARWIN_VERS -gt 9 ]; then
-  # If the user has set CC or CXX, respect their wishes.  If not,
-  # compile with clang/clang++ if available; if LLVM is not
-  # available, fall back to usual GCC/G++ default.
-  savedPATH=$PATH ; PATH="/Developer/usr/bin:$PATH"
-  XTMPCC=$(which clang)
-  if [ x$CC  = x -a x$XTMPCC != x ] ; then export CC=$XTMPCC  ; fi
-  XTMPCC=$(which clang++)
-  if [ x$CXX = x -a x$XTMPCC != x ] ; then export CXX=$XTMPCC ; fi
-  PATH=$savedPATH
-  unset XTMPCC savedPATH
 fi
 
 if [ "$ARM_HOSTED_BUILD" = yes ]; then

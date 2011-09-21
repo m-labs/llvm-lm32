@@ -15,6 +15,7 @@
 #define ARMINSTPRINTER_H
 
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 
 namespace llvm {
 
@@ -22,10 +23,9 @@ class MCOperand;
 
 class ARMInstPrinter : public MCInstPrinter {
 public:
-  ARMInstPrinter(const MCAsmInfo &MAI)
-    : MCInstPrinter(MAI) {}
+    ARMInstPrinter(const MCAsmInfo &MAI, const MCSubtargetInfo &STI);
 
-  virtual void printInst(const MCInst *MI, raw_ostream &O);
+  virtual void printInst(const MCInst *MI, raw_ostream &O, StringRef Annot);
   virtual StringRef getOpcodeName(unsigned Opcode) const;
   virtual void printRegName(raw_ostream &OS, unsigned RegNo) const;
 
@@ -41,6 +41,8 @@ public:
   void printSORegRegOperand(const MCInst *MI, unsigned OpNum, raw_ostream &O);
   void printSORegImmOperand(const MCInst *MI, unsigned OpNum, raw_ostream &O);
 
+  void printAddrModeTBB(const MCInst *MI, unsigned OpNum, raw_ostream &O);
+  void printAddrModeTBH(const MCInst *MI, unsigned OpNum, raw_ostream &O);
   void printAddrMode2Operand(const MCInst *MI, unsigned OpNum, raw_ostream &O);
   void printAM2PostIndexOp(const MCInst *MI, unsigned OpNum, raw_ostream &O);
   void printAM2PreOrOffsetIndexOp(const MCInst *MI, unsigned OpNum,
@@ -95,6 +97,8 @@ public:
   void printT2AddrModeImm8Operand(const MCInst *MI, unsigned OpNum,
                                   raw_ostream &O);
   void printT2AddrModeImm8s4Operand(const MCInst *MI, unsigned OpNum,
+                                    raw_ostream &O);
+  void printT2AddrModeImm0_1020s4Operand(const MCInst *MI, unsigned OpNum,
                                     raw_ostream &O);
   void printT2AddrModeImm8OffsetOperand(const MCInst *MI, unsigned OpNum,
                                         raw_ostream &O);

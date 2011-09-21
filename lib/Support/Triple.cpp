@@ -25,6 +25,8 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case mico32:  return "mico32";
   case mips:    return "mips";
   case mipsel:  return "mipsel";
+  case mips64:  return "mips64";
+  case mips64el:return "mips64el";
   case msp430:  return "msp430";
   case ppc64:   return "powerpc64";
   case ppc:     return "powerpc";
@@ -40,6 +42,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case ptx32:   return "ptx32";
   case ptx64:   return "ptx64";
   case le32:    return "le32";
+  case amdil:   return "amdil";
   }
 
   return "<invalid>";
@@ -76,8 +79,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
 
   case ptx32:   return "ptx";
   case ptx64:   return "ptx";
-
   case le32:    return "le32";
+  case amdil:   return "amdil";
   }
 }
 
@@ -149,6 +152,10 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     return mips;
   if (Name == "mipsel")
     return mipsel;
+  if (Name == "mips64")
+    return mips64;
+  if (Name == "mips64el")
+    return mips64el;
   if (Name == "msp430")
     return msp430;
   if (Name == "ppc64")
@@ -181,6 +188,8 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     return ptx64;
   if (Name == "le32")
     return le32;
+  if (Name == "amdil")
+      return amdil;
 
   return UnknownArch;
 }
@@ -224,6 +233,8 @@ Triple::ArchType Triple::getArchTypeForDarwinArchName(StringRef Str) {
     return Triple::ptx32;
   if (Str == "ptx64")
     return Triple::ptx64;
+  if (Str == "amdil")
+      return Triple::amdil;
 
   return Triple::UnknownArch;
 }
@@ -261,6 +272,8 @@ const char *Triple::getArchNameForAssembler() {
     return "ptx64";
   if (Str == "le32")
     return "le32";
+  if (Str == "amdil")
+      return "amdil";
   return NULL;
 }
 
@@ -302,6 +315,10 @@ Triple::ArchType Triple::ParseArch(StringRef ArchName) {
   else if (ArchName == "mipsel" || ArchName == "mipsallegrexel" ||
            ArchName == "psp")
     return mipsel;
+  else if (ArchName == "mips64" || ArchName == "mips64eb")
+    return mips64;
+  else if (ArchName == "mips64el")
+    return mips64el;
   else if (ArchName == "sparc")
     return sparc;
   else if (ArchName == "sparcv9")
@@ -318,6 +335,8 @@ Triple::ArchType Triple::ParseArch(StringRef ArchName) {
     return ptx64;
   else if (ArchName == "le32")
     return le32;
+  else if (ArchName == "amdil")
+      return amdil;
   else
     return UnknownArch;
 }

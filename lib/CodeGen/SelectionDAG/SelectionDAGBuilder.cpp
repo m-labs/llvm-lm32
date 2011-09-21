@@ -2002,10 +2002,10 @@ static APInt ComputeRange(const APInt &First, const APInt &Last) {
 }
 
 /// handleJTSwitchCase - Emit jumptable for current switch case range
-bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec& CR,
-                                             CaseRecVector& WorkList,
-                                             const Value* SV,
-                                             MachineBasicBlock* Default,
+bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec &CR,
+                                             CaseRecVector &WorkList,
+                                             const Value *SV,
+                                             MachineBasicBlock *Default,
                                              MachineBasicBlock *SwitchBB) {
   Case& FrontCase = *CR.Range.first;
   Case& BackCase  = *(CR.Range.second-1);
@@ -2014,8 +2014,7 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec& CR,
   const APInt &Last  = cast<ConstantInt>(BackCase.High)->getValue();
 
   APInt TSize(First.getBitWidth(), 0);
-  for (CaseItr I = CR.Range.first, E = CR.Range.second;
-       I!=E; ++I)
+  for (CaseItr I = CR.Range.first, E = CR.Range.second; I != E; ++I)
     TSize += I->size();
 
   if (!areJTsAllowed(TLI) || TSize.ult(4))
@@ -2093,7 +2092,6 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec& CR,
     visitJumpTableHeader(JT, JTH, SwitchBB);
 
   JTCases.push_back(JumpTableBlock(JTH, JT));
-
   return true;
 }
 
@@ -2626,10 +2624,12 @@ void SelectionDAGBuilder::visitSelect(const User &I) {
   SDValue Cond     = getValue(I.getOperand(0));
   SDValue TrueVal  = getValue(I.getOperand(1));
   SDValue FalseVal = getValue(I.getOperand(2));
+  ISD::NodeType OpCode = Cond.getValueType().isVector() ?
+    ISD::VSELECT : ISD::SELECT;
 
   for (unsigned i = 0; i != NumValues; ++i)
-    Values[i] = DAG.getNode(ISD::SELECT, getCurDebugLoc(),
-                          TrueVal.getNode()->getValueType(TrueVal.getResNo()+i),
+    Values[i] = DAG.getNode(OpCode, getCurDebugLoc(),
+                            TrueVal.getNode()->getValueType(TrueVal.getResNo()+i),
                             Cond,
                             SDValue(TrueVal.getNode(),
                                     TrueVal.getResNo() + i),
@@ -3289,7 +3289,7 @@ static SDValue InsertFenceForAtomic(SDValue Chain, AtomicOrdering Order,
                                     const TargetLowering &TLI) {
   // Fence, if necessary
   if (Before) {
-    if (Order == AcquireRelease)
+    if (Order == AcquireRelease || Order == SequentiallyConsistent)
       Order = Release;
     else if (Order == Acquire || Order == Monotonic)
       return Chain;
@@ -3400,11 +3400,10 @@ void SelectionDAGBuilder::visitAtomicLoad(const LoadInst &I) {
 
   SDValue InChain = getRoot();
 
-  if (TLI.getInsertFencesForAtomic())
-    InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
-                                   DAG, TLI);
-
   EVT VT = EVT::getEVT(I.getType());
+
+  if (I.getAlignment() * 8 < VT.getSizeInBits())
+    report_fatal_error("Cannot generate unaligned atomic load");
 
   SDValue L =
     DAG.getAtomic(ISD::ATOMIC_LOAD, dl, VT, VT, InChain,
@@ -3431,13 +3430,17 @@ void SelectionDAGBuilder::visitAtomicStore(const StoreInst &I) {
 
   SDValue InChain = getRoot();
 
+  EVT VT = EVT::getEVT(I.getValueOperand()->getType());
+
+  if (I.getAlignment() * 8 < VT.getSizeInBits())
+    report_fatal_error("Cannot generate unaligned atomic store");
+
   if (TLI.getInsertFencesForAtomic())
     InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
                                    DAG, TLI);
 
   SDValue OutChain =
-    DAG.getAtomic(ISD::ATOMIC_STORE, dl,
-                  getValue(I.getValueOperand()).getValueType().getSimpleVT(),
+    DAG.getAtomic(ISD::ATOMIC_STORE, dl, VT,
                   InChain,
                   getValue(I.getPointerOperand()),
                   getValue(I.getValueOperand()),
@@ -4396,17 +4399,12 @@ SelectionDAGBuilder::EmitFuncArgumentDbgValue(const Value *V, MDNode *Variable,
     return false;
 
   unsigned Reg = 0;
-  if (Arg->hasByValAttr()) {
-    // Byval arguments' frame index is recorded during argument lowering.
-    // Use this info directly.
-    Reg = TRI->getFrameRegister(MF);
-    Offset = FuncInfo.getByValArgumentFrameIndex(Arg);
-    // If byval argument ofset is not recorded then ignore this.
-    if (!Offset)
-      Reg = 0;
-  }
+  // Some arguments' frame index is recorded during argument lowering.
+  Offset = FuncInfo.getArgumentFrameIndex(Arg);
+  if (Offset)
+      Reg = TRI->getFrameRegister(MF);
 
-  if (N.getNode()) {
+  if (!Reg && N.getNode()) {
     if (N.getOpcode() == ISD::CopyFromReg)
       Reg = cast<RegisterSDNode>(N.getOperand(1))->getReg();
     else
@@ -5020,12 +5018,15 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     Ops[4] = DAG.getSrcValue(I.getArgOperand(0));
     Ops[5] = DAG.getSrcValue(F);
 
-    Res = DAG.getNode(ISD::TRAMPOLINE, dl,
-                      DAG.getVTList(TLI.getPointerTy(), MVT::Other),
-                      Ops, 6);
+    Res = DAG.getNode(ISD::INIT_TRAMPOLINE, dl, MVT::Other, Ops, 6);
 
-    setValue(&I, Res);
-    DAG.setRoot(Res.getValue(1));
+    DAG.setRoot(Res);
+    return 0;
+  }
+  case Intrinsic::adjust_trampoline: {
+    setValue(&I, DAG.getNode(ISD::ADJUST_TRAMPOLINE, dl,
+                             TLI.getPointerTy(),
+                             getValue(I.getArgOperand(0))));
     return 0;
   }
   case Intrinsic::gcroot:
@@ -6732,15 +6733,22 @@ void SelectionDAGISel::LowerArguments(const BasicBlock *LLVMBB) {
     if (ArgValues.empty())
       continue;
 
-    // Note down frame index for byval arguments.
-    if (I->hasByValAttr())
-      if (FrameIndexSDNode *FI =
-          dyn_cast<FrameIndexSDNode>(ArgValues[0].getNode()))
-        FuncInfo->setByValArgumentFrameIndex(I, FI->getIndex());
+    // Note down frame index.
+    if (FrameIndexSDNode *FI =
+	dyn_cast<FrameIndexSDNode>(ArgValues[0].getNode()))
+      FuncInfo->setArgumentFrameIndex(I, FI->getIndex());
 
     SDValue Res = DAG.getMergeValues(&ArgValues[0], NumValues,
                                      SDB->getCurDebugLoc());
+
     SDB->setValue(I, Res);
+    if (!EnableFastISel && Res.getOpcode() == ISD::BUILD_PAIR) {
+      if (LoadSDNode *LNode = 
+          dyn_cast<LoadSDNode>(Res.getOperand(0).getNode()))
+        if (FrameIndexSDNode *FI =
+            dyn_cast<FrameIndexSDNode>(LNode->getBasePtr().getNode()))
+        FuncInfo->setArgumentFrameIndex(I, FI->getIndex());
+    }
 
     // If this argument is live outside of the entry block, insert a copy from
     // wherever we got it to the vreg that other BB's will reference it as.

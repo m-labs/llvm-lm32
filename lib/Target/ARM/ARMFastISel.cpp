@@ -615,8 +615,8 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, EVT VT) {
   if (Subtarget->GVIsIndirectSymbol(GV, RelocM)) {
     unsigned NewDestReg = createResultReg(TLI.getRegClassFor(VT));
     if (isThumb)
-      MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(ARM::t2LDRi12),
-                    NewDestReg)
+      MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
+                    TII.get(ARM::t2LDRi12), NewDestReg)
             .addReg(DestReg)
             .addImm(0);
     else
@@ -946,6 +946,10 @@ bool ARMFastISel::ARMEmitLoad(EVT VT, unsigned &ResultReg, Address &Addr) {
 }
 
 bool ARMFastISel::SelectLoad(const Instruction *I) {
+  // Atomic loads need special handling.
+  if (cast<LoadInst>(I)->isAtomic())
+    return false;
+
   // Verify we have a legal type before going any further.
   MVT VT;
   if (!isLoadTypeLegal(I->getType(), VT))
@@ -1007,6 +1011,10 @@ bool ARMFastISel::ARMEmitStore(EVT VT, unsigned SrcReg, Address &Addr) {
 bool ARMFastISel::SelectStore(const Instruction *I) {
   Value *Op0 = I->getOperand(0);
   unsigned SrcReg = 0;
+
+  // Atomic stores need special handling.
+  if (cast<StoreInst>(I)->isAtomic())
+    return false;
 
   // Verify we have a legal type before going any further.
   MVT VT;
@@ -1328,7 +1336,7 @@ bool ARMFastISel::SelectSIToFP(const Instruction *I) {
   unsigned Opc;
   if (Ty->isFloatTy()) Opc = ARM::VSITOS;
   else if (Ty->isDoubleTy()) Opc = ARM::VSITOD;
-  else return 0;
+  else return false;
 
   unsigned ResultReg = createResultReg(TLI.getRegClassFor(DstVT));
   AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
@@ -1354,7 +1362,7 @@ bool ARMFastISel::SelectFPToSI(const Instruction *I) {
   Type *OpTy = I->getOperand(0)->getType();
   if (OpTy->isFloatTy()) Opc = ARM::VTOSIZS;
   else if (OpTy->isDoubleTy()) Opc = ARM::VTOSIZD;
-  else return 0;
+  else return false;
 
   // f64->s32 or f32->s32 both need an intermediate f32 reg.
   unsigned ResultReg = createResultReg(TLI.getRegClassFor(MVT::f32));
@@ -1711,7 +1719,7 @@ bool ARMFastISel::SelectRet(const Instruction *I) {
 
     // Analyze operands of the call, assigning locations to each operand.
     SmallVector<CCValAssign, 16> ValLocs;
-    CCState CCInfo(CC, F.isVarArg(), *FuncInfo.MF, TM, ValLocs, I->getContext());
+    CCState CCInfo(CC, F.isVarArg(), *FuncInfo.MF, TM, ValLocs,I->getContext());
     CCInfo.AnalyzeReturn(Outs, CCAssignFnForCall(CC, true /* is Ret */));
 
     const Value *RV = Ret->getOperand(0);

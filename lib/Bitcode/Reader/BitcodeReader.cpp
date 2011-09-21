@@ -2514,6 +2514,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       if (getValueTypePair(Record, Idx, NextValueNo, Val))
         return Error("Invalid RESUME record");
       I = ResumeInst::Create(Val);
+      InstructionList.push_back(I);
       break;
     }
     case bitc::FUNC_CODE_INST_UNWIND: // UNWIND
@@ -2578,6 +2579,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       }
 
       I = LP;
+      InstructionList.push_back(I);
       break;
     }
 
@@ -2651,7 +2653,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
         return Error("Invalid STOREATOMIC record");
 
       AtomicOrdering Ordering = GetDecodedOrdering(Record[OpNum+2]);
-      if (Ordering == NotAtomic || Ordering == Release ||
+      if (Ordering == NotAtomic || Ordering == Acquire ||
           Ordering == AcquireRelease)
         return Error("Invalid STOREATOMIC record");
       SynchronizationScope SynchScope = GetDecodedSynchScope(Record[OpNum+3]);
