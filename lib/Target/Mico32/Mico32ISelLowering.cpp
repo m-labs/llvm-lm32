@@ -210,7 +210,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   computeRegisterProperties();
 }
 
-MVT::SimpleValueType Mico32TargetLowering::getSetCCResultType(EVT VT) const {
+EVT Mico32TargetLowering::getSetCCResultType(EVT VT) const {
   return MVT::i32;
 }
 
