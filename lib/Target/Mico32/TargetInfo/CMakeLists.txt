@@ -5,4 +5,10 @@ add_llvm_library(LLVMMico32Info
   Mico32TargetInfo.cpp
   )
 
-add_dependencies(LLVMMico32Info Mico32CodeGenTable_gen)
+add_llvm_library_dependencies(LLVMMico32Info
+  LLVMMC
+  LLVMSupport
+  LLVMTarget
+  )
+
+add_dependencies(LLVMMico32Info Mico32CommonTableGen)
