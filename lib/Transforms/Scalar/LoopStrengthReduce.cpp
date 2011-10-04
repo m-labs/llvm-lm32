@@ -70,11 +70,20 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLowering.h"
 #include <algorithm>
 using namespace llvm;
+
+namespace llvm {
+cl::opt<bool> EnableNested(
+  "enable-lsr-nested", cl::Hidden, cl::desc("Enable LSR on nested loops"));
+
+cl::opt<bool> EnableRetry(
+    "enable-lsr-retry", cl::Hidden, cl::desc("Enable LSR retry"));
+}
 
 namespace {
 
@@ -670,6 +679,21 @@ public:
 
   void Loose();
 
+#ifndef NDEBUG
+  // Once any of the metrics loses, they must all remain losers.
+  bool isValid() {
+    return ((NumRegs | AddRecCost | NumIVMuls | NumBaseAdds
+             | ImmCost | SetupCost) != ~0u)
+      || ((NumRegs & AddRecCost & NumIVMuls & NumBaseAdds
+           & ImmCost & SetupCost) == ~0u);
+  }
+#endif
+
+  bool isLoser() {
+    assert(isValid() && "invalid cost");
+    return NumRegs == ~0u;
+  }
+
   void RateFormula(const Formula &F,
                    SmallPtrSet<const SCEV *, 16> &Regs,
                    const DenseSet<const SCEV *> &VisitedRegs,
@@ -702,34 +726,48 @@ void Cost::RateRegister(const SCEV *Reg,
     if (AR->getLoop() == L)
       AddRecCost += 1; /// TODO: This should be a function of the stride.
 
-    // If this is an addrec for a loop that's already been visited by LSR,
-    // don't second-guess its addrec phi nodes. LSR isn't currently smart
-    // enough to reason about more than one loop at a time. Consider these
-    // registers free and leave them alone.
-    else if (L->contains(AR->getLoop()) ||
+    // If this is an addrec for another loop, don't second-guess its addrec phi
+    // nodes. LSR isn't currently smart enough to reason about more than one
+    // loop at a time. LSR has either already run on inner loops, will not run
+    // on other loops, and cannot be expected to change sibling loops. If the
+    // AddRec exists, consider it's register free and leave it alone. Otherwise,
+    // do not consider this formula at all.
+    // FIXME: why do we need to generate such fomulae?
+    else if (!EnableNested || L->contains(AR->getLoop()) ||
              (!AR->getLoop()->contains(L) &&
               DT.dominates(L->getHeader(), AR->getLoop()->getHeader()))) {
       for (BasicBlock::iterator I = AR->getLoop()->getHeader()->begin();
-           PHINode *PN = dyn_cast<PHINode>(I); ++I)
+           PHINode *PN = dyn_cast<PHINode>(I); ++I) {
         if (SE.isSCEVable(PN->getType()) &&
             (SE.getEffectiveSCEVType(PN->getType()) ==
              SE.getEffectiveSCEVType(AR->getType())) &&
             SE.getSCEV(PN) == AR)
           return;
-
+      }
+      if (!EnableNested) {
+        Loose();
+        return;
+      }
       // If this isn't one of the addrecs that the loop already has, it
       // would require a costly new phi and add. TODO: This isn't
       // precisely modeled right now.
       ++NumBaseAdds;
-      if (!Regs.count(AR->getStart()))
+      if (!Regs.count(AR->getStart())) {
         RateRegister(AR->getStart(), Regs, L, SE, DT);
+        if (isLoser())
+          return;
+      }
     }
 
     // Add the step value register, if it needs one.
     // TODO: The non-affine case isn't precisely modeled here.
-    if (!AR->isAffine() || !isa<SCEVConstant>(AR->getOperand(1)))
-      if (!Regs.count(AR->getStart()))
+    if (!AR->isAffine() || !isa<SCEVConstant>(AR->getOperand(1))) {
+      if (!Regs.count(AR->getOperand(1))) {
         RateRegister(AR->getOperand(1), Regs, L, SE, DT);
+        if (isLoser())
+          return;
+      }
+    }
   }
   ++NumRegs;
 
@@ -769,6 +807,8 @@ void Cost::RateFormula(const Formula &F,
       return;
     }
     RatePrimaryRegister(ScaledReg, Regs, L, SE, DT);
+    if (isLoser())
+      return;
   }
   for (SmallVectorImpl<const SCEV *>::const_iterator I = F.BaseRegs.begin(),
        E = F.BaseRegs.end(); I != E; ++I) {
@@ -778,6 +818,8 @@ void Cost::RateFormula(const Formula &F,
       return;
     }
     RatePrimaryRegister(BaseReg, Regs, L, SE, DT);
+    if (isLoser())
+      return;
   }
 
   // Determine how many (unfolded) adds we'll need inside the loop.
@@ -795,6 +837,7 @@ void Cost::RateFormula(const Formula &F,
     else if (Offset != 0)
       ImmCost += APInt(64, Offset, true).getMinSignedBits();
   }
+  assert(isValid() && "invalid cost");
 }
 
 /// Loose - Set this cost to a losing value.
@@ -3282,6 +3325,9 @@ retry:
   skip:;
   }
 
+  if (!EnableRetry && !AnySatisfiedReqRegs)
+    return;
+
   // If none of the formulae had all of the required registers, relax the
   // constraint so that we don't exclude all formulae.
   if (!AnySatisfiedReqRegs) {
@@ -3305,6 +3351,10 @@ void LSRInstance::Solve(SmallVectorImpl<const Formula *> &Solution) const {
   // SolveRecurse does all the work.
   SolveRecurse(Solution, SolutionCost, Workspace, CurCost,
                CurRegs, VisitedRegs);
+  if (Solution.empty()) {
+    DEBUG(dbgs() << "\nNo Satisfactory Solution\n");
+    return;
+  }
 
   // Ok, we've now made all our decisions.
   DEBUG(dbgs() << "\n"
@@ -3761,6 +3811,12 @@ LSRInstance::LSRInstance(const TargetLowering *tli, Loop *l, Pass *P)
   // If loop preparation eliminates all interesting IV users, bail.
   if (IU.empty()) return;
 
+  // Skip nested loops until we can model them better with formulae.
+  if (!EnableNested && !L->empty()) {
+    DEBUG(dbgs() << "LSR skipping outer loop " << *L << "\n");
+    return;
+  }
+
   // Start collecting data and preparing for the solver.
   CollectInterestingTypesAndFactors();
   CollectFixupsAndInitialFormulae();
@@ -3783,6 +3839,9 @@ LSRInstance::LSRInstance(const TargetLowering *tli, Loop *l, Pass *P)
   Factors.clear();
   Types.clear();
   RegUses.clear();
+
+  if (Solution.empty())
+    return;
 
 #ifndef NDEBUG
   // Formulae should be legal.

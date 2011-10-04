@@ -58,8 +58,8 @@ static InstructionContext contextForAttrs(uint8_t attrMask) {
  * @return            - TRUE if the ModR/M byte is required, FALSE otherwise.
  */
 static int modRMRequired(OpcodeType type,
-                                InstructionContext insnContext,
-                                uint8_t opcode) {
+                         InstructionContext insnContext,
+                         uint8_t opcode) {
   const struct ContextDecision* decision = 0;
   
   switch (type) {
@@ -391,7 +391,7 @@ static int readPrefixes(struct InternalInstruction* insn) {
       return -1;
     }
     
-    if (insn->mode == MODE_64BIT || byte1 & 0x8) {
+    if (insn->mode == MODE_64BIT || (byte1 & 0xc0) == 0xc0) {
       insn->vexSize = 3;
       insn->necessaryPrefixLocation = insn->readerCursor - 1;
     }
@@ -406,12 +406,14 @@ static int readPrefixes(struct InternalInstruction* insn) {
       consumeByte(insn, &insn->vexPrefix[2]);
 
       /* We simulate the REX prefix for simplicity's sake */
-    
-      insn->rexPrefix = 0x40 
-                      | (wFromVEX3of3(insn->vexPrefix[2]) << 3)
-                      | (rFromVEX2of3(insn->vexPrefix[1]) << 2)
-                      | (xFromVEX2of3(insn->vexPrefix[1]) << 1)
-                      | (bFromVEX2of3(insn->vexPrefix[1]) << 0);
+   
+      if (insn->mode == MODE_64BIT) {
+        insn->rexPrefix = 0x40 
+                        | (wFromVEX3of3(insn->vexPrefix[2]) << 3)
+                        | (rFromVEX2of3(insn->vexPrefix[1]) << 2)
+                        | (xFromVEX2of3(insn->vexPrefix[1]) << 1)
+                        | (bFromVEX2of3(insn->vexPrefix[1]) << 0);
+      }
     
       switch (ppFromVEX3of3(insn->vexPrefix[2]))
       {
@@ -433,7 +435,7 @@ static int readPrefixes(struct InternalInstruction* insn) {
       return -1;
     }
       
-    if (insn->mode == MODE_64BIT || byte1 & 0x8) {
+    if (insn->mode == MODE_64BIT || (byte1 & 0xc0) == 0xc0) {
       insn->vexSize = 2;
     }
     else {
@@ -444,8 +446,10 @@ static int readPrefixes(struct InternalInstruction* insn) {
       insn->vexPrefix[0] = byte;
       consumeByte(insn, &insn->vexPrefix[1]);
         
-      insn->rexPrefix = 0x40 
-                      | (rFromVEX2of2(insn->vexPrefix[1]) << 2);
+      if (insn->mode == MODE_64BIT) {
+        insn->rexPrefix = 0x40 
+                        | (rFromVEX2of2(insn->vexPrefix[1]) << 2);
+      }
         
       switch (ppFromVEX2of2(insn->vexPrefix[1]))
       {
@@ -763,7 +767,7 @@ static int getID(struct InternalInstruction* insn) {
         break;
       }
     
-      if (wFromVEX3of3(insn->vexPrefix[2]))
+      if (insn->mode == MODE_64BIT && wFromVEX3of3(insn->vexPrefix[2]))
         attrMask |= ATTR_REXW;
       if (lFromVEX3of3(insn->vexPrefix[2]))
         attrMask |= ATTR_VEXL;
@@ -883,6 +887,43 @@ static int getID(struct InternalInstruction* insn) {
       insn->instructionID = instructionID;
       insn->spec = spec;
     }
+    return 0;
+  }
+
+  if (insn->opcodeType == ONEBYTE && insn->opcode == 0x90 &&
+      insn->rexPrefix & 0x01) {
+    /*
+     * NOOP shouldn't decode as NOOP if REX.b is set. Instead
+     * it should decode as XCHG %r8, %eax.
+     */
+
+    const struct InstructionSpecifier *spec;
+    uint16_t instructionIDWithNewOpcode;
+    const struct InstructionSpecifier *specWithNewOpcode;
+
+    spec = specifierForUID(instructionID);
+    
+    // Borrow opcode from one of the other XCHGar opcodes
+    insn->opcode = 0x91;
+   
+    if (getIDWithAttrMask(&instructionIDWithNewOpcode,
+                          insn,
+                          attrMask)) {
+      insn->opcode = 0x90;
+
+      insn->instructionID = instructionID;
+      insn->spec = spec;
+      return 0;
+    }
+
+    specWithNewOpcode = specifierForUID(instructionIDWithNewOpcode);
+
+    // Change back 
+    insn->opcode = 0x90;
+
+    insn->instructionID = instructionIDWithNewOpcode;
+    insn->spec = specWithNewOpcode;
+
     return 0;
   }
   
@@ -1449,6 +1490,9 @@ static int readVVVV(struct InternalInstruction* insn) {
     insn->vvvv = vvvvFromVEX2of2(insn->vexPrefix[1]);
   else
     return -1;
+
+  if (insn->mode != MODE_64BIT)
+    insn->vvvv &= 0x7;
 
   return 0;
 }

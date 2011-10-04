@@ -15,6 +15,7 @@
 #include "ARM.h"
 #include "llvm/PassManager.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -107,7 +108,6 @@ bool ARMBaseTargetMachine::addPreRegAlloc(PassManagerBase &PM,
     PM.add(createARMLoadStoreOptimizationPass(true));
   if (OptLevel != CodeGenOpt::None && Subtarget.isCortexA9())
     PM.add(createMLxExpansionPass());
-
   return true;
 }
 
@@ -118,7 +118,7 @@ bool ARMBaseTargetMachine::addPreSched2(PassManagerBase &PM,
     if (!Subtarget.isThumb1Only())
       PM.add(createARMLoadStoreOptimizationPass());
     if (Subtarget.hasNEON())
-      PM.add(createNEONMoveFixPass());
+      PM.add(createExecutionDependencyFixPass(&ARM::DPRRegClass));
   }
 
   // Expand some pseudo instructions into multiple instructions to allow

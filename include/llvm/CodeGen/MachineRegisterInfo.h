@@ -25,6 +25,8 @@ namespace llvm {
 /// registers, including vreg register classes, use/def chains for registers,
 /// etc.
 class MachineRegisterInfo {
+  const TargetRegisterInfo *const TRI;
+
   /// IsSSA - True when the machine function is in SSA form and virtual
   /// registers have a single def.
   bool IsSSA;
@@ -215,13 +217,15 @@ public:
   void setRegClass(unsigned Reg, const TargetRegisterClass *RC);
 
   /// constrainRegClass - Constrain the register class of the specified virtual
-  /// register to be a common subclass of RC and the current register class.
-  /// Return the new register class, or NULL if no such class exists.
+  /// register to be a common subclass of RC and the current register class,
+  /// but only if the new class has at least MinNumRegs registers.  Return the
+  /// new register class, or NULL if no such class exists.
   /// This should only be used when the constraint is known to be trivial, like
   /// GR32 -> GR32_NOSP. Beware of increasing register pressure.
   ///
   const TargetRegisterClass *constrainRegClass(unsigned Reg,
-                                               const TargetRegisterClass *RC);
+                                               const TargetRegisterClass *RC,
+                                               unsigned MinNumRegs = 0);
 
   /// recomputeRegClass - Try to find a legal super-class of Reg's register
   /// class that still satisfies the constraints from the instructions using

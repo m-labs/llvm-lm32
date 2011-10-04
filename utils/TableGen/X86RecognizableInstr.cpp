@@ -231,10 +231,15 @@ RecognizableInstr::RecognizableInstr(DisassemblerTables &tables,
   HasVEX_LPrefix   = has256BitOperands() || Rec->getValueAsBit("hasVEX_L");
   
   // Check for 64-bit inst which does not require REX
+  Is32Bit = false;
   Is64Bit = false;
   // FIXME: Is there some better way to check for In64BitMode?
   std::vector<Record*> Predicates = Rec->getValueAsListOfDefs("Predicates");
   for (unsigned i = 0, e = Predicates.size(); i != e; ++i) {
+    if (Predicates[i]->getName().find("32Bit") != Name.npos) {
+      Is32Bit = true;
+      break;
+    }
     if (Predicates[i]->getName().find("64Bit") != Name.npos) {
       Is64Bit = true;
       break;
@@ -250,6 +255,8 @@ RecognizableInstr::RecognizableInstr(DisassemblerTables &tables,
              Rec->getName() == "REX64_PREFIX" ||
              Rec->getName().find("VMREAD64") != Name.npos ||
              Rec->getName().find("VMWRITE64") != Name.npos ||
+             Rec->getName().find("INVEPT64") != Name.npos ||
+             Rec->getName().find("INVVPID64") != Name.npos ||
              Rec->getName().find("MOV64") != Name.npos || 
              Rec->getName().find("PUSH64") != Name.npos ||
              Rec->getName().find("POP64") != Name.npos;
@@ -304,13 +311,15 @@ InstructionContext RecognizableInstr::insnContext() const {
   } else if (Is64Bit || HasREX_WPrefix) {
     if (HasREX_WPrefix && HasOpSizePrefix)
       insnContext = IC_64BIT_REXW_OPSIZE;
+    else if (HasOpSizePrefix && (Prefix == X86Local::XD || Prefix == X86Local::TF))
+      insnContext = IC_64BIT_XD_OPSIZE;
     else if (HasOpSizePrefix)
       insnContext = IC_64BIT_OPSIZE;
     else if (HasREX_WPrefix && Prefix == X86Local::XS)
       insnContext = IC_64BIT_REXW_XS;
-    else if (HasREX_WPrefix && Prefix == X86Local::XD)
+    else if (HasREX_WPrefix && (Prefix == X86Local::XD || Prefix == X86Local::TF))
       insnContext = IC_64BIT_REXW_XD;
-    else if (Prefix == X86Local::XD)
+    else if (Prefix == X86Local::XD || Prefix == X86Local::TF)
       insnContext = IC_64BIT_XD;
     else if (Prefix == X86Local::XS)
       insnContext = IC_64BIT_XS;
@@ -319,11 +328,12 @@ InstructionContext RecognizableInstr::insnContext() const {
     else
       insnContext = IC_64BIT;
   } else {
-    if (HasOpSizePrefix && Prefix == X86Local::TF)
-      insnContext = IC_XD;
+    if (HasOpSizePrefix &&
+        (Prefix == X86Local::XD || Prefix == X86Local::TF))
+      insnContext = IC_XD_OPSIZE;
     else if (HasOpSizePrefix)
       insnContext = IC_OPSIZE;
-    else if (Prefix == X86Local::XD)
+    else if (Prefix == X86Local::XD || Prefix == X86Local::TF)
       insnContext = IC_XD;
     else if (Prefix == X86Local::XS || Prefix == X86Local::REP)
       insnContext = IC_XS;
@@ -397,7 +407,7 @@ RecognizableInstr::filter_ret RecognizableInstr::filter() const {
   // Filter out alternate forms of AVX instructions
   if (Name.find("_alt") != Name.npos ||
       Name.find("XrYr") != Name.npos ||
-      Name.find("r64r") != Name.npos ||
+      (Name.find("r64r") != Name.npos && Name.find("r64r64") == Name.npos) ||
       Name.find("_64mr") != Name.npos ||
       Name.find("Xrr") != Name.npos ||
       Name.find("rr64") != Name.npos)
@@ -947,7 +957,7 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
                               insnContext(), 
                               currentOpcode, 
                               *filter, 
-                              UID);
+                              UID, Is32Bit);
     
       Spec->modifierType = MODIFIER_OPCODE;
       Spec->modifierBase = opcodeToSet;
@@ -957,14 +967,14 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
                             insnContext(), 
                             opcodeToSet, 
                             *filter, 
-                            UID);
+                            UID, Is32Bit);
     }
   } else {
     tables.setTableFields(opcodeType,
                           insnContext(),
                           opcodeToSet,
                           *filter,
-                          UID);
+                          UID, Is32Bit);
     
     Spec->modifierType = MODIFIER_NONE;
     Spec->modifierBase = opcodeToSet;

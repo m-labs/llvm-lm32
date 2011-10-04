@@ -14,8 +14,9 @@
 
 #include "CodeGenRegisters.h"
 #include "CodeGenTarget.h"
-#include "Error.h"
+#include "llvm/TableGen/Error.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 
 using namespace llvm;
@@ -255,7 +256,7 @@ struct TupleExpander : SetTheory::Expander {
 //===----------------------------------------------------------------------===//
 
 CodeGenRegisterClass::CodeGenRegisterClass(CodeGenRegBank &RegBank, Record *R)
-  : TheDef(R) {
+  : TheDef(R), EnumValue(-1) {
   // Rename anonymous register classes.
   if (R->getName().size() > 9 && R->getName()[9] == '.') {
     static unsigned AnonCounter = 0;
@@ -341,16 +342,89 @@ bool CodeGenRegisterClass::contains(const CodeGenRegister *Reg) const {
 // 2. The RC spill size must not be smaller than our spill size.
 // 3. RC spill alignment must be compatible with ours.
 //
-bool CodeGenRegisterClass::hasSubClass(const CodeGenRegisterClass *RC) const {
-  return SpillAlignment && RC->SpillAlignment % SpillAlignment == 0 &&
-    SpillSize <= RC->SpillSize &&
-    std::includes(Members.begin(), Members.end(),
-                  RC->Members.begin(), RC->Members.end(),
+static bool testSubClass(const CodeGenRegisterClass *A,
+                         const CodeGenRegisterClass *B) {
+  return A->SpillAlignment && B->SpillAlignment % A->SpillAlignment == 0 &&
+    A->SpillSize <= B->SpillSize &&
+    std::includes(A->getMembers().begin(), A->getMembers().end(),
+                  B->getMembers().begin(), B->getMembers().end(),
                   CodeGenRegister::Less());
+}
+
+/// Sorting predicate for register classes.  This provides a topological
+/// ordering that arranges all register classes before their sub-classes.
+///
+/// Register classes with the same registers, spill size, and alignment form a
+/// clique.  They will be ordered alphabetically.
+///
+static int TopoOrderRC(const void *PA, const void *PB) {
+  const CodeGenRegisterClass *A = *(const CodeGenRegisterClass* const*)PA;
+  const CodeGenRegisterClass *B = *(const CodeGenRegisterClass* const*)PB;
+  if (A == B)
+    return 0;
+
+  // Order by descending set size.
+  if (A->getOrder().size() > B->getOrder().size())
+    return -1;
+  if (A->getOrder().size() < B->getOrder().size())
+    return 1;
+
+  // Order by ascending spill size.
+  if (A->SpillSize < B->SpillSize)
+    return -1;
+  if (A->SpillSize > B->SpillSize)
+    return 1;
+
+  // Order by ascending spill alignment.
+  if (A->SpillAlignment < B->SpillAlignment)
+    return -1;
+  if (A->SpillAlignment > B->SpillAlignment)
+    return 1;
+
+  // Finally order by name as a tie breaker.
+  return A->getName() < B->getName();
 }
 
 const std::string &CodeGenRegisterClass::getName() const {
   return TheDef->getName();
+}
+
+// Compute sub-classes of all register classes.
+// Assume the classes are ordered topologically.
+void CodeGenRegisterClass::
+computeSubClasses(ArrayRef<CodeGenRegisterClass*> RegClasses) {
+  // Visit backwards so sub-classes are seen first.
+  for (unsigned rci = RegClasses.size(); rci; --rci) {
+    CodeGenRegisterClass &RC = *RegClasses[rci - 1];
+    RC.SubClasses.resize(RegClasses.size());
+    RC.SubClasses.set(RC.EnumValue);
+
+    // Normally, all subclasses have IDs >= rci, unless RC is part of a clique.
+    for (unsigned s = rci; s != RegClasses.size(); ++s) {
+      if (RC.SubClasses.test(s))
+        continue;
+      CodeGenRegisterClass *SubRC = RegClasses[s];
+      if (!testSubClass(&RC, SubRC))
+        continue;
+      // SubRC is a sub-class. Grap all its sub-classes so we won't have to
+      // check them again.
+      RC.SubClasses |= SubRC->SubClasses;
+    }
+
+    // Sweep up missed clique members.  They will be immediately preceeding RC.
+    for (unsigned s = rci - 1; s && testSubClass(&RC, RegClasses[s - 1]); --s)
+      RC.SubClasses.set(s - 1);
+  }
+
+  // Compute the SuperClasses lists from the SubClasses vectors.
+  for (unsigned rci = 0; rci != RegClasses.size(); ++rci) {
+    const BitVector &SC = RegClasses[rci]->getSubClasses();
+    for (int s = SC.find_first(); s >= 0; s = SC.find_next(s)) {
+      if (unsigned(s) == rci)
+        continue;
+      RegClasses[s]->SuperClasses.push_back(RegClasses[rci]);
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -391,8 +465,16 @@ CodeGenRegBank::CodeGenRegBank(RecordKeeper &Records) : Records(Records) {
     throw std::string("No 'RegisterClass' subclasses defined!");
 
   RegClasses.reserve(RCs.size());
-  for (unsigned i = 0, e = RCs.size(); i != e; ++i)
-    RegClasses.push_back(CodeGenRegisterClass(*this, RCs[i]));
+  for (unsigned i = 0, e = RCs.size(); i != e; ++i) {
+    CodeGenRegisterClass *RC = new CodeGenRegisterClass(*this, RCs[i]);
+    RegClasses.push_back(RC);
+    Def2RC[RCs[i]] = RC;
+  }
+  // Order register classes topologically and assign enum values.
+  array_pod_sort(RegClasses.begin(), RegClasses.end(), TopoOrderRC);
+  for (unsigned i = 0, e = RegClasses.size(); i != e; ++i)
+    RegClasses[i]->EnumValue = i;
+  CodeGenRegisterClass::computeSubClasses(RegClasses);
 }
 
 CodeGenRegister *CodeGenRegBank::getReg(Record *Def) {
@@ -405,10 +487,6 @@ CodeGenRegister *CodeGenRegBank::getReg(Record *Def) {
 }
 
 CodeGenRegisterClass *CodeGenRegBank::getRegClass(Record *Def) {
-  if (Def2RC.empty())
-    for (unsigned i = 0, e = RegClasses.size(); i != e; ++i)
-      Def2RC[RegClasses[i].TheDef] = &RegClasses[i];
-
   if (CodeGenRegisterClass *RC = Def2RC[Def])
     return RC;
 
@@ -579,10 +657,10 @@ void CodeGenRegBank::computeDerivedInfo() {
 const CodeGenRegisterClass*
 CodeGenRegBank::getRegClassForRegister(Record *R) {
   const CodeGenRegister *Reg = getReg(R);
-  const std::vector<CodeGenRegisterClass> &RCs = getRegClasses();
+  ArrayRef<CodeGenRegisterClass*> RCs = getRegClasses();
   const CodeGenRegisterClass *FoundRC = 0;
   for (unsigned i = 0, e = RCs.size(); i != e; ++i) {
-    const CodeGenRegisterClass &RC = RCs[i];
+    const CodeGenRegisterClass &RC = *RCs[i];
     if (!RC.contains(Reg))
       continue;
 

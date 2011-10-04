@@ -135,8 +135,8 @@ void CompileUnit::addSourceLine(DIE *Die, DIGlobalVariable G) {
   unsigned Line = G.getLineNumber();
   if (Line == 0)
     return;
-  unsigned FileID = DD->GetOrCreateSourceID(G.getContext().getFilename(),
-                                            G.getContext().getDirectory());
+  unsigned FileID = DD->GetOrCreateSourceID(G.getFilename(),
+                                            G.getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -1081,7 +1081,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
              Asm->Mang->getSymbol(GV.getGlobal()));
     // Do not create specification DIE if context is either compile unit
     // or a subprogram.
-    if (GV.isDefinition() && !GVContext.isCompileUnit() &&
+    if (GVContext && GV.isDefinition() && !GVContext.isCompileUnit() &&
         !GVContext.isFile() && !isSubprogramContext(GVContext)) {
       // Create specification DIE.
       DIE *VariableSpecDIE = new DIE(dwarf::DW_TAG_variable);
@@ -1236,7 +1236,7 @@ DIE *CompileUnit::constructVariableDIE(DbgVariable *DV, bool isScopeAbstract) {
     return VariableDie;
   }
 
-  // Check if variable is described by a  DBG_VALUE instruction.
+  // Check if variable is described by a DBG_VALUE instruction.
   if (const MachineInstr *DVInsn = DV->getMInsn()) {
     bool updated = false;
     if (DVInsn->getNumOperands() == 3) {

@@ -15,10 +15,11 @@
 #ifndef CODEGEN_REGISTERS_H
 #define CODEGEN_REGISTERS_H
 
-#include "Record.h"
 #include "SetTheory.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include <cstdlib>
@@ -87,8 +88,14 @@ namespace llvm {
     CodeGenRegister::Set Members;
     const std::vector<Record*> *Elements;
     std::vector<SmallVector<Record*, 16> > AltOrders;
+    // Bit mask of sub-classes including this, indexed by their EnumValue.
+    BitVector SubClasses;
+    // List of super-classes, topologocally ordered to have the larger classes
+    // first.  This is the same as sorting by EnumValue.
+    SmallVector<CodeGenRegisterClass*, 4> SuperClasses;
   public:
     Record *TheDef;
+    unsigned EnumValue;
     std::string Namespace;
     std::vector<MVT::SimpleValueType> VTs;
     unsigned SpillSize;
@@ -122,7 +129,20 @@ namespace llvm {
     // 2. The RC spill size must not be smaller than our spill size.
     // 3. RC spill alignment must be compatible with ours.
     //
-    bool hasSubClass(const CodeGenRegisterClass *RC) const;
+    bool hasSubClass(const CodeGenRegisterClass *RC) const {
+      return SubClasses.test(RC->EnumValue);
+    }
+
+    // getSubClasses - Returns a constant BitVector of subclasses indexed by
+    // EnumValue.
+    // The SubClasses vector includs an entry for this class.
+    const BitVector &getSubClasses() const { return SubClasses; };
+
+    // getSuperClasses - Returns a list of super classes ordered by EnumValue.
+    // The array does not include an entry for this class.
+    ArrayRef<CodeGenRegisterClass*> getSuperClasses() const {
+      return SuperClasses;
+    }
 
     // Returns an ordered list of class members.
     // The order of registers is the same as in the .td file.
@@ -137,7 +157,14 @@ namespace llvm {
     // Return the total number of allocation orders available.
     unsigned getNumOrders() const { return 1 + AltOrders.size(); }
 
+    // Get the set of registers.  This set contains the same registers as
+    // getOrder(0).
+    const CodeGenRegister::Set &getMembers() const { return Members; }
+
     CodeGenRegisterClass(CodeGenRegBank&, Record *R);
+
+    // Called by CodeGenRegBank::CodeGenRegBank().
+    static void computeSubClasses(ArrayRef<CodeGenRegisterClass*>);
   };
 
   // CodeGenRegBank - Represent a target's registers and the relations between
@@ -151,7 +178,7 @@ namespace llvm {
     std::vector<CodeGenRegister*> Registers;
     DenseMap<Record*, CodeGenRegister*> Def2Reg;
 
-    std::vector<CodeGenRegisterClass> RegClasses;
+    std::vector<CodeGenRegisterClass*> RegClasses;
     DenseMap<Record*, CodeGenRegisterClass*> Def2RC;
 
     // Composite SubRegIndex instances.
@@ -184,7 +211,7 @@ namespace llvm {
     // Find a register from its Record def.
     CodeGenRegister *getReg(Record*);
 
-    const std::vector<CodeGenRegisterClass> &getRegClasses() {
+    ArrayRef<CodeGenRegisterClass*> getRegClasses() const {
       return RegClasses;
     }
 

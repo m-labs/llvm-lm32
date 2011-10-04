@@ -502,11 +502,19 @@ unsigned ARMFastISel::ARMMaterializeFP(const ConstantFP *CFP, EVT VT) {
   // This checks to see if we can use VFP3 instructions to materialize
   // a constant, otherwise we have to go through the constant pool.
   if (TLI.isFPImmLegal(Val, VT)) {
-    unsigned Opc = is64bit ? ARM::FCONSTD : ARM::FCONSTS;
+    int Imm;
+    unsigned Opc;
+    if (is64bit) {
+      Imm = ARM_AM::getFP64Imm(Val);
+      Opc = ARM::FCONSTD;
+    } else {
+      Imm = ARM_AM::getFP32Imm(Val);
+      Opc = ARM::FCONSTS;
+    }
     unsigned DestReg = createResultReg(TLI.getRegClassFor(VT));
     AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
                             DestReg)
-                    .addFPImm(CFP));
+                    .addImm(Imm));
     return DestReg;
   }
 
@@ -590,8 +598,9 @@ unsigned ARMFastISel::ARMMaterializeGV(const GlobalValue *GV, EVT VT) {
   // Grab index.
   unsigned PCAdj = (RelocM != Reloc::PIC_) ? 0 : (Subtarget->isThumb() ? 4 : 8);
   unsigned Id = AFI->createPICLabelUId();
-  ARMConstantPoolValue *CPV = new ARMConstantPoolValue(GV, Id,
-                                                       ARMCP::CPValue, PCAdj);
+  ARMConstantPoolValue *CPV = ARMConstantPoolConstant::Create(GV, Id,
+                                                              ARMCP::CPValue,
+                                                              PCAdj);
   unsigned Idx = MCP.getConstantPoolIndex(CPV, Align);
 
   // Load value.

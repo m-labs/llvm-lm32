@@ -13,6 +13,7 @@
 
 #include "PTXMCTargetDesc.h"
 #include "PTXMCAsmInfo.h"
+#include "InstPrinter/PTXInstPrinter.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -57,6 +58,14 @@ static MCCodeGenInfo *createPTXMCCodeGenInfo(StringRef TT, Reloc::Model RM,
   return X;
 }
 
+static MCInstPrinter *createPTXMCInstPrinter(const Target &T,
+                                             unsigned SyntaxVariant,
+                                             const MCAsmInfo &MAI,
+                                             const MCSubtargetInfo &STI) {
+  assert(SyntaxVariant == 0 && "We only have one syntax variant");
+  return new PTXInstPrinter(MAI, STI);
+}
+
 extern "C" void LLVMInitializePTXTargetMC() {
   // Register the MC asm info.
   RegisterMCAsmInfo<PTXMCAsmInfo> X(ThePTX32Target);
@@ -79,4 +88,8 @@ extern "C" void LLVMInitializePTXTargetMC() {
                                           createPTXMCSubtargetInfo);
   TargetRegistry::RegisterMCSubtargetInfo(ThePTX64Target,
                                           createPTXMCSubtargetInfo);
+
+  // Register the MCInstPrinter.
+  TargetRegistry::RegisterMCInstPrinter(ThePTX32Target, createPTXMCInstPrinter);
+  TargetRegistry::RegisterMCInstPrinter(ThePTX64Target, createPTXMCInstPrinter);
 }

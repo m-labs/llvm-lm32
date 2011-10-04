@@ -114,6 +114,12 @@ LLVMTargetMachine::LLVMTargetMachine(const Target &T, StringRef Triple,
   : TargetMachine(T, Triple, CPU, FS) {
   CodeGenInfo = T.createMCCodeGenInfo(Triple, RM, CM);
   AsmInfo = T.createMCAsmInfo(Triple);
+  // TargetSelect.h moved to a different directory between LLVM 2.9 and 3.0,
+  // and if the old one gets included then MCAsmInfo will be NULL and
+  // we'll crash later.
+  // Provide the user with a useful error message about what's wrong.
+  assert(AsmInfo && "MCAsmInfo not initialized."
+	 "Make sure you include the correct TargetSelect.h!");
 }
 
 bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
@@ -444,8 +450,8 @@ bool LLVMTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   if (addPostRegAlloc(PM, OptLevel))
     printAndVerify(PM, "After PostRegAlloc passes");
 
-  PM.add(createLowerSubregsPass());
-  printAndVerify(PM, "After LowerSubregs");
+  PM.add(createExpandPostRAPseudosPass());
+  printAndVerify(PM, "After ExpandPostRAPseudos");
 
   // Insert prolog/epilog code.  Eliminate abstract frame index references...
   PM.add(createPrologEpilogCodeInserter());

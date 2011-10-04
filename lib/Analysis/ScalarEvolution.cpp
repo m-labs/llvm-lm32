@@ -1070,14 +1070,26 @@ static const SCEV *getPreStartForSignExtend(const SCEVAddRecExpr *AR,
 
   // Check for a simple looking step prior to loop entry.
   const SCEVAddExpr *SA = dyn_cast<SCEVAddExpr>(Start);
-  if (!SA || SA->getNumOperands() != 2 || SA->getOperand(0) != Step)
+  if (!SA)
+    return 0;
+
+  // Create an AddExpr for "PreStart" after subtracting Step. Full SCEV
+  // subtraction is expensive. For this purpose, perform a quick and dirty
+  // difference, by checking for Step in the operand list.
+  SmallVector<const SCEV *, 4> DiffOps;
+  for (SCEVAddExpr::op_iterator I = SA->op_begin(), E = SA->op_end();
+       I != E; ++I) {
+    if (*I != Step)
+      DiffOps.push_back(*I);
+  }
+  if (DiffOps.size() == SA->getNumOperands())
     return 0;
 
   // This is a postinc AR. Check for overflow on the preinc recurrence using the
   // same three conditions that getSignExtendedExpr checks.
 
   // 1. NSW flags on the step increment.
-  const SCEV *PreStart = SA->getOperand(1);
+  const SCEV *PreStart = SE->getAddExpr(DiffOps, SA->getNoWrapFlags());
   const SCEVAddRecExpr *PreAR = dyn_cast<SCEVAddRecExpr>(
     SE->getAddRecExpr(PreStart, Step, L, SCEV::FlagAnyWrap));
 
@@ -5107,7 +5119,7 @@ SolveQuadraticEquation(const SCEVAddRecExpr *AddRec, ScalarEvolution &SE) {
     // Compute the two solutions for the quadratic formula.
     // The divisions must be performed as signed divisions.
     APInt NegB(-B);
-    APInt TwoA( A << 1 );
+    APInt TwoA(A << 1);
     if (TwoA.isMinValue()) {
       const SCEV *CNC = SE.getCouldNotCompute();
       return std::make_pair(CNC, CNC);
@@ -5122,7 +5134,7 @@ SolveQuadraticEquation(const SCEVAddRecExpr *AddRec, ScalarEvolution &SE) {
 
     return std::make_pair(SE.getConstant(Solution1),
                           SE.getConstant(Solution2));
-    } // end APIntOps namespace
+  } // end APIntOps namespace
 }
 
 /// HowFarToZero - Return the number of times a backedge comparing the specified
@@ -5216,8 +5228,19 @@ ScalarEvolution::HowFarToZero(const SCEV *V, const Loop *L) {
   // Handle unitary steps, which cannot wraparound.
   // 1*N = -Start; -1*N = Start (mod 2^BW), so:
   //   N = Distance (as unsigned)
-  if (StepC->getValue()->equalsInt(1) || StepC->getValue()->isAllOnesValue())
-    return Distance;
+  if (StepC->getValue()->equalsInt(1) || StepC->getValue()->isAllOnesValue()) {
+    ConstantRange CR = getUnsignedRange(Start);
+    const SCEV *MaxBECount;
+    if (!CountDown && CR.getUnsignedMin().isMinValue())
+      // When counting up, the worst starting value is 1, not 0.
+      MaxBECount = CR.getUnsignedMax().isMinValue()
+        ? getConstant(APInt::getMinValue(CR.getBitWidth()))
+        : getConstant(APInt::getMaxValue(CR.getBitWidth()));
+    else
+      MaxBECount = getConstant(CountDown ? CR.getUnsignedMax()
+                                         : -CR.getUnsignedMin());
+    return ExitLimit(Distance, MaxBECount);
+  }
 
   // If the recurrence is known not to wraparound, unsigned divide computes the
   // back edge count. We know that the value will either become zero (and thus

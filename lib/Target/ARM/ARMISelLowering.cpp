@@ -1340,10 +1340,12 @@ ARMTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
       SDValue Src = DAG.getNode(ISD::ADD, dl, getPointerTy(), Arg, SrcOffset);
       SDValue SizeNode = DAG.getConstant(Flags.getByValSize() - 4*offset,
                                          MVT::i32);
+      // TODO: Disable AlwaysInline when it becomes possible
+      //       to emit a nested call sequence.
       MemOpChains.push_back(DAG.getMemcpy(Chain, dl, Dst, Src, SizeNode,
                                           Flags.getByValAlign(),
                                           /*isVolatile=*/false,
-                                          /*AlwaysInline=*/false,
+                                          /*AlwaysInline=*/true,
                                           MachinePointerInfo(0),
                                           MachinePointerInfo(0)));
 
@@ -1408,9 +1410,9 @@ ARMTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
       const GlobalValue *GV = G->getGlobal();
       // Create a constant pool entry for the callee address
       unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
-      ARMConstantPoolValue *CPV = new ARMConstantPoolValue(GV,
-                                                           ARMPCLabelIndex,
-                                                           ARMCP::CPValue, 0);
+      ARMConstantPoolValue *CPV =
+        ARMConstantPoolConstant::Create(GV, ARMPCLabelIndex, ARMCP::CPValue, 0);
+
       // Get the address of the callee into a register
       SDValue CPAddr = DAG.getTargetConstantPool(CPV, getPointerTy(), 4);
       CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
@@ -1423,8 +1425,9 @@ ARMTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 
       // Create a constant pool entry for the callee address
       unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
-      ARMConstantPoolValue *CPV = new ARMConstantPoolValue(*DAG.getContext(),
-                                                       Sym, ARMPCLabelIndex, 0);
+      ARMConstantPoolValue *CPV =
+        ARMConstantPoolSymbol::Create(*DAG.getContext(), Sym,
+                                      ARMPCLabelIndex, 0);
       // Get the address of the callee into a register
       SDValue CPAddr = DAG.getTargetConstantPool(CPV, getPointerTy(), 4);
       CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
@@ -1445,9 +1448,8 @@ ARMTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
     // tBX takes a register source operand.
     if (isARMFunc && Subtarget->isThumb1Only() && !Subtarget->hasV5TOps()) {
       unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
-      ARMConstantPoolValue *CPV = new ARMConstantPoolValue(GV,
-                                                           ARMPCLabelIndex,
-                                                           ARMCP::CPValue, 4);
+      ARMConstantPoolValue *CPV =
+        ARMConstantPoolConstant::Create(GV, ARMPCLabelIndex, ARMCP::CPValue, 4);
       SDValue CPAddr = DAG.getTargetConstantPool(CPV, getPointerTy(), 4);
       CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
       Callee = DAG.getLoad(getPointerTy(), dl,
@@ -1474,8 +1476,9 @@ ARMTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
     const char *Sym = S->getSymbol();
     if (isARMFunc && Subtarget->isThumb1Only() && !Subtarget->hasV5TOps()) {
       unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
-      ARMConstantPoolValue *CPV = new ARMConstantPoolValue(*DAG.getContext(),
-                                                       Sym, ARMPCLabelIndex, 4);
+      ARMConstantPoolValue *CPV =
+        ARMConstantPoolSymbol::Create(*DAG.getContext(), Sym,
+                                      ARMPCLabelIndex, 4);
       SDValue CPAddr = DAG.getTargetConstantPool(CPV, getPointerTy(), 4);
       CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
       Callee = DAG.getLoad(getPointerTy(), dl,
@@ -1944,9 +1947,9 @@ SDValue ARMTargetLowering::LowerBlockAddress(SDValue Op,
   } else {
     unsigned PCAdj = Subtarget->isThumb() ? 4 : 8;
     ARMPCLabelIndex = AFI->createPICLabelUId();
-    ARMConstantPoolValue *CPV = new ARMConstantPoolValue(BA, ARMPCLabelIndex,
-                                                         ARMCP::CPBlockAddress,
-                                                         PCAdj);
+    ARMConstantPoolValue *CPV =
+      ARMConstantPoolConstant::Create(BA, ARMPCLabelIndex,
+                                      ARMCP::CPBlockAddress, PCAdj);
     CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
   }
   CPAddr = DAG.getNode(ARMISD::Wrapper, DL, PtrVT, CPAddr);
@@ -1970,8 +1973,8 @@ ARMTargetLowering::LowerToTLSGeneralDynamicModel(GlobalAddressSDNode *GA,
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   unsigned ARMPCLabelIndex = AFI->createPICLabelUId();
   ARMConstantPoolValue *CPV =
-    new ARMConstantPoolValue(GA->getGlobal(), ARMPCLabelIndex,
-                             ARMCP::CPValue, PCAdj, ARMCP::TLSGD, true);
+    ARMConstantPoolConstant::Create(GA->getGlobal(), ARMPCLabelIndex,
+                                    ARMCP::CPValue, PCAdj, ARMCP::TLSGD, true);
   SDValue Argument = DAG.getTargetConstantPool(CPV, PtrVT, 4);
   Argument = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Argument);
   Argument = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), Argument,
@@ -2017,8 +2020,9 @@ ARMTargetLowering::LowerToTLSExecModels(GlobalAddressSDNode *GA,
     // Initial exec model.
     unsigned char PCAdj = Subtarget->isThumb() ? 4 : 8;
     ARMConstantPoolValue *CPV =
-      new ARMConstantPoolValue(GA->getGlobal(), ARMPCLabelIndex,
-                               ARMCP::CPValue, PCAdj, ARMCP::GOTTPOFF, true);
+      ARMConstantPoolConstant::Create(GA->getGlobal(), ARMPCLabelIndex,
+                                      ARMCP::CPValue, PCAdj, ARMCP::GOTTPOFF,
+                                      true);
     Offset = DAG.getTargetConstantPool(CPV, PtrVT, 4);
     Offset = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Offset);
     Offset = DAG.getLoad(PtrVT, dl, Chain, Offset,
@@ -2034,7 +2038,8 @@ ARMTargetLowering::LowerToTLSExecModels(GlobalAddressSDNode *GA,
                          false, false, 0);
   } else {
     // local exec model
-    ARMConstantPoolValue *CPV = new ARMConstantPoolValue(GV, ARMCP::TPOFF);
+    ARMConstantPoolValue *CPV =
+      ARMConstantPoolConstant::Create(GV, ARMCP::TPOFF);
     Offset = DAG.getTargetConstantPool(CPV, PtrVT, 4);
     Offset = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Offset);
     Offset = DAG.getLoad(PtrVT, dl, Chain, Offset,
@@ -2070,7 +2075,8 @@ SDValue ARMTargetLowering::LowerGlobalAddressELF(SDValue Op,
   if (RelocM == Reloc::PIC_) {
     bool UseGOTOFF = GV->hasLocalLinkage() || GV->hasHiddenVisibility();
     ARMConstantPoolValue *CPV =
-      new ARMConstantPoolValue(GV, UseGOTOFF ? ARMCP::GOTOFF : ARMCP::GOT);
+      ARMConstantPoolConstant::Create(GV,
+                                      UseGOTOFF ? ARMCP::GOTOFF : ARMCP::GOT);
     SDValue CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
     CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
     SDValue Result = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(),
@@ -2139,7 +2145,8 @@ SDValue ARMTargetLowering::LowerGlobalAddressDarwin(SDValue Op,
     ARMPCLabelIndex = AFI->createPICLabelUId();
     unsigned PCAdj = (RelocM != Reloc::PIC_) ? 0 : (Subtarget->isThumb()?4:8);
     ARMConstantPoolValue *CPV =
-      new ARMConstantPoolValue(GV, ARMPCLabelIndex, ARMCP::CPValue, PCAdj);
+      ARMConstantPoolConstant::Create(GV, ARMPCLabelIndex, ARMCP::CPValue,
+                                      PCAdj);
     CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
   }
   CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
@@ -2171,9 +2178,9 @@ SDValue ARMTargetLowering::LowerGLOBAL_OFFSET_TABLE(SDValue Op,
   EVT PtrVT = getPointerTy();
   DebugLoc dl = Op.getDebugLoc();
   unsigned PCAdj = Subtarget->isThumb() ? 4 : 8;
-  ARMConstantPoolValue *CPV = new ARMConstantPoolValue(*DAG.getContext(),
-                                                       "_GLOBAL_OFFSET_TABLE_",
-                                                       ARMPCLabelIndex, PCAdj);
+  ARMConstantPoolValue *CPV =
+    ARMConstantPoolSymbol::Create(*DAG.getContext(), "_GLOBAL_OFFSET_TABLE_",
+                                  ARMPCLabelIndex, PCAdj);
   SDValue CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
   CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
   SDValue Result = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), CPAddr,
@@ -2228,8 +2235,8 @@ ARMTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG,
     unsigned PCAdj = (RelocM != Reloc::PIC_)
       ? 0 : (Subtarget->isThumb() ? 4 : 8);
     ARMConstantPoolValue *CPV =
-      new ARMConstantPoolValue(MF.getFunction(), ARMPCLabelIndex,
-                               ARMCP::CPLSDA, PCAdj);
+      ARMConstantPoolConstant::Create(MF.getFunction(), ARMPCLabelIndex,
+                                      ARMCP::CPLSDA, PCAdj);
     CPAddr = DAG.getTargetConstantPool(CPV, PtrVT, 4);
     CPAddr = DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, CPAddr);
     SDValue Result =
@@ -5475,6 +5482,111 @@ ARMTargetLowering::EmitAtomicBinary64(MachineInstr *MI, MachineBasicBlock *BB,
   return BB;
 }
 
+MachineBasicBlock *ARMTargetLowering::
+EmitSjLjDispatchBlock(MachineInstr *MI, MachineBasicBlock *MBB) const {
+  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+  DebugLoc dl = MI->getDebugLoc();
+  MachineFunction *MF = MBB->getParent();
+  MachineRegisterInfo *MRI = &MF->getRegInfo();
+  MachineConstantPool *MCP = MF->getConstantPool();
+  ARMFunctionInfo *AFI = MF->getInfo<ARMFunctionInfo>();
+  const Function *F = MF->getFunction();
+  MachineFrameInfo *MFI = MF->getFrameInfo();
+  MachineBasicBlock *DispatchBB = MF->CreateMachineBasicBlock();
+  int FI = MFI->getFunctionContextIndex();
+  MachineBasicBlock *Last = &MF->back();
+  MF->insert(MF->end(), DispatchBB);
+  MF->RenumberBlocks(Last);
+
+  // Shove the dispatch's address into the return slot in the function context.
+  DispatchBB->setIsLandingPad();
+  MBB->addSuccessor(DispatchBB);
+
+  BuildMI(DispatchBB, dl, TII->get(ARM::TRAP));
+
+  bool isThumb = Subtarget->isThumb();
+  bool isThumb2 = Subtarget->isThumb2();
+  unsigned PCLabelId = AFI->createPICLabelUId();
+  unsigned PCAdj = (isThumb || isThumb2) ? 4 : 8;
+  ARMConstantPoolValue *CPV =
+    ARMConstantPoolMBB::Create(F->getContext(), DispatchBB, PCLabelId, PCAdj);
+  unsigned CPI = MCP->getConstantPoolIndex(CPV, 4);
+
+  const TargetRegisterClass *TRC =
+    isThumb ? ARM::tGPRRegisterClass : ARM::GPRRegisterClass;
+
+  MachineMemOperand *CPMMO =
+    MF->getMachineMemOperand(MachinePointerInfo::getConstantPool(),
+                             MachineMemOperand::MOLoad, 4, 4);
+
+  MachineMemOperand *FIMMO =
+    MF->getMachineMemOperand(MachinePointerInfo::getFixedStack(FI),
+                             MachineMemOperand::MOStore, 4, 4);
+
+  // Load the address of the dispatch MBB into the jump buffer.
+  if (isThumb2) {
+    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::t2LDRpci), NewVReg1)
+                   .addConstantPoolIndex(CPI)
+                   .addMemOperand(CPMMO));
+    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    BuildMI(*MBB, MI, dl, TII->get(ARM::tPICADD), NewVReg2)
+      .addReg(NewVReg1, RegState::Kill)
+      .addImm(PCLabelId);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::t2STRi12))
+                   .addReg(NewVReg2, RegState::Kill)
+                   .addFrameIndex(FI)
+                   .addImm(36)  // &jbuf[1] :: pc
+                   .addMemOperand(FIMMO));
+  } else if (isThumb) {
+    // Incoming value: jbuf
+    // ldr.n  r1, LCPI1_4
+    // add    r1, pc
+    // add    r2, sp, #48 ; &jbuf[1]
+    // str    r1, [r2]
+    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::tLDRpci), NewVReg1)
+                   .addConstantPoolIndex(CPI)
+                   .addMemOperand(CPMMO));
+    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    BuildMI(*MBB, MI, dl, TII->get(ARM::tPICADD), NewVReg2)
+      .addReg(NewVReg1)
+      .addImm(PCLabelId);
+    unsigned NewVReg3 = MRI->createVirtualRegister(TRC);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::tADDrSPi), NewVReg3)
+                   .addFrameIndex(FI)
+                   .addImm(36)); // &jbuf[1] :: pc
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::tSTRi))
+                   .addReg(NewVReg2, RegState::Kill)
+                   .addReg(NewVReg3, RegState::Kill)
+                   .addImm(0)
+                   .addMemOperand(FIMMO));
+  } else {
+    // Incoming value: jbuf
+    // ldr  r1, LCPI1_1
+    // add  r1, pc, r1
+    // str  r1, [$jbuf, #+4] ; &jbuf[1]
+    unsigned NewVReg1 = MRI->createVirtualRegister(TRC);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::LDRi12),  NewVReg1)
+                   .addConstantPoolIndex(CPI)
+                   .addImm(0)
+                   .addMemOperand(CPMMO));
+    unsigned NewVReg2 = MRI->createVirtualRegister(TRC);
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::PICADD), NewVReg2)
+                   .addReg(NewVReg1, RegState::Kill)
+                   .addImm(PCLabelId));
+    AddDefaultPred(BuildMI(*MBB, MI, dl, TII->get(ARM::STRi12))
+                   .addReg(NewVReg2, RegState::Kill)
+                   .addFrameIndex(FI)
+                   .addImm(36)  // &jbuf[1] :: pc
+                   .addMemOperand(FIMMO));
+  }
+
+  MI->eraseFromParent();   // The instruction is gone now.
+
+  return MBB;
+}
+
 static
 MachineBasicBlock *OtherSucc(MachineBasicBlock *MBB, MachineBasicBlock *Succ) {
   for (MachineBasicBlock::succ_iterator I = MBB->succ_begin(),
@@ -7342,7 +7454,7 @@ ARMTargetLowering::PerformCMOVCombine(SDNode *N, SelectionDAG &DAG) const {
   //   movne   r0, y
   /// FIXME: Turn this into a target neutral optimization?
   SDValue Res;
-  if (CC == ARMCC::NE && FalseVal == RHS) {
+  if (CC == ARMCC::NE && FalseVal == RHS && FalseVal != LHS) {
     Res = DAG.getNode(ARMISD::CMOV, dl, VT, LHS, TrueVal, ARMcc,
                       N->getOperand(3), Cmp);
   } else if (CC == ARMCC::EQ && TrueVal == RHS) {
@@ -8174,50 +8286,6 @@ ARMTargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
   return false;
 }
 
-int ARM::getVFPf32Imm(const APFloat &FPImm) {
-  APInt Imm = FPImm.bitcastToAPInt();
-  uint32_t Sign = Imm.lshr(31).getZExtValue() & 1;
-  int32_t Exp = (Imm.lshr(23).getSExtValue() & 0xff) - 127;  // -126 to 127
-  int64_t Mantissa = Imm.getZExtValue() & 0x7fffff;  // 23 bits
-
-  // We can handle 4 bits of mantissa.
-  // mantissa = (16+UInt(e:f:g:h))/16.
-  if (Mantissa & 0x7ffff)
-    return -1;
-  Mantissa >>= 19;
-  if ((Mantissa & 0xf) != Mantissa)
-    return -1;
-
-  // We can handle 3 bits of exponent: exp == UInt(NOT(b):c:d)-3
-  if (Exp < -3 || Exp > 4)
-    return -1;
-  Exp = ((Exp+3) & 0x7) ^ 4;
-
-  return ((int)Sign << 7) | (Exp << 4) | Mantissa;
-}
-
-int ARM::getVFPf64Imm(const APFloat &FPImm) {
-  APInt Imm = FPImm.bitcastToAPInt();
-  uint64_t Sign = Imm.lshr(63).getZExtValue() & 1;
-  int64_t Exp = (Imm.lshr(52).getSExtValue() & 0x7ff) - 1023;   // -1022 to 1023
-  uint64_t Mantissa = Imm.getZExtValue() & 0xfffffffffffffLL;
-
-  // We can handle 4 bits of mantissa.
-  // mantissa = (16+UInt(e:f:g:h))/16.
-  if (Mantissa & 0xffffffffffffLL)
-    return -1;
-  Mantissa >>= 48;
-  if ((Mantissa & 0xf) != Mantissa)
-    return -1;
-
-  // We can handle 3 bits of exponent: exp == UInt(NOT(b):c:d)-3
-  if (Exp < -3 || Exp > 4)
-    return -1;
-  Exp = ((Exp+3) & 0x7) ^ 4;
-
-  return ((int)Sign << 7) | (Exp << 4) | Mantissa;
-}
-
 bool ARM::isBitFieldInvertedMask(unsigned v) {
   if (v == 0xffffffff)
     return 0;
@@ -8240,9 +8308,9 @@ bool ARMTargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   if (!Subtarget->hasVFP3())
     return false;
   if (VT == MVT::f32)
-    return ARM::getVFPf32Imm(Imm) != -1;
+    return ARM_AM::getFP32Imm(Imm) != -1;
   if (VT == MVT::f64)
-    return ARM::getVFPf64Imm(Imm) != -1;
+    return ARM_AM::getFP64Imm(Imm) != -1;
   return false;
 }
 

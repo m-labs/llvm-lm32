@@ -473,6 +473,8 @@ def HasAES       : Predicate<"Subtarget->hasAES()">;
 def HasCLMUL     : Predicate<"Subtarget->hasCLMUL()">;
 def HasFMA3      : Predicate<"Subtarget->hasFMA3()">;
 def HasFMA4      : Predicate<"Subtarget->hasFMA4()">;
+def HasMOVBE     : Predicate<"Subtarget->hasMOVBE()">;
+def HasRDRAND    : Predicate<"Subtarget->hasRDRAND()">;
 def FPStackf32   : Predicate<"!Subtarget->hasXMM()">;
 def FPStackf64   : Predicate<"!Subtarget->hasXMMInt()">;
 def HasCmpxchg16b: Predicate<"Subtarget->hasCmpxchg16b()">;
@@ -877,22 +879,22 @@ def MOV64mi32 : RIi32<0xC7, MRM0m, (outs), (ins i64mem:$dst, i64i32imm:$src),
 /// moffs8, moffs16 and moffs32 versions of moves.  The immediate is a
 /// 32-bit offset from the PC.  These are only valid in x86-32 mode.
 def MOV8o8a : Ii32 <0xA0, RawFrm, (outs), (ins offset8:$src),
-                   "mov{b}\t{$src, %al|%al, $src}", []>,
+                   "mov{b}\t{$src, %al|AL, $src}", []>,
                    Requires<[In32BitMode]>;
 def MOV16o16a : Ii32 <0xA1, RawFrm, (outs), (ins offset16:$src),
-                      "mov{w}\t{$src, %ax|%ax, $src}", []>, OpSize,
+                      "mov{w}\t{$src, %ax|AL, $src}", []>, OpSize,
                      Requires<[In32BitMode]>;
 def MOV32o32a : Ii32 <0xA1, RawFrm, (outs), (ins offset32:$src),
-                      "mov{l}\t{$src, %eax|%eax, $src}", []>,
+                      "mov{l}\t{$src, %eax|EAX, $src}", []>,
                      Requires<[In32BitMode]>;
 def MOV8ao8 : Ii32 <0xA2, RawFrm, (outs offset8:$dst), (ins),
-                   "mov{b}\t{%al, $dst|$dst, %al}", []>,
+                   "mov{b}\t{%al, $dst|$dst, AL}", []>,
                   Requires<[In32BitMode]>;
 def MOV16ao16 : Ii32 <0xA3, RawFrm, (outs offset16:$dst), (ins),
-                      "mov{w}\t{%ax, $dst|$dst, %ax}", []>, OpSize,
+                      "mov{w}\t{%ax, $dst|$dst, AL}", []>, OpSize,
                      Requires<[In32BitMode]>;
 def MOV32ao32 : Ii32 <0xA3, RawFrm, (outs offset32:$dst), (ins),
-                      "mov{l}\t{%eax, $dst|$dst, %eax}", []>,
+                      "mov{l}\t{%eax, $dst|$dst, EAX}", []>,
                      Requires<[In32BitMode]>;
 
 // FIXME: These definitions are utterly broken
@@ -901,13 +903,13 @@ def MOV32ao32 : Ii32 <0xA3, RawFrm, (outs offset32:$dst), (ins),
 // in question.
 /*
 def MOV64o8a : RIi8<0xA0, RawFrm, (outs), (ins offset8:$src),
-                      "mov{q}\t{$src, %rax|%rax, $src}", []>;
+                      "mov{q}\t{$src, %rax|RAX, $src}", []>;
 def MOV64o64a : RIi32<0xA1, RawFrm, (outs), (ins offset64:$src),
-                       "mov{q}\t{$src, %rax|%rax, $src}", []>;
+                       "mov{q}\t{$src, %rax|RAX, $src}", []>;
 def MOV64ao8 : RIi8<0xA2, RawFrm, (outs offset8:$dst), (ins),
-                       "mov{q}\t{%rax, $dst|$dst, %rax}", []>;
+                       "mov{q}\t{%rax, $dst|$dst, RAX}", []>;
 def MOV64ao64 : RIi32<0xA3, RawFrm, (outs offset64:$dst), (ins),
-                       "mov{q}\t{%rax, $dst|$dst, %rax}", []>;
+                       "mov{q}\t{%rax, $dst|$dst, RAX}", []>;
 */
 
 
@@ -1153,11 +1155,11 @@ def XCHG64rr : RI<0x87, MRMSrcReg, (outs GR64:$dst), (ins GR64:$val,GR64:$src),
 }
 
 def XCHG16ar : I<0x90, AddRegFrm, (outs), (ins GR16:$src),
-                  "xchg{w}\t{$src, %ax|%ax, $src}", []>, OpSize;
+                  "xchg{w}\t{$src, %ax|AX, $src}", []>, OpSize;
 def XCHG32ar : I<0x90, AddRegFrm, (outs), (ins GR32:$src),
-                  "xchg{l}\t{$src, %eax|%eax, $src}", []>;
+                  "xchg{l}\t{$src, %eax|EAX, $src}", []>;
 def XCHG64ar : RI<0x90, AddRegFrm, (outs), (ins GR64:$src),
-                  "xchg{q}\t{$src, %rax|%rax, $src}", []>;
+                  "xchg{q}\t{$src, %rax|RAX, $src}", []>;
 
 
 
@@ -1295,6 +1297,36 @@ def ARPL16rr : I<0x63, MRMDestReg, (outs GR16:$src), (ins GR16:$dst),
                  "arpl\t{$src, $dst|$dst, $src}", []>, Requires<[In32BitMode]>;
 def ARPL16mr : I<0x63, MRMSrcMem, (outs GR16:$src), (ins i16mem:$dst),
                  "arpl\t{$src, $dst|$dst, $src}", []>, Requires<[In32BitMode]>;
+
+//===----------------------------------------------------------------------===//
+// MOVBE Instructions
+//
+let Predicates = [HasMOVBE] in {
+  def MOVBE16rm : I<0xF0, MRMSrcMem, (outs GR16:$dst), (ins i16mem:$src),
+                    "movbe{w}\t{$src, $dst|$dst, $src}", []>, OpSize, T8;
+  def MOVBE32rm : I<0xF0, MRMSrcMem, (outs GR32:$dst), (ins i32mem:$src),
+                    "movbe{l}\t{$src, $dst|$dst, $src}", []>, T8;
+  def MOVBE64rm : RI<0xF0, MRMSrcMem, (outs GR64:$dst), (ins i64mem:$src),
+                     "movbe{q}\t{$src, $dst|$dst, $src}", []>, T8;
+  def MOVBE16mr : I<0xF1, MRMDestMem, (outs), (ins i16mem:$dst, GR16:$src),
+                    "movbe{w}\t{$src, $dst|$dst, $src}", []>, OpSize, T8;
+  def MOVBE32mr : I<0xF1, MRMDestMem, (outs), (ins i32mem:$dst, GR32:$src),
+                    "movbe{l}\t{$src, $dst|$dst, $src}", []>, T8;
+  def MOVBE64mr : RI<0xF1, MRMDestMem, (outs), (ins i64mem:$dst, GR64:$src),
+                     "movbe{q}\t{$src, $dst|$dst, $src}", []>, T8;
+}
+
+//===----------------------------------------------------------------------===//
+// RDRAND Instruction
+//
+let Predicates = [HasRDRAND], Defs = [EFLAGS] in {
+  def RDRAND16r : I<0xC7, MRM6r, (outs GR16:$dst), (ins),
+                    "rdrand{w}\t$dst", []>, OpSize, TB;
+  def RDRAND32r : I<0xC7, MRM6r, (outs GR32:$dst), (ins),
+                    "rdrand{l}\t$dst", []>, TB;
+  def RDRAND64r : RI<0xC7, MRM6r, (outs GR64:$dst), (ins),
+                     "rdrand{q}\t$dst", []>, TB;
+}
 
 //===----------------------------------------------------------------------===//
 // Subsystems.

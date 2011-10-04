@@ -324,9 +324,14 @@ static Value *SimplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
     }
 
     // All operands were constants, fold it.
-    if (ConstOps.size() == I->getNumOperands())
+    if (ConstOps.size() == I->getNumOperands()) {
+      if (LoadInst *LI = dyn_cast<LoadInst>(I))
+        if (!LI->isVolatile())
+          return ConstantFoldLoadFromConstPtr(ConstOps[0], TD);
+
       return ConstantFoldInstOperands(I->getOpcode(), I->getType(),
                                       ConstOps, TD);
+    }
   }
 
   return 0;
@@ -477,9 +482,15 @@ Instruction *InstCombiner::visitSelectInstWithICmp(SelectInst &SI,
     if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, TD) == TrueVal ||
         SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, TD) == TrueVal)
       return ReplaceInstUsesWith(SI, FalseVal);
+    if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, TD) == FalseVal ||
+        SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, TD) == FalseVal)
+      return ReplaceInstUsesWith(SI, FalseVal);
   } else if (Pred == ICmpInst::ICMP_NE) {
     if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, TD) == FalseVal ||
         SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, TD) == FalseVal)
+      return ReplaceInstUsesWith(SI, TrueVal);
+    if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, TD) == TrueVal ||
+        SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, TD) == TrueVal)
       return ReplaceInstUsesWith(SI, TrueVal);
   }
 

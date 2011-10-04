@@ -28,6 +28,18 @@ def it_mask : Operand<i32> {
   let ParserMatchClass = it_mask_asmoperand;
 }
 
+// t2_shift_imm: An integer that encodes a shift amount and the type of shift
+// (asr or lsl). The 6-bit immediate encodes as:
+//    {5}     0 ==> lsl
+//            1     asr
+//    {4-0}   imm5 shift amount.
+//            asr #32 not allowed
+def t2_shift_imm : Operand<i32> {
+  let PrintMethod = "printShiftImmOperand";
+  let ParserMatchClass = ShifterImmAsmOperand;
+  let DecoderMethod = "DecodeT2ShifterImmOperand";
+}
+
 // Shifted operands. No register controlled shifts for Thumb2.
 // Note: We do not support rrx shifted operands yet.
 def t2_so_reg : Operand<i32>,    // reg imm
@@ -114,6 +126,7 @@ def t2addrmode_imm12 : Operand<i32>,
 // t2ldrlabel  := imm12
 def t2ldrlabel : Operand<i32> {
   let EncoderMethod = "getAddrModeImm12OpValue";
+  let PrintMethod = "printT2LdrLabelOperand";
 }
 
 
@@ -626,9 +639,9 @@ multiclass T2I_bin_ii12rs<bits<3> op23_21, string opc, PatFrag opnode,
    // in particular for taking the address of a local.
    let isReMaterializable = 1 in {
    def ri : T2sTwoRegImm<
-                 (outs rGPR:$Rd), (ins GPRnopc:$Rn, t2_so_imm:$imm), IIC_iALUi,
-                 opc, ".w\t$Rd, $Rn, $imm",
-                 [(set rGPR:$Rd, (opnode GPRnopc:$Rn, t2_so_imm:$imm))]> {
+               (outs GPRnopc:$Rd), (ins GPRnopc:$Rn, t2_so_imm:$imm), IIC_iALUi,
+               opc, ".w\t$Rd, $Rn, $imm",
+               [(set GPRnopc:$Rd, (opnode GPRnopc:$Rn, t2_so_imm:$imm))]> {
      let Inst{31-27} = 0b11110;
      let Inst{25} = 0;
      let Inst{24} = 1;
@@ -638,9 +651,9 @@ multiclass T2I_bin_ii12rs<bits<3> op23_21, string opc, PatFrag opnode,
    }
    // 12-bit imm
    def ri12 : T2I<
-                  (outs rGPR:$Rd), (ins GPR:$Rn, imm0_4095:$imm), IIC_iALUi,
+                  (outs GPRnopc:$Rd), (ins GPR:$Rn, imm0_4095:$imm), IIC_iALUi,
                   !strconcat(opc, "w"), "\t$Rd, $Rn, $imm",
-                  [(set rGPR:$Rd, (opnode GPR:$Rn, imm0_4095:$imm))]> {
+                  [(set GPRnopc:$Rd, (opnode GPR:$Rn, imm0_4095:$imm))]> {
      bits<4> Rd;
      bits<4> Rn;
      bits<12> imm;
@@ -656,9 +669,9 @@ multiclass T2I_bin_ii12rs<bits<3> op23_21, string opc, PatFrag opnode,
      let Inst{7-0} = imm{7-0};
    }
    // register
-   def rr : T2sThreeReg<(outs rGPR:$Rd), (ins GPRnopc:$Rn, rGPR:$Rm), IIC_iALUr,
-                 opc, ".w\t$Rd, $Rn, $Rm",
-                 [(set rGPR:$Rd, (opnode GPRnopc:$Rn, rGPR:$Rm))]> {
+   def rr : T2sThreeReg<(outs GPRnopc:$Rd), (ins GPRnopc:$Rn, rGPR:$Rm),
+                 IIC_iALUr, opc, ".w\t$Rd, $Rn, $Rm",
+                 [(set GPRnopc:$Rd, (opnode GPRnopc:$Rn, rGPR:$Rm))]> {
      let isCommutable = Commutable;
      let Inst{31-27} = 0b11101;
      let Inst{26-25} = 0b01;
@@ -670,9 +683,9 @@ multiclass T2I_bin_ii12rs<bits<3> op23_21, string opc, PatFrag opnode,
    }
    // shifted register
    def rs : T2sTwoRegShiftedReg<
-                 (outs rGPR:$Rd), (ins GPRnopc:$Rn, t2_so_reg:$ShiftedRm),
+                 (outs GPRnopc:$Rd), (ins GPRnopc:$Rn, t2_so_reg:$ShiftedRm),
                  IIC_iALUsi, opc, ".w\t$Rd, $Rn, $ShiftedRm",
-                 [(set rGPR:$Rd, (opnode GPRnopc:$Rn, t2_so_reg:$ShiftedRm))]> {
+              [(set GPRnopc:$Rd, (opnode GPRnopc:$Rn, t2_so_reg:$ShiftedRm))]> {
      let Inst{31-27} = 0b11101;
      let Inst{26-25} = 0b01;
      let Inst{24} = 1;
@@ -1216,7 +1229,7 @@ def t2LDR_PRE  : T2Ipreldst<0, 0b10, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
 def t2LDR_POST : T2Ipostldst<0, 0b10, 1, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                           (ins addr_offset_none:$Rn, t2am_imm8_offset:$offset),
                           AddrModeT2_i8, IndexModePost, IIC_iLoad_iu,
-                          "ldr", "\t$Rt, $Rn, $offset", "$Rn = $Rn_wb", []>;
+                          "ldr", "\t$Rt, $Rn$offset", "$Rn = $Rn_wb", []>;
 
 def t2LDRB_PRE : T2Ipreldst<0, 0b00, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
                             (ins t2addrmode_imm8:$addr),
@@ -1228,7 +1241,7 @@ def t2LDRB_PRE : T2Ipreldst<0, 0b00, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
 def t2LDRB_POST : T2Ipostldst<0, 0b00, 1, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                           (ins addr_offset_none:$Rn, t2am_imm8_offset:$offset),
                           AddrModeT2_i8, IndexModePost, IIC_iLoad_bh_iu,
-                          "ldrb", "\t$Rt, $Rn, $offset", "$Rn = $Rn_wb", []>;
+                          "ldrb", "\t$Rt, $Rn$offset", "$Rn = $Rn_wb", []>;
 
 def t2LDRH_PRE : T2Ipreldst<0, 0b01, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
                             (ins t2addrmode_imm8:$addr),
@@ -1240,7 +1253,7 @@ def t2LDRH_PRE : T2Ipreldst<0, 0b01, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
 def t2LDRH_POST : T2Ipostldst<0, 0b01, 1, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                           (ins addr_offset_none:$Rn, t2am_imm8_offset:$offset),
                           AddrModeT2_i8, IndexModePost, IIC_iLoad_bh_iu,
-                          "ldrh", "\t$Rt, $Rn, $offset", "$Rn = $Rn_wb", []>;
+                          "ldrh", "\t$Rt, $Rn$offset", "$Rn = $Rn_wb", []>;
 
 def t2LDRSB_PRE : T2Ipreldst<1, 0b00, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
                             (ins t2addrmode_imm8:$addr),
@@ -1252,7 +1265,7 @@ def t2LDRSB_PRE : T2Ipreldst<1, 0b00, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
 def t2LDRSB_POST : T2Ipostldst<1, 0b00, 1, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                           (ins addr_offset_none:$Rn, t2am_imm8_offset:$offset),
                           AddrModeT2_i8, IndexModePost, IIC_iLoad_bh_iu,
-                          "ldrsb", "\t$Rt, $Rn, $offset", "$Rn = $Rn_wb", []>;
+                          "ldrsb", "\t$Rt, $Rn$offset", "$Rn = $Rn_wb", []>;
 
 def t2LDRSH_PRE : T2Ipreldst<1, 0b01, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
                             (ins t2addrmode_imm8:$addr),
@@ -1264,7 +1277,7 @@ def t2LDRSH_PRE : T2Ipreldst<1, 0b01, 1, 1, (outs GPR:$Rt, GPR:$Rn_wb),
 def t2LDRSH_POST : T2Ipostldst<1, 0b01, 1, 0, (outs GPR:$Rt, GPR:$Rn_wb),
                           (ins addr_offset_none:$Rn, t2am_imm8_offset:$offset),
                           AddrModeT2_i8, IndexModePost, IIC_iLoad_bh_iu,
-                          "ldrsh", "\t$Rt, $Rn, $offset", "$Rn = $Rn_wb", []>;
+                          "ldrsh", "\t$Rt, $Rn$offset", "$Rn = $Rn_wb", []>;
 } // mayLoad = 1, neverHasSideEffects = 1
 
 // LDRT, LDRBT, LDRHT, LDRSBT, LDRSHT all have offset mode (PUW=0b110).
@@ -1335,7 +1348,7 @@ def t2STR_POST : T2Ipostldst<0, 0b10, 0, 0, (outs GPRnopc:$Rn_wb),
                             (ins rGPR:$Rt, addr_offset_none:$Rn,
                                  t2am_imm8_offset:$offset),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_iu,
-                          "str", "\t$Rt, $Rn, $offset",
+                          "str", "\t$Rt, $Rn$offset",
                           "$Rn = $Rn_wb,@earlyclobber $Rn_wb",
              [(set GPRnopc:$Rn_wb,
                   (post_store rGPR:$Rt, addr_offset_none:$Rn,
@@ -1345,7 +1358,7 @@ def t2STRH_POST : T2Ipostldst<0, 0b01, 0, 0, (outs GPRnopc:$Rn_wb),
                             (ins rGPR:$Rt, addr_offset_none:$Rn,
                                  t2am_imm8_offset:$offset),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_bh_iu,
-                         "strh", "\t$Rt, $Rn, $offset",
+                         "strh", "\t$Rt, $Rn$offset",
                          "$Rn = $Rn_wb,@earlyclobber $Rn_wb",
        [(set GPRnopc:$Rn_wb,
              (post_truncsti16 rGPR:$Rt, addr_offset_none:$Rn,
@@ -1355,7 +1368,7 @@ def t2STRB_POST : T2Ipostldst<0, 0b00, 0, 0, (outs GPRnopc:$Rn_wb),
                             (ins rGPR:$Rt, addr_offset_none:$Rn,
                                  t2am_imm8_offset:$offset),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_bh_iu,
-                         "strb", "\t$Rt, $Rn, $offset",
+                         "strb", "\t$Rt, $Rn$offset",
                          "$Rn = $Rn_wb,@earlyclobber $Rn_wb",
         [(set GPRnopc:$Rn_wb,
               (post_truncsti8 rGPR:$Rt, addr_offset_none:$Rn,
@@ -2022,7 +2035,8 @@ class T2SatI<dag oops, dag iops, InstrItinClass itin,
 }
 
 def t2SSAT: T2SatI<
-              (outs rGPR:$Rd), (ins imm1_32:$sat_imm, rGPR:$Rn, shift_imm:$sh),
+              (outs rGPR:$Rd),
+              (ins imm1_32:$sat_imm, rGPR:$Rn, t2_shift_imm:$sh),
               NoItinerary, "ssat", "\t$Rd, $sat_imm, $Rn$sh", []> {
   let Inst{31-27} = 0b11110;
   let Inst{25-22} = 0b1100;
@@ -2046,7 +2060,8 @@ def t2SSAT16: T2SatI<
 }
 
 def t2USAT: T2SatI<
-               (outs rGPR:$Rd), (ins imm0_31:$sat_imm, rGPR:$Rn, shift_imm:$sh),
+               (outs rGPR:$Rd),
+               (ins imm0_31:$sat_imm, rGPR:$Rn, t2_shift_imm:$sh),
                 NoItinerary, "usat", "\t$Rd, $sat_imm, $Rn$sh", []> {
   let Inst{31-27} = 0b11110;
   let Inst{25-22} = 0b1110;
@@ -2058,13 +2073,13 @@ def t2USAT16: T2SatI<(outs rGPR:$Rd), (ins imm0_15:$sat_imm, rGPR:$Rn),
                      NoItinerary,
                      "usat16", "\t$Rd, $sat_imm, $Rn", []>,
           Requires<[IsThumb2, HasThumb2DSP]> {
-  let Inst{31-27} = 0b11110;
-  let Inst{25-22} = 0b1110;
+  let Inst{31-22} = 0b1111001110;
   let Inst{20} = 0;
   let Inst{15} = 0;
   let Inst{21} = 1;        // sh = '1'
   let Inst{14-12} = 0b000; // imm3 = '000'
   let Inst{7-6} = 0b00;    // imm2 = '00'
+  let Inst{5-4} = 0b00;
 }
 
 def : T2Pat<(int_arm_ssat GPR:$a, imm:$pos), (t2SSAT imm:$pos, GPR:$a, 0)>;
@@ -3525,30 +3540,55 @@ defm t2STC  : T2LdStCop<0b1111, 0, "stc">;
 // Move between special register and ARM core register -- for disassembly only
 //
 // Move to ARM core register from Special Register
-def t2MRS : T2I<(outs GPR:$Rd), (ins), NoItinerary, "mrs", "\t$Rd, apsr", []> {
+
+// A/R class MRS.
+//
+// A/R class can only move from CPSR or SPSR.
+def t2MRS_AR : T2I<(outs GPR:$Rd), (ins), NoItinerary, "mrs", "\t$Rd, apsr", []>,
+               Requires<[IsThumb2,IsARClass]> {
   bits<4> Rd;
   let Inst{31-12} = 0b11110011111011111000;
   let Inst{11-8} = Rd;
   let Inst{7-0} = 0b0000;
 }
 
-def : t2InstAlias<"mrs${p} $Rd, cpsr", (t2MRS GPR:$Rd, pred:$p)>;
+def : t2InstAlias<"mrs${p} $Rd, cpsr", (t2MRS_AR GPR:$Rd, pred:$p)>;
 
-def t2MRSsys:T2I<(outs GPR:$Rd), (ins), NoItinerary, "mrs", "\t$Rd, spsr", []> {
+def t2MRSsys_AR: T2I<(outs GPR:$Rd), (ins), NoItinerary, "mrs", "\t$Rd, spsr", []>,
+                 Requires<[IsThumb2,IsARClass]> {
   bits<4> Rd;
   let Inst{31-12} = 0b11110011111111111000;
   let Inst{11-8} = Rd;
   let Inst{7-0} = 0b0000;
 }
 
+// M class MRS.
+//
+// This MRS has a mask field in bits 7-0 and can take more values than
+// the A/R class (a full msr_mask).
+def t2MRS_M : T2I<(outs rGPR:$Rd), (ins msr_mask:$mask), NoItinerary,
+                  "mrs", "\t$Rd, $mask", []>,
+              Requires<[IsThumb2,IsMClass]> {
+  bits<4> Rd;
+  bits<8> mask;
+  let Inst{31-12} = 0b11110011111011111000;
+  let Inst{11-8} = Rd;
+  let Inst{19-16} = 0b1111;
+  let Inst{7-0} = mask;
+}
+
+
 // Move from ARM core register to Special Register
+//
+// A/R class MSR.
 //
 // No need to have both system and application versions, the encodings are the
 // same and the assembly parser has no way to distinguish between them. The mask
 // operand contains the special register (R Bit) in bit 4 and bits 3-0 contains
 // the mask with the fields to be accessed in the special register.
-def t2MSR : T2I<(outs), (ins msr_mask:$mask, rGPR:$Rn),
-                NoItinerary, "msr", "\t$mask, $Rn", []> {
+def t2MSR_AR : T2I<(outs), (ins msr_mask:$mask, rGPR:$Rn),
+                   NoItinerary, "msr", "\t$mask, $Rn", []>,
+               Requires<[IsThumb2,IsARClass]> {
   bits<5> mask;
   bits<4> Rn;
   let Inst{31-21} = 0b11110011100;
@@ -3558,6 +3598,22 @@ def t2MSR : T2I<(outs), (ins msr_mask:$mask, rGPR:$Rn),
   let Inst{11-8}  = mask{3-0};
   let Inst{7-0}   = 0;
 }
+
+// M class MSR.
+//
+// Move from ARM core register to Special Register
+def t2MSR_M : T2I<(outs), (ins msr_mask:$SYSm, rGPR:$Rn),
+                  NoItinerary, "msr", "\t$SYSm, $Rn", []>,
+              Requires<[IsThumb2,IsMClass]> {
+  bits<8> SYSm;
+  bits<4> Rn;
+  let Inst{31-21} = 0b11110011100;
+  let Inst{20}    = 0b0;
+  let Inst{19-16} = Rn;
+  let Inst{15-12} = 0b1000;
+  let Inst{7-0}  = SYSm;
+}
+
 
 //===----------------------------------------------------------------------===//
 // Move between coprocessor and ARM core register
@@ -3792,24 +3848,24 @@ def : t2InstAlias<"sbc${s}${p} $Rd, $Rn, $ShiftedRm",
 
 // Aliases for ADD without the ".w" optional width specifier.
 def : t2InstAlias<"add${s}${p} $Rd, $Rn, $imm",
-           (t2ADDri rGPR:$Rd, GPRnopc:$Rn, t2_so_imm:$imm, pred:$p, cc_out:$s)>;
+        (t2ADDri GPRnopc:$Rd, GPRnopc:$Rn, t2_so_imm:$imm, pred:$p, cc_out:$s)>;
 def : t2InstAlias<"add${p} $Rd, $Rn, $imm",
-           (t2ADDri12 rGPR:$Rd, GPR:$Rn, imm0_4095:$imm, pred:$p)>;
+           (t2ADDri12 GPRnopc:$Rd, GPR:$Rn, imm0_4095:$imm, pred:$p)>;
 def : t2InstAlias<"add${s}${p} $Rd, $Rn, $Rm",
-                 (t2ADDrr rGPR:$Rd, GPRnopc:$Rn, rGPR:$Rm, pred:$p, cc_out:$s)>;
+              (t2ADDrr GPRnopc:$Rd, GPRnopc:$Rn, rGPR:$Rm, pred:$p, cc_out:$s)>;
 def : t2InstAlias<"add${s}${p} $Rd, $Rn, $ShiftedRm",
-                  (t2ADDrs rGPR:$Rd, GPRnopc:$Rn, t2_so_reg:$ShiftedRm,
+                  (t2ADDrs GPRnopc:$Rd, GPRnopc:$Rn, t2_so_reg:$ShiftedRm,
                            pred:$p, cc_out:$s)>;
 
 // Aliases for SUB without the ".w" optional width specifier.
 def : t2InstAlias<"sub${s}${p} $Rd, $Rn, $imm",
-           (t2SUBri rGPR:$Rd, GPRnopc:$Rn, t2_so_imm:$imm, pred:$p, cc_out:$s)>;
+        (t2SUBri GPRnopc:$Rd, GPRnopc:$Rn, t2_so_imm:$imm, pred:$p, cc_out:$s)>;
 def : t2InstAlias<"sub${p} $Rd, $Rn, $imm",
-           (t2SUBri12 rGPR:$Rd, GPR:$Rn, imm0_4095:$imm, pred:$p)>;
+           (t2SUBri12 GPRnopc:$Rd, GPR:$Rn, imm0_4095:$imm, pred:$p)>;
 def : t2InstAlias<"sub${s}${p} $Rd, $Rn, $Rm",
-                 (t2SUBrr rGPR:$Rd, GPRnopc:$Rn, rGPR:$Rm, pred:$p, cc_out:$s)>;
+              (t2SUBrr GPRnopc:$Rd, GPRnopc:$Rn, rGPR:$Rm, pred:$p, cc_out:$s)>;
 def : t2InstAlias<"sub${s}${p} $Rd, $Rn, $ShiftedRm",
-                  (t2SUBrs rGPR:$Rd, GPRnopc:$Rn, t2_so_reg:$ShiftedRm,
+                  (t2SUBrs GPRnopc:$Rd, GPRnopc:$Rn, t2_so_reg:$ShiftedRm,
                            pred:$p, cc_out:$s)>;
 
 // Alias for compares without the ".w" optional width specifier.
@@ -3921,11 +3977,16 @@ def : t2InstAlias<"sxtah${p} $Rd, $Rn, $Rm",
                 (t2SXTAH rGPR:$Rd, rGPR:$Rn, rGPR:$Rm, 0, pred:$p)>;
 def : t2InstAlias<"sxtab16${p} $Rd, $Rn, $Rm",
                 (t2SXTAB16 rGPR:$Rd, rGPR:$Rn, rGPR:$Rm, 0, pred:$p)>;
+
 def : t2InstAlias<"sxtb${p} $Rd, $Rm",
                 (t2SXTB rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
 def : t2InstAlias<"sxtb16${p} $Rd, $Rm",
                 (t2SXTB16 rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
 def : t2InstAlias<"sxth${p} $Rd, $Rm",
+                (t2SXTH rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
+def : t2InstAlias<"sxtb${p}.w $Rd, $Rm",
+                (t2SXTB rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
+def : t2InstAlias<"sxth${p}.w $Rd, $Rm",
                 (t2SXTH rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
 
 def : t2InstAlias<"uxtab${p} $Rd, $Rn, $Rm",
@@ -3939,6 +4000,11 @@ def : t2InstAlias<"uxtb${p} $Rd, $Rm",
 def : t2InstAlias<"uxtb16${p} $Rd, $Rm",
                 (t2UXTB16 rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
 def : t2InstAlias<"uxth${p} $Rd, $Rm",
+                (t2UXTH rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
+
+def : t2InstAlias<"uxtb${p}.w $Rd, $Rm",
+                (t2UXTB rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
+def : t2InstAlias<"uxth${p}.w $Rd, $Rm",
                 (t2UXTH rGPR:$Rd, rGPR:$Rm, 0, pred:$p)>;
 
 // Extend instruction w/o the ".w" optional width specifier.

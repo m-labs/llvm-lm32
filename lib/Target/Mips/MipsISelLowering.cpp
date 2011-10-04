@@ -82,8 +82,9 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
 
 MipsTargetLowering::
 MipsTargetLowering(MipsTargetMachine &TM)
-  : TargetLowering(TM, new MipsTargetObjectFile()) {
-  Subtarget = &TM.getSubtarget<MipsSubtarget>();
+  : TargetLowering(TM, new MipsTargetObjectFile()),
+    Subtarget(&TM.getSubtarget<MipsSubtarget>()),
+    HasMips64(Subtarget->hasMips64()) {
 
   // Mips does not have i1 type, so use i32 for
   // setcc operations results (slt, sgt, ...).
@@ -94,10 +95,16 @@ MipsTargetLowering(MipsTargetMachine &TM)
   addRegisterClass(MVT::i32, Mips::CPURegsRegisterClass);
   addRegisterClass(MVT::f32, Mips::FGR32RegisterClass);
 
+  if (HasMips64)
+    addRegisterClass(MVT::i64, Mips::CPU64RegsRegisterClass);
+
   // When dealing with single precision only, use libcalls
-  if (!Subtarget->isSingleFloat())
-    if (!Subtarget->isFP64bit())
+  if (!Subtarget->isSingleFloat()) {
+    if (HasMips64)
+      addRegisterClass(MVT::f64, Mips::FGR64RegisterClass);
+    else
       addRegisterClass(MVT::f64, Mips::AFGR64RegisterClass);
+  }
 
   // Load extented operations for i1 types must be promoted
   setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
@@ -131,6 +138,10 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::SREM, MVT::i32, Expand);
   setOperationAction(ISD::UDIV, MVT::i32, Expand);
   setOperationAction(ISD::UREM, MVT::i32, Expand);
+  setOperationAction(ISD::SDIV, MVT::i64, Expand);
+  setOperationAction(ISD::SREM, MVT::i64, Expand);
+  setOperationAction(ISD::UDIV, MVT::i64, Expand);
+  setOperationAction(ISD::UREM, MVT::i64, Expand);
 
   // Operations not directly supported by Mips.
   setOperationAction(ISD::BR_JT,             MVT::Other, Expand);
@@ -142,9 +153,13 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::CTPOP,             MVT::i32,   Expand);
   setOperationAction(ISD::CTTZ,              MVT::i32,   Expand);
   setOperationAction(ISD::ROTL,              MVT::i32,   Expand);
+  setOperationAction(ISD::ROTL,              MVT::i64,   Expand);
 
   if (!Subtarget->hasMips32r2())
     setOperationAction(ISD::ROTR, MVT::i32,   Expand);
+
+  if (!Subtarget->hasMips64r2())
+    setOperationAction(ISD::ROTR, MVT::i64,   Expand);
 
   setOperationAction(ISD::SHL_PARTS,         MVT::i32,   Expand);
   setOperationAction(ISD::SRA_PARTS,         MVT::i32,   Expand);
@@ -402,6 +417,9 @@ static SDValue PerformDivRemCombine(SDNode *N, SelectionDAG& DAG,
   if (DCI.isBeforeLegalizeOps())
     return SDValue();
 
+  EVT Ty = N->getValueType(0);
+  unsigned LO = (Ty == MVT::i32) ? Mips::LO : Mips::LO64; 
+  unsigned HI = (Ty == MVT::i32) ? Mips::HI : Mips::HI64; 
   unsigned opc = N->getOpcode() == ISD::SDIVREM ? MipsISD::DivRem :
                                                   MipsISD::DivRemU;
   DebugLoc dl = N->getDebugLoc();
@@ -413,7 +431,7 @@ static SDValue PerformDivRemCombine(SDNode *N, SelectionDAG& DAG,
 
   // insert MFLO
   if (N->hasAnyUseOfValue(0)) {
-    SDValue CopyFromLo = DAG.getCopyFromReg(InChain, dl, Mips::LO, MVT::i32,
+    SDValue CopyFromLo = DAG.getCopyFromReg(InChain, dl, LO, Ty,
                                             InGlue);
     DAG.ReplaceAllUsesOfValueWith(SDValue(N, 0), CopyFromLo);
     InChain = CopyFromLo.getValue(1);
@@ -423,7 +441,7 @@ static SDValue PerformDivRemCombine(SDNode *N, SelectionDAG& DAG,
   // insert MFHI
   if (N->hasAnyUseOfValue(1)) {
     SDValue CopyFromHi = DAG.getCopyFromReg(InChain, dl,
-                                            Mips::HI, MVT::i32, InGlue);
+                                            HI, Ty, InGlue);
     DAG.ReplaceAllUsesOfValueWith(SDValue(N, 1), CopyFromHi);
   }
 
@@ -1797,6 +1815,12 @@ static const unsigned O32IntRegs[] = {
   Mips::A0, Mips::A1, Mips::A2, Mips::A3
 };
 
+// Return next O32 integer argument register.
+static unsigned getNextIntArgReg(unsigned Reg) {
+  assert((Reg == Mips::A0) || (Reg == Mips::A2));
+  return (Reg == Mips::A0) ? Mips::A1 : Mips::A3;
+}
+
 // Write ByVal Arg to arg registers and stack.
 static void
 WriteByValArg(SDValue& ByValChain, SDValue Chain, DebugLoc dl,
@@ -1989,8 +2013,10 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
                                    Arg, DAG.getConstant(1, MVT::i32));
           if (!Subtarget->isLittle())
             std::swap(Lo, Hi);
-          RegsToPass.push_back(std::make_pair(VA.getLocReg(), Lo));
-          RegsToPass.push_back(std::make_pair(VA.getLocReg()+1, Hi));
+          unsigned LocRegLo = VA.getLocReg(); 
+          unsigned LocRegHigh = getNextIntArgReg(LocRegLo);
+          RegsToPass.push_back(std::make_pair(LocRegLo, Lo));
+          RegsToPass.push_back(std::make_pair(LocRegHigh, Hi));
           continue;
         }
       }
@@ -2248,12 +2274,13 @@ MipsTargetLowering::LowerFormalArguments(SDValue Chain,
 
       if (RegVT == MVT::i32)
         RC = Mips::CPURegsRegisterClass;
+      else if (RegVT == MVT::i64)
+        RC = Mips::CPU64RegsRegisterClass;
       else if (RegVT == MVT::f32)
         RC = Mips::FGR32RegisterClass;
-      else if (RegVT == MVT::f64) {
-        if (!Subtarget->isSingleFloat())
-          RC = Mips::AFGR64RegisterClass;
-      } else
+      else if (RegVT == MVT::f64)
+        RC = HasMips64 ? Mips::FGR64RegisterClass : Mips::AFGR64RegisterClass;
+      else
         llvm_unreachable("RegVT not supported by FormalArguments Lowering");
 
       // Transform the arguments stored on
@@ -2282,7 +2309,7 @@ MipsTargetLowering::LowerFormalArguments(SDValue Chain,
           ArgValue = DAG.getNode(ISD::BITCAST, dl, MVT::f32, ArgValue);
         if (RegVT == MVT::i32 && VA.getValVT() == MVT::f64) {
           unsigned Reg2 = AddLiveIn(DAG.getMachineFunction(),
-                                    VA.getLocReg()+1, RC);
+                                    getNextIntArgReg(ArgReg), RC);
           SDValue ArgValue2 = DAG.getCopyFromReg(Chain, dl, Reg2, RegVT);
           if (!Subtarget->isLittle())
             std::swap(ArgValue, ArgValue2);

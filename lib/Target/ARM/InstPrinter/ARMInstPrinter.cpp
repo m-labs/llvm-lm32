@@ -211,6 +211,17 @@ void ARMInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   }
 }
 
+void ARMInstPrinter::printT2LdrLabelOperand(const MCInst *MI, unsigned OpNum,
+                                       raw_ostream &O) {
+  const MCOperand &MO1 = MI->getOperand(OpNum);
+  if (MO1.isExpr())
+    O << *MO1.getExpr();
+  else if (MO1.isImm())
+    O << "[pc, #" << MO1.getImm() << "]";
+  else
+    llvm_unreachable("Unknown LDR label operand?");
+}
+
 // so_reg is a 4-operand unit corresponding to register forms of the A5.1
 // "Addressing Mode 1 - Data-processing operands" forms.  This includes:
 //    REG 0   0           - e.g. R5
@@ -610,6 +621,26 @@ void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
   unsigned SpecRegRBit = Op.getImm() >> 4;
   unsigned Mask = Op.getImm() & 0xf;
 
+  if (getAvailableFeatures() & ARM::FeatureMClass) {
+    switch (Op.getImm()) {
+    default: assert(0 && "Unexpected mask value!");
+    case 0: O << "apsr"; return;
+    case 1: O << "iapsr"; return;
+    case 2: O << "eapsr"; return;
+    case 3: O << "xpsr"; return;
+    case 5: O << "ipsr"; return;
+    case 6: O << "epsr"; return;
+    case 7: O << "iepsr"; return;
+    case 8: O << "msp"; return;
+    case 9: O << "psp"; return;
+    case 16: O << "primask"; return;
+    case 17: O << "basepri"; return;
+    case 18: O << "basepri_max"; return;
+    case 19: O << "faultmask"; return;
+    case 20: O << "control"; return;
+    }
+  }
+
   // As special cases, CPSR_f, CPSR_s and CPSR_fs prefer printing as
   // APSR_nzcvq, APSR_g and APSRnzcvqg, respectively.
   if (!SpecRegRBit && (Mask == 8 || Mask == 4 || Mask == 12)) {
@@ -863,9 +894,9 @@ void ARMInstPrinter::printT2AddrModeImm8OffsetOperand(const MCInst *MI,
   int32_t OffImm = (int32_t)MO1.getImm();
   // Don't print +0.
   if (OffImm < 0)
-    O << "#-" << -OffImm;
-  else if (OffImm > 0)
-    O << "#" << OffImm;
+    O << ", #-" << -OffImm;
+  else
+    O << ", #" << OffImm;
 }
 
 void ARMInstPrinter::printT2AddrModeImm8s4OffsetOperand(const MCInst *MI,
@@ -903,39 +934,10 @@ void ARMInstPrinter::printT2AddrModeSoRegOperand(const MCInst *MI,
   O << "]";
 }
 
-void ARMInstPrinter::printVFPf32ImmOperand(const MCInst *MI, unsigned OpNum,
-                                           raw_ostream &O) {
+void ARMInstPrinter::printFPImmOperand(const MCInst *MI, unsigned OpNum,
+                                       raw_ostream &O) {
   const MCOperand &MO = MI->getOperand(OpNum);
-  O << '#';
-  if (MO.isFPImm()) {
-    O << (float)MO.getFPImm();
-  } else {
-    union {
-      uint32_t I;
-      float F;
-    } FPUnion;
-
-    FPUnion.I = MO.getImm();
-    O << FPUnion.F;
-  }
-}
-
-void ARMInstPrinter::printVFPf64ImmOperand(const MCInst *MI, unsigned OpNum,
-                                           raw_ostream &O) {
-  const MCOperand &MO = MI->getOperand(OpNum);
-  O << '#';
-  if (MO.isFPImm()) {
-    O << MO.getFPImm();
-  } else {
-    // We expect the binary encoding of a floating point number here.
-    union {
-      uint64_t I;
-      double D;
-    } FPUnion;
-
-    FPUnion.I = MO.getImm();
-    O << FPUnion.D;
-  }
+  O << '#' << ARM_AM::getFPImmFloat(MO.getImm());
 }
 
 void ARMInstPrinter::printNEONModImmOperand(const MCInst *MI, unsigned OpNum,

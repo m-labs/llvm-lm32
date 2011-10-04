@@ -956,7 +956,7 @@ void SelectionDAGBuilder::resolveDanglingDebugInfo(const Value *V,
   }
 }
 
-// getValue - Return an SDValue for the given Value.
+/// getValue - Return an SDValue for the given Value.
 SDValue SelectionDAGBuilder::getValue(const Value *V) {
   // If we already have an SDValue for this value, use it. It's important
   // to do this first, so that we don't create a CopyFromReg if we already
@@ -971,7 +971,7 @@ SDValue SelectionDAGBuilder::getValue(const Value *V) {
     unsigned InReg = It->second;
     RegsForValue RFV(*DAG.getContext(), TLI, InReg, V->getType());
     SDValue Chain = DAG.getEntryNode();
-    N = RFV.getCopyFromRegs(DAG, FuncInfo, getCurDebugLoc(), Chain,NULL);
+    N = RFV.getCopyFromRegs(DAG, FuncInfo, getCurDebugLoc(), Chain, NULL);
     resolveDanglingDebugInfo(V, N);
     return N;
   }
@@ -2441,7 +2441,7 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
 
   // If there is only the default destination, branch to it if it is not the
   // next basic block.  Otherwise, just fall through.
-  if (SI.getNumOperands() == 2) {
+  if (SI.getNumCases() == 1) {
     // Update machine-CFG edges.
 
     // If this is not a fall-through branch, emit the branch.
@@ -2466,7 +2466,7 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
   // Get the Value to be switched on and default basic blocks, which will be
   // inserted into CaseBlock records, representing basic blocks in the binary
   // search tree.
-  const Value *SV = SI.getOperand(0);
+  const Value *SV = SI.getCondition();
 
   // Push the initial CaseRec onto the worklist
   CaseRecVector WorkList;
@@ -4535,7 +4535,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     const DbgDeclareInst &DI = cast<DbgDeclareInst>(I);
     MDNode *Variable = DI.getVariable();
     const Value *Address = DI.getAddress();
-    if (!Address || !DIVariable(DI.getVariable()).Verify())
+    if (!Address || !DIVariable(Variable).Verify())
       return 0;
 
     // Build an entry in DbgOrdering.  Debug info input nodes get an SDNodeOrder
@@ -4752,6 +4752,15 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     assert(MMI.getCurrentCallSite() == 0 && "Overlapping call sites!");
 
     MMI.setCurrentCallSite(CI->getZExtValue());
+    return 0;
+  }
+  case Intrinsic::eh_sjlj_functioncontext: {
+    // Get and store the index of the function context.
+    MachineFrameInfo *MFI = DAG.getMachineFunction().getFrameInfo();
+    AllocaInst *FnCtx =
+      cast<AllocaInst>(I.getArgOperand(0)->stripPointerCasts());
+    int FI = FuncInfo.StaticAllocaMap[FnCtx];
+    MFI->setFunctionContextIndex(FI);
     return 0;
   }
   case Intrinsic::eh_sjlj_setjmp: {
@@ -5881,8 +5890,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
 
       // The return value of the call is this value.  As such, there is no
       // corresponding argument.
-      assert(!CS.getType()->isVoidTy() &&
-             "Bad inline asm!");
+      assert(!CS.getType()->isVoidTy() && "Bad inline asm!");
       if (StructType *STy = dyn_cast<StructType>(CS.getType())) {
         OpVT = TLI.getValueType(STy->getElementType(ResNo));
       } else {

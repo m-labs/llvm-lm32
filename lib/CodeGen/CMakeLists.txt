@@ -13,7 +13,9 @@ add_llvm_library(LLVMCodeGen
   EdgeBundles.cpp
   ELFCodeEmitter.cpp
   ELFWriter.cpp
+  ExecutionDepsFix.cpp
   ExpandISelPseudos.cpp
+  ExpandPostRAPseudos.cpp
   GCMetadata.cpp
   GCMetadataPrinter.cpp
   GCStrategy.cpp
@@ -33,7 +35,6 @@ add_llvm_library(LLVMCodeGen
   LiveRangeCalc.cpp
   LiveRangeEdit.cpp
   LocalStackSlotAllocation.cpp
-  LowerSubregs.cpp
   MachineBasicBlock.cpp
   MachineBlockFrequencyInfo.cpp
   MachineBranchProbabilityInfo.cpp

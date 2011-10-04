@@ -16,7 +16,7 @@
 #include "RegisterInfoEmitter.h"
 #include "CodeGenTarget.h"
 #include "CodeGenRegisters.h"
-#include "Record.h"
+#include "llvm/TableGen/Record.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/STLExtras.h"
@@ -57,8 +57,7 @@ RegisterInfoEmitter::runEnums(raw_ostream &OS,
   if (!Namespace.empty())
     OS << "}\n";
 
-  const std::vector<CodeGenRegisterClass> &RegisterClasses =
-    Target.getRegisterClasses();
+  ArrayRef<CodeGenRegisterClass*> RegisterClasses = Bank.getRegClasses();
   if (!RegisterClasses.empty()) {
     OS << "\n// Register classes\n";
     if (!Namespace.empty())
@@ -66,7 +65,7 @@ RegisterInfoEmitter::runEnums(raw_ostream &OS,
     OS << "enum {\n";
     for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i) {
       if (i) OS << ",\n";
-      OS << "  " << RegisterClasses[i].getName() << "RegClassID";
+      OS << "  " << RegisterClasses[i]->getName() << "RegClassID";
       OS << " = " << i;
     }
     OS << "\n  };\n";
@@ -206,6 +205,21 @@ RegisterInfoEmitter::EmitRegMapping(raw_ostream &OS,
   }
 }
 
+// Print a BitVector as a sequence of hex numbers using a little-endian mapping.
+// Width is the number of bits per hex number.
+static void printBitVectorAsHex(raw_ostream &OS,
+                                const BitVector &Bits,
+                                unsigned Width) {
+  assert(Width <= 32 && "Width too large");
+  unsigned Digits = (Width + 3) / 4;
+  for (unsigned i = 0, e = Bits.size(); i < e; i += Width) {
+    unsigned Value = 0;
+    for (unsigned j = 0; j != Width && i + j != e; ++j)
+      Value |= Bits.test(i + j) << j;
+    OS << format("0x%0*x, ", Digits, Value);
+  }
+}
+
 // Helper to emit a set of bits into a constant byte array.
 class BitVectorEmitter {
   BitVector Values;
@@ -217,13 +231,7 @@ public:
   }
 
   void print(raw_ostream &OS) {
-    for (unsigned i = 0, e = Values.size() / 8; i != e; ++i) {
-      unsigned char out = 0;
-      for (unsigned j = 0; j != 8; ++j)
-        if (Values[i * 8 + j])
-          out |= 1 << j;
-      OS << format("0x%02x, ", out);
-    }
+    printBitVectorAsHex(OS, Values, 8);
   }
 };
 
@@ -322,15 +330,14 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
   }
   OS << "};\n\n";      // End of register descriptors...
 
-  const std::vector<CodeGenRegisterClass> &RegisterClasses =
-    Target.getRegisterClasses();
+  ArrayRef<CodeGenRegisterClass*> RegisterClasses = RegBank.getRegClasses();
 
   // Loop over all of the register classes... emitting each one.
   OS << "namespace {     // Register classes...\n";
 
   // Emit the register enum value arrays for each RegisterClass
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-    const CodeGenRegisterClass &RC = RegisterClasses[rc];
+    const CodeGenRegisterClass &RC = *RegisterClasses[rc];
     ArrayRef<Record*> Order = RC.getOrder();
 
     // Give the register class a legal C name if it's anonymous.
@@ -363,7 +370,7 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
   OS << "MCRegisterClass " << TargetName << "MCRegisterClasses[] = {\n";
 
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-    const CodeGenRegisterClass &RC = RegisterClasses[rc];
+    const CodeGenRegisterClass &RC = *RegisterClasses[rc];
     OS << "  MCRegisterClass(";
     if (!RC.Namespace.empty())
       OS << RC.Namespace << "::";
@@ -439,15 +446,14 @@ RegisterInfoEmitter::runTargetHeader(raw_ostream &OS, CodeGenTarget &Target,
       OS << "}\n";
   }
 
-  const std::vector<CodeGenRegisterClass> &RegisterClasses =
-    Target.getRegisterClasses();
+  ArrayRef<CodeGenRegisterClass*> RegisterClasses = RegBank.getRegClasses();
 
   if (!RegisterClasses.empty()) {
-    OS << "namespace " << RegisterClasses[0].Namespace
+    OS << "namespace " << RegisterClasses[0]->Namespace
        << " { // Register classes\n";
 
     for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i) {
-      const CodeGenRegisterClass &RC = RegisterClasses[i];
+      const CodeGenRegisterClass &RC = *RegisterClasses[i];
       const std::string &Name = RC.getName();
 
       // Output the register class definition.
@@ -488,15 +494,14 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
     << "MCRegisterClasses[];\n";
 
   // Start out by emitting each of the register classes.
-  const std::vector<CodeGenRegisterClass> &RegisterClasses =
-    Target.getRegisterClasses();
+  ArrayRef<CodeGenRegisterClass*> RegisterClasses = RegBank.getRegClasses();
 
   // Collect all registers belonging to any allocatable class.
   std::set<Record*> AllocatableRegs;
 
   // Collect allocatable registers.
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-    const CodeGenRegisterClass &RC = RegisterClasses[rc];
+    const CodeGenRegisterClass &RC = *RegisterClasses[rc];
     ArrayRef<Record*> Order = RC.getOrder();
 
     if (RC.Allocatable)
@@ -507,7 +512,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
 
   // Emit the ValueType arrays for each RegisterClass
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-    const CodeGenRegisterClass &RC = RegisterClasses[rc];
+    const CodeGenRegisterClass &RC = *RegisterClasses[rc];
 
     // Give the register class a legal C name if it's anonymous.
     std::string Name = RC.getName() + "VTs";
@@ -525,22 +530,23 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
 
   // Now that all of the structs have been emitted, emit the instances.
   if (!RegisterClasses.empty()) {
-    OS << "namespace " << RegisterClasses[0].Namespace
+    OS << "namespace " << RegisterClasses[0]->Namespace
        << " {   // Register class instances\n";
     for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i)
-      OS << "  " << RegisterClasses[i].getName()  << "Class\t"
-         << RegisterClasses[i].getName() << "RegClass;\n";
+      OS << "  " << RegisterClasses[i]->getName()  << "Class\t"
+         << RegisterClasses[i]->getName() << "RegClass;\n";
 
-    std::map<unsigned, std::set<unsigned> > SuperClassMap;
     std::map<unsigned, std::set<unsigned> > SuperRegClassMap;
-    OS << "\n";
+
+    OS << "\n  static const TargetRegisterClass* const "
+      << "NullRegClasses[] = { NULL };\n\n";
 
     unsigned NumSubRegIndices = RegBank.getSubRegIndices().size();
 
     if (NumSubRegIndices) {
       // Emit the sub-register classes for each RegisterClass
       for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-        const CodeGenRegisterClass &RC = RegisterClasses[rc];
+        const CodeGenRegisterClass &RC = *RegisterClasses[rc];
         std::vector<Record*> SRC(NumSubRegIndices);
         for (DenseMap<Record*,Record*>::const_iterator
              i = RC.SubRegClasses.begin(),
@@ -551,7 +557,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
 
           // Find the register class number of i->second for SuperRegClassMap.
           for (unsigned rc2 = 0, e2 = RegisterClasses.size(); rc2 != e2; ++rc2) {
-            const CodeGenRegisterClass &RC2 =  RegisterClasses[rc2];
+            const CodeGenRegisterClass &RC2 = *RegisterClasses[rc2];
             if (RC2.TheDef == i->second) {
               SuperRegClassMap[rc2].insert(rc);
               break;
@@ -580,7 +586,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
 
       // Emit the super-register classes for each RegisterClass
       for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-        const CodeGenRegisterClass &RC = RegisterClasses[rc];
+        const CodeGenRegisterClass &RC = *RegisterClasses[rc];
 
         // Give the register class a legal C name if it's anonymous.
         std::string Name = RC.TheDef->getName();
@@ -596,7 +602,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
         if (I != SuperRegClassMap.end()) {
           for (std::set<unsigned>::iterator II = I->second.begin(),
                  EE = I->second.end(); II != EE; ++II) {
-            const CodeGenRegisterClass &RC2 = RegisterClasses[*II];
+            const CodeGenRegisterClass &RC2 = *RegisterClasses[*II];
             if (!Empty)
               OS << ", ";
             OS << "&" << getQualifiedName(RC2.TheDef) << "RegClass";
@@ -607,88 +613,50 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
         OS << (!Empty ? ", " : "") << "NULL";
         OS << "\n  };\n\n";
       }
-    } else {
-      // No subregindices in this target
-      OS << "  static const TargetRegisterClass* const "
-         << "NullRegClasses[] = { NULL };\n\n";
     }
 
     // Emit the sub-classes array for each RegisterClass
     for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-      const CodeGenRegisterClass &RC = RegisterClasses[rc];
+      const CodeGenRegisterClass &RC = *RegisterClasses[rc];
 
       // Give the register class a legal C name if it's anonymous.
       std::string Name = RC.TheDef->getName();
 
-      OS << "  // " << Name
-         << " Register Class sub-classes...\n"
-         << "  static const TargetRegisterClass* const "
-         << Name << "Subclasses[] = {\n    ";
-
-      bool Empty = true;
-      for (unsigned rc2 = 0, e2 = RegisterClasses.size(); rc2 != e2; ++rc2) {
-        const CodeGenRegisterClass &RC2 = RegisterClasses[rc2];
-
-        // Sub-classes are used to determine if a virtual register can be used
-        // as an instruction operand, or if it must be copied first.
-        if (rc == rc2 || !RC.hasSubClass(&RC2)) continue;
-
-        if (!Empty) OS << ", ";
-        OS << "&" << getQualifiedName(RC2.TheDef) << "RegClass";
-        Empty = false;
-
-        std::map<unsigned, std::set<unsigned> >::iterator SCMI =
-          SuperClassMap.find(rc2);
-        if (SCMI == SuperClassMap.end()) {
-          SuperClassMap.insert(std::make_pair(rc2, std::set<unsigned>()));
-          SCMI = SuperClassMap.find(rc2);
-        }
-        SCMI->second.insert(rc);
-      }
-
-      OS << (!Empty ? ", " : "") << "NULL";
-      OS << "\n  };\n\n";
+      OS << "  static const unsigned " << Name << "SubclassMask[] = { ";
+      printBitVectorAsHex(OS, RC.getSubClasses(), 32);
+      OS << "};\n\n";
     }
 
+    // Emit NULL terminated super-class lists.
     for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
-      const CodeGenRegisterClass &RC = RegisterClasses[rc];
+      const CodeGenRegisterClass &RC = *RegisterClasses[rc];
+      ArrayRef<CodeGenRegisterClass*> Supers = RC.getSuperClasses();
 
-      // Give the register class a legal C name if it's anonymous.
-      std::string Name = RC.TheDef->getName();
+      // Skip classes without supers.  We can reuse NullRegClasses.
+      if (Supers.empty())
+        continue;
 
-      OS << "  // " << Name
-         << " Register Class super-classes...\n"
-         << "  static const TargetRegisterClass* const "
-         << Name << "Superclasses[] = {\n    ";
-
-      bool Empty = true;
-      std::map<unsigned, std::set<unsigned> >::iterator I =
-        SuperClassMap.find(rc);
-      if (I != SuperClassMap.end()) {
-        for (std::set<unsigned>::iterator II = I->second.begin(),
-               EE = I->second.end(); II != EE; ++II) {
-          const CodeGenRegisterClass &RC2 = RegisterClasses[*II];
-          if (!Empty) OS << ", ";
-          OS << "&" << getQualifiedName(RC2.TheDef) << "RegClass";
-          Empty = false;
-        }
-      }
-
-      OS << (!Empty ? ", " : "") << "NULL";
-      OS << "\n  };\n\n";
+      OS << "  static const TargetRegisterClass* const "
+         << RC.getName() << "Superclasses[] = {\n";
+      for (unsigned i = 0; i != Supers.size(); ++i)
+        OS << "    &" << getQualifiedName(Supers[i]->TheDef) << "RegClass,\n";
+      OS << "    NULL\n  };\n\n";
     }
 
     // Emit methods.
     for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i) {
-      const CodeGenRegisterClass &RC = RegisterClasses[i];
+      const CodeGenRegisterClass &RC = *RegisterClasses[i];
       OS << RC.getName() << "Class::" << RC.getName()
          << "Class()  : TargetRegisterClass(&"
          << Target.getName() << "MCRegisterClasses["
          << RC.getName() + "RegClassID" << "], "
          << RC.getName() + "VTs" << ", "
-         << RC.getName() + "Subclasses" << ", "
-         << RC.getName() + "Superclasses" << ", "
-         << (NumSubRegIndices ? RC.getName() + "Sub" : std::string("Null"))
+         << RC.getName() + "SubclassMask" << ", ";
+      if (RC.getSuperClasses().empty())
+        OS << "NullRegClasses, ";
+      else
+        OS << RC.getName() + "Superclasses, ";
+      OS << (NumSubRegIndices ? RC.getName() + "Sub" : std::string("Null"))
          << "RegClasses, "
          << (NumSubRegIndices ? RC.getName() + "Super" : std::string("Null"))
          << "RegClasses"
@@ -727,7 +695,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   OS << "\nnamespace {\n";
   OS << "  const TargetRegisterClass* const RegisterClasses[] = {\n";
   for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i)
-    OS << "    &" << getQualifiedName(RegisterClasses[i].TheDef)
+    OS << "    &" << getQualifiedName(RegisterClasses[i]->TheDef)
        << "RegClass,\n";
   OS << "  };\n";
   OS << "}\n";       // End of anonymous namespace...

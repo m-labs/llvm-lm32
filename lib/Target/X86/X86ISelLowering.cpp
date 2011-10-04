@@ -1137,6 +1137,8 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
   setTargetDAGCombine(ISD::OR);
   setTargetDAGCombine(ISD::AND);
   setTargetDAGCombine(ISD::ADD);
+  setTargetDAGCombine(ISD::FADD);
+  setTargetDAGCombine(ISD::FSUB);
   setTargetDAGCombine(ISD::SUB);
   setTargetDAGCombine(ISD::LOAD);
   setTargetDAGCombine(ISD::STORE);
@@ -8553,6 +8555,13 @@ SDValue X86TargetLowering::LowerVSETCC(SDValue Op, SelectionDAG &DAG) const {
   if (Swap)
     std::swap(Op0, Op1);
 
+  // Check that the operation in question is available (most are plain SSE2,
+  // but PCMPGTQ and PCMPEQQ have different requirements).
+  if (Opc == X86ISD::PCMPGTQ && !Subtarget->hasSSE42() && !Subtarget->hasAVX())
+    return SDValue();
+  if (Opc == X86ISD::PCMPEQQ && !Subtarget->hasSSE41() && !Subtarget->hasAVX())
+    return SDValue();
+
   // Since SSE has no unsigned integer comparisons, we need to flip  the sign
   // bits of the inputs before performing those operations.
   if (FlipSigns) {
@@ -9219,6 +9228,19 @@ X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const 
                                 DAG.getConstant(X86CC, MVT::i8), Cond);
     return DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i32, SetCC);
   }
+  // Arithmetic intrinsics.
+  case Intrinsic::x86_sse3_hadd_ps:
+  case Intrinsic::x86_sse3_hadd_pd:
+  case Intrinsic::x86_avx_hadd_ps_256:
+  case Intrinsic::x86_avx_hadd_pd_256:
+    return DAG.getNode(X86ISD::FHADD, dl, Op.getValueType(),
+                       Op.getOperand(1), Op.getOperand(2));
+  case Intrinsic::x86_sse3_hsub_ps:
+  case Intrinsic::x86_sse3_hsub_pd:
+  case Intrinsic::x86_avx_hsub_ps_256:
+  case Intrinsic::x86_avx_hsub_pd_256:
+    return DAG.getNode(X86ISD::FHSUB, dl, Op.getValueType(),
+                       Op.getOperand(1), Op.getOperand(2));
   // ptest and testp intrinsics. The intrinsic these come from are designed to
   // return an integer value, not just an instruction so lower it to the ptest
   // or testp pattern and a setcc for the result.
@@ -10647,6 +10669,8 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::FMIN:               return "X86ISD::FMIN";
   case X86ISD::FRSQRT:             return "X86ISD::FRSQRT";
   case X86ISD::FRCP:               return "X86ISD::FRCP";
+  case X86ISD::FHADD:              return "X86ISD::FHADD";
+  case X86ISD::FHSUB:              return "X86ISD::FHSUB";
   case X86ISD::TLSADDR:            return "X86ISD::TLSADDR";
   case X86ISD::TLSCALL:            return "X86ISD::TLSCALL";
   case X86ISD::EH_RETURN:          return "X86ISD::EH_RETURN";
@@ -12569,7 +12593,9 @@ static SDValue PerformSELECTCombine(SDNode *N, SelectionDAG &DAG,
   // x<=y?x:y, because of how they handle negative zero (which can be
   // ignored in unsafe-math mode).
   if (Cond.getOpcode() == ISD::SETCC && VT.isFloatingPoint() &&
-      VT != MVT::f80 && DAG.getTargetLoweringInfo().isTypeLegal(VT)) {
+      VT != MVT::f80 && DAG.getTargetLoweringInfo().isTypeLegal(VT) &&
+      (Subtarget->hasXMMInt() ||
+       (Subtarget->hasSSE1() && VT.getScalarType() == MVT::f32))) {
     ISD::CondCode CC = cast<CondCodeSDNode>(Cond.getOperand(2))->get();
 
     unsigned Opcode = 0;
@@ -13736,6 +13762,150 @@ static SDValue PerformSTORECombine(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
+/// isHorizontalBinOp - Return 'true' if this vector operation is "horizontal"
+/// and return the operands for the horizontal operation in LHS and RHS.  A
+/// horizontal operation performs the binary operation on successive elements
+/// of its first operand, then on successive elements of its second operand,
+/// returning the resulting values in a vector.  For example, if
+///   A = < float a0, float a1, float a2, float a3 >
+/// and
+///   B = < float b0, float b1, float b2, float b3 >
+/// then the result of doing a horizontal operation on A and B is
+///   A horizontal-op B = < a0 op a1, a2 op a3, b0 op b1, b2 op b3 >.
+/// In short, LHS and RHS are inspected to see if LHS op RHS is of the form
+/// A horizontal-op B, for some already available A and B, and if so then LHS is
+/// set to A, RHS to B, and the routine returns 'true'.
+/// Note that the binary operation should have the property that if one of the
+/// operands is UNDEF then the result is UNDEF.
+static bool isHorizontalBinOp(SDValue &LHS, SDValue &RHS, bool isCommutative) {
+  // Look for the following pattern: if
+  //   A = < float a0, float a1, float a2, float a3 >
+  //   B = < float b0, float b1, float b2, float b3 >
+  // and
+  //   LHS = VECTOR_SHUFFLE A, B, <0, 2, 4, 6>
+  //   RHS = VECTOR_SHUFFLE A, B, <1, 3, 5, 7>
+  // then LHS op RHS = < a0 op a1, a2 op a3, b0 op b1, b2 op b3 >
+  // which is A horizontal-op B.
+
+  // At least one of the operands should be a vector shuffle.
+  if (LHS.getOpcode() != ISD::VECTOR_SHUFFLE &&
+      RHS.getOpcode() != ISD::VECTOR_SHUFFLE)
+    return false;
+
+  EVT VT = LHS.getValueType();
+  unsigned N = VT.getVectorNumElements();
+
+  // View LHS in the form
+  //   LHS = VECTOR_SHUFFLE A, B, LMask
+  // If LHS is not a shuffle then pretend it is the shuffle
+  //   LHS = VECTOR_SHUFFLE LHS, undef, <0, 1, ..., N-1>
+  // NOTE: in what follows a default initialized SDValue represents an UNDEF of
+  // type VT.
+  SDValue A, B;
+  SmallVector<int, 8> LMask(N);
+  if (LHS.getOpcode() == ISD::VECTOR_SHUFFLE) {
+    if (LHS.getOperand(0).getOpcode() != ISD::UNDEF)
+      A = LHS.getOperand(0);
+    if (LHS.getOperand(1).getOpcode() != ISD::UNDEF)
+      B = LHS.getOperand(1);
+    cast<ShuffleVectorSDNode>(LHS.getNode())->getMask(LMask);
+  } else {
+    if (LHS.getOpcode() != ISD::UNDEF)
+      A = LHS;
+    for (unsigned i = 0; i != N; ++i)
+      LMask[i] = i;
+  }
+
+  // Likewise, view RHS in the form
+  //   RHS = VECTOR_SHUFFLE C, D, RMask
+  SDValue C, D;
+  SmallVector<int, 8> RMask(N);
+  if (RHS.getOpcode() == ISD::VECTOR_SHUFFLE) {
+    if (RHS.getOperand(0).getOpcode() != ISD::UNDEF)
+      C = RHS.getOperand(0);
+    if (RHS.getOperand(1).getOpcode() != ISD::UNDEF)
+      D = RHS.getOperand(1);
+    cast<ShuffleVectorSDNode>(RHS.getNode())->getMask(RMask);
+  } else {
+    if (RHS.getOpcode() != ISD::UNDEF)
+      C = RHS;
+    for (unsigned i = 0; i != N; ++i)
+      RMask[i] = i;
+  }
+
+  // Check that the shuffles are both shuffling the same vectors.
+  if (!(A == C && B == D) && !(A == D && B == C))
+    return false;
+
+  // If everything is UNDEF then bail out: it would be better to fold to UNDEF.
+  if (!A.getNode() && !B.getNode())
+    return false;
+
+  // If A and B occur in reverse order in RHS, then "swap" them (which means
+  // rewriting the mask).
+  if (A != C)
+    for (unsigned i = 0; i != N; ++i) {
+      unsigned Idx = RMask[i];
+      if (Idx < N)
+        RMask[i] += N;
+      else if (Idx < 2*N)
+        RMask[i] -= N;
+    }
+
+  // At this point LHS and RHS are equivalent to
+  //   LHS = VECTOR_SHUFFLE A, B, LMask
+  //   RHS = VECTOR_SHUFFLE A, B, RMask
+  // Check that the masks correspond to performing a horizontal operation.
+  for (unsigned i = 0; i != N; ++i) {
+    unsigned LIdx = LMask[i], RIdx = RMask[i];
+
+    // Ignore any UNDEF components.
+    if (LIdx >= 2*N || RIdx >= 2*N || (!A.getNode() && (LIdx < N || RIdx < N))
+        || (!B.getNode() && (LIdx >= N || RIdx >= N)))
+      continue;
+
+    // Check that successive elements are being operated on.  If not, this is
+    // not a horizontal operation.
+    if (!(LIdx == 2*i && RIdx == 2*i + 1) &&
+        !(isCommutative && LIdx == 2*i + 1 && RIdx == 2*i))
+      return false;
+  }
+
+  LHS = A.getNode() ? A : B; // If A is 'UNDEF', use B for it.
+  RHS = B.getNode() ? B : A; // If B is 'UNDEF', use A for it.
+  return true;
+}
+
+/// PerformFADDCombine - Do target-specific dag combines on floating point adds.
+static SDValue PerformFADDCombine(SDNode *N, SelectionDAG &DAG,
+                                  const X86Subtarget *Subtarget) {
+  EVT VT = N->getValueType(0);
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+
+  // Try to synthesize horizontal adds from adds of shuffles.
+  if ((Subtarget->hasSSE3() || Subtarget->hasAVX()) &&
+      (VT == MVT::v4f32 || VT == MVT::v2f64) &&
+      isHorizontalBinOp(LHS, RHS, true))
+    return DAG.getNode(X86ISD::FHADD, N->getDebugLoc(), VT, LHS, RHS);
+  return SDValue();
+}
+
+/// PerformFSUBCombine - Do target-specific dag combines on floating point subs.
+static SDValue PerformFSUBCombine(SDNode *N, SelectionDAG &DAG,
+                                  const X86Subtarget *Subtarget) {
+  EVT VT = N->getValueType(0);
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+
+  // Try to synthesize horizontal subs from subs of shuffles.
+  if ((Subtarget->hasSSE3() || Subtarget->hasAVX()) &&
+      (VT == MVT::v4f32 || VT == MVT::v2f64) &&
+      isHorizontalBinOp(LHS, RHS, false))
+    return DAG.getNode(X86ISD::FHSUB, N->getDebugLoc(), VT, LHS, RHS);
+  return SDValue();
+}
+
 /// PerformFORCombine - Do target-specific dag combines on X86ISD::FOR and
 /// X86ISD::FXOR nodes.
 static SDValue PerformFORCombine(SDNode *N, SelectionDAG &DAG) {
@@ -13973,6 +14143,8 @@ SDValue X86TargetLowering::PerformDAGCombine(SDNode *N,
   case ISD::LOAD:           return PerformLOADCombine(N, DAG, Subtarget);
   case ISD::STORE:          return PerformSTORECombine(N, DAG, Subtarget);
   case ISD::SINT_TO_FP:     return PerformSINT_TO_FPCombine(N, DAG, this);
+  case ISD::FADD:           return PerformFADDCombine(N, DAG, Subtarget);
+  case ISD::FSUB:           return PerformFSUBCombine(N, DAG, Subtarget);
   case X86ISD::FXOR:
   case X86ISD::FOR:         return PerformFORCombine(N, DAG);
   case X86ISD::FAND:        return PerformFANDCombine(N, DAG);

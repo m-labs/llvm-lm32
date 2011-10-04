@@ -1054,17 +1054,24 @@ static unsigned duplicateCPV(MachineFunction &MF, unsigned &CPI) {
   // instructions, so that's probably OK, but is PIC always correct when
   // we get here?
   if (ACPV->isGlobalValue())
-    NewCPV = new ARMConstantPoolValue(ACPV->getGV(), PCLabelId,
-                                      ARMCP::CPValue, 4);
+    NewCPV = ARMConstantPoolConstant::
+      Create(cast<ARMConstantPoolConstant>(ACPV)->getGV(), PCLabelId,
+             ARMCP::CPValue, 4);
   else if (ACPV->isExtSymbol())
-    NewCPV = new ARMConstantPoolValue(MF.getFunction()->getContext(),
-                                      ACPV->getSymbol(), PCLabelId, 4);
+    NewCPV = ARMConstantPoolSymbol::
+      Create(MF.getFunction()->getContext(),
+             cast<ARMConstantPoolSymbol>(ACPV)->getSymbol(), PCLabelId, 4);
   else if (ACPV->isBlockAddress())
-    NewCPV = new ARMConstantPoolValue(ACPV->getBlockAddress(), PCLabelId,
-                                      ARMCP::CPBlockAddress, 4);
+    NewCPV = ARMConstantPoolConstant::
+      Create(cast<ARMConstantPoolConstant>(ACPV)->getBlockAddress(), PCLabelId,
+             ARMCP::CPBlockAddress, 4);
   else if (ACPV->isLSDA())
-    NewCPV = new ARMConstantPoolValue(MF.getFunction(), PCLabelId,
-                                      ARMCP::CPLSDA, 4);
+    NewCPV = ARMConstantPoolConstant::Create(MF.getFunction(), PCLabelId,
+                                             ARMCP::CPLSDA, 4);
+  else if (ACPV->isMachineBasicBlock())
+    NewCPV = ARMConstantPoolMBB::
+      Create(MF.getFunction()->getContext(),
+             cast<ARMConstantPoolMBB>(ACPV)->getMBB(), PCLabelId, 4);
   else
     llvm_unreachable("Unexpected ARM constantpool value type!!");
   CPI = MCP->getConstantPoolIndex(NewCPV, MCPE.getAlignment());
@@ -2719,4 +2726,67 @@ ARMBaseInstrInfo::isFpMLxInstruction(unsigned Opcode, unsigned &MulOpc,
   NegAcc = Entry.NegAcc;
   HasLane = Entry.HasLane;
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Execution domains.
+//===----------------------------------------------------------------------===//
+//
+// Some instructions go down the NEON pipeline, some go down the VFP pipeline,
+// and some can go down both.  The vmov instructions go down the VFP pipeline,
+// but they can be changed to vorr equivalents that are executed by the NEON
+// pipeline.
+//
+// We use the following execution domain numbering:
+//
+enum ARMExeDomain {
+  ExeGeneric = 0,
+  ExeVFP = 1,
+  ExeNEON = 2
+};
+//
+// Also see ARMInstrFormats.td and Domain* enums in ARMBaseInfo.h
+//
+std::pair<uint16_t, uint16_t>
+ARMBaseInstrInfo::getExecutionDomain(const MachineInstr *MI) const {
+  // VMOVD is a VFP instruction, but can be changed to NEON if it isn't
+  // predicated.
+  if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
+    return std::make_pair(ExeVFP, (1<<ExeVFP) | (1<<ExeNEON));
+
+  // No other instructions can be swizzled, so just determine their domain.
+  unsigned Domain = MI->getDesc().TSFlags & ARMII::DomainMask;
+
+  if (Domain & ARMII::DomainNEON)
+    return std::make_pair(ExeNEON, 0);
+
+  // Certain instructions can go either way on Cortex-A8.
+  // Treat them as NEON instructions.
+  if ((Domain & ARMII::DomainNEONA8) && Subtarget.isCortexA8())
+    return std::make_pair(ExeNEON, 0);
+
+  if (Domain & ARMII::DomainVFP)
+    return std::make_pair(ExeVFP, 0);
+
+  return std::make_pair(ExeGeneric, 0);
+}
+
+void
+ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
+  // We only know how to change VMOVD into VORR.
+  assert(MI->getOpcode() == ARM::VMOVD && "Can only swizzle VMOVD");
+  if (Domain != ExeNEON)
+    return;
+
+  // Zap the predicate operands.
+  assert(!isPredicated(MI) && "Cannot predicate a VORRd");
+  MI->RemoveOperand(3);
+  MI->RemoveOperand(2);
+
+  // Change to a VORRd which requires two identical use operands.
+  MI->setDesc(get(ARM::VORRd));
+
+  // Add the extra source operand and new predicates.
+  // This will go before any implicit ops.
+  AddDefaultPred(MachineInstrBuilder(MI).addReg(MI->getOperand(1).getReg()));
 }

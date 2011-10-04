@@ -204,8 +204,6 @@ static DecodeStatus DecodeShiftRight64Imm(llvm::MCInst &Inst, unsigned Val,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeTBLInstruction(llvm::MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
-static DecodeStatus DecodeVFPfpImm(llvm::MCInst &Inst, unsigned Val,
-                               uint64_t Address, const void *Decoder);
 static DecodeStatus DecodePostIdxReg(llvm::MCInst &Inst, unsigned Insn,
                                uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeCoprocessor(llvm::MCInst &Inst, unsigned Insn,
@@ -307,6 +305,9 @@ static DecodeStatus DecodeT2Adr(llvm::MCInst &Inst, unsigned Val,
                                 uint64_t Address, const void *Decoder);
 static DecodeStatus DecodeT2LdStPre(llvm::MCInst &Inst, unsigned Val,
                                 uint64_t Address, const void *Decoder);
+static DecodeStatus DecodeT2ShifterImmOperand(llvm::MCInst &Inst, unsigned Val,
+                                uint64_t Address, const void *Decoder);
+
 
 
 #include "ARMGenDisassemblerTables.inc"
@@ -2521,31 +2522,6 @@ static DecodeStatus DecodeTBLInstruction(llvm::MCInst &Inst, unsigned Insn,
   return S;
 }
 
-static DecodeStatus DecodeVFPfpImm(llvm::MCInst &Inst, unsigned Val,
-                            uint64_t Address, const void *Decoder) {
-  // The immediate needs to be a fully instantiated float.  However, the
-  // auto-generated decoder is only able to fill in some of the bits
-  // necessary.  For instance, the 'b' bit is replicated multiple times,
-  // and is even present in inverted form in one bit.  We do a little
-  // binary parsing here to fill in those missing bits, and then
-  // reinterpret it all as a float.
-  union {
-    uint32_t integer;
-    float fp;
-  } fp_conv;
-
-  fp_conv.integer = Val;
-  uint32_t b = fieldFromInstruction32(Val, 25, 1);
-  fp_conv.integer |= b << 26;
-  fp_conv.integer |= b << 27;
-  fp_conv.integer |= b << 28;
-  fp_conv.integer |= b << 29;
-  fp_conv.integer |= (~b & 0x1) << 30;
-
-  Inst.addOperand(MCOperand::CreateFPImm(fp_conv.fp));
-  return MCDisassembler::Success;
-}
-
 static DecodeStatus DecodeThumbAddSpecialReg(llvm::MCInst &Inst, uint16_t Insn,
                                      uint64_t Address, const void *Decoder) {
   DecodeStatus S = MCDisassembler::Success;
@@ -2660,7 +2636,7 @@ static DecodeStatus DecodeT2LoadShift(llvm::MCInst &Inst, unsigned Insn,
       break;
     default: {
       unsigned Rt = fieldFromInstruction32(Insn, 12, 4);
-      if (!Check(S, DecodeGPRRegisterClass(Inst, Rt, Address, Decoder)))
+      if (!Check(S, DecoderGPRRegisterClass(Inst, Rt, Address, Decoder)))
     return MCDisassembler::Fail;
     }
   }
@@ -3874,5 +3850,16 @@ static DecodeStatus DecodeT2Adr(llvm::MCInst &Inst, uint32_t Insn,
   Inst.addOperand(MCOperand::CreateImm(SignExtend32<13>(Val)));
 
   return MCDisassembler::Success;
+}
+
+static DecodeStatus DecodeT2ShifterImmOperand(llvm::MCInst &Inst, uint32_t Val,
+                                              uint64_t Address,
+                                              const void *Decoder) {
+  DecodeStatus S = MCDisassembler::Success;
+
+  // Shift of "asr #32" is not allowed in Thumb2 mode.
+  if (Val == 0x20) S = MCDisassembler::SoftFail;
+  Inst.addOperand(MCOperand::CreateImm(Val));
+  return S;
 }
 

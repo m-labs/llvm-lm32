@@ -15,15 +15,24 @@
 #define MIPSMCTARGETDESC_H
 
 namespace llvm {
+class MCAsmBackend;
+class MCInstrInfo;
+class MCCodeEmitter;
+class MCContext;
 class MCSubtargetInfo;
-class Target;
 class StringRef;
+class Target;
 
 extern Target TheMipsTarget;
 extern Target TheMipselTarget;
 extern Target TheMips64Target;
 extern Target TheMips64elTarget;
 
+MCCodeEmitter *createMipsMCCodeEmitter(const MCInstrInfo &MCII,
+                                       const MCSubtargetInfo &STI,
+                                       MCContext &Ctx);
+
+MCAsmBackend *createMipsAsmBackend(const Target &T, StringRef TT);
 } // End llvm namespace
 
 // Defines symbolic names for Mips registers.  This defines a mapping from

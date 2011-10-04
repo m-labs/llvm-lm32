@@ -1,7 +1,6 @@
 set(LLVM_TARGET_DEFINITIONS PTX.td)
 
 tablegen(PTXGenAsmWriter.inc -gen-asm-writer)
-tablegen(PTXGenCallingConv.inc -gen-callingconv)
 tablegen(PTXGenDAGISel.inc -gen-dag-isel)
 tablegen(PTXGenInstrInfo.inc -gen-instr-info)
 tablegen(PTXGenRegisterInfo.inc -gen-register-info)
@@ -13,10 +12,15 @@ add_llvm_target(PTXCodeGen
   PTXISelDAGToDAG.cpp
   PTXISelLowering.cpp
   PTXInstrInfo.cpp
+  PTXFPRoundingModePass.cpp
   PTXFrameLowering.cpp
   PTXMCAsmStreamer.cpp
+  PTXMCInstLower.cpp
   PTXMFInfoExtract.cpp
+  PTXParamManager.cpp
+  PTXRegAlloc.cpp
   PTXRegisterInfo.cpp
+  PTXSelectionDAGInfo.cpp
   PTXSubtarget.cpp
   PTXTargetMachine.cpp
   )
@@ -35,4 +39,6 @@ add_llvm_library_dependencies(LLVMPTXCodeGen
   )
 
 add_subdirectory(TargetInfo)
+add_subdirectory(InstPrinter)
 add_subdirectory(MCTargetDesc)
+
