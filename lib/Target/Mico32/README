@@ -12,30 +12,28 @@ The general project layout will be:
     - build
     - install
 
-Check out the Mico32 LLVM port and clang from the GIT repository: 
+1) Check out the Mico32 LLVM port and clang from the GIT repository: 
 ------------------
 cd $TOPDIR
 git clone git://github.com/milkymist/llvm-lm32.git llvm
 (cd $TOPDIR/llvm/tools ; git clone git://github.com/milkymist/clang-lm32.git clang)
 ------------------
 
-Assuming you already have llvm-gcc built and installed for the host machine, configure and build Mico32 LLVM as shown below.  (I'm not sure llvm-gcc, --with-llvmgccdir, is really needed - that may only be for Dragonegg, but I haven't tested it.)
-
-Configure with cmake:
+2a) Configure with cmake:
 ------------------
 mkdir $TOPDIR/build
 ( cd $TOPDIR/build ;  cmake ../llvm  -DCMAKE_INSTALL_PREFIX=<INSTALL_DIRECTORY> -DCMAKE_BUILD_TYPE=Debug)
 ------------------
 
 
-Alternatively, configure with autotools:
+2b) Alternatively, configure with autotools:
 -------------------
 mkdir $TOPDIR/build
 
 (cd $TOPDIR/build ; ../llvm/configure --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
 -------------------
 
-Once configured build llvm and clang:
+3) Once configured build llvm and clang:
 -------------------
 (cd $TOPDIR/build ; make install)
 -------------------
@@ -43,12 +41,12 @@ Once configured build llvm and clang:
 
 LLVM MICO32 CODEGEN TESTS
 
-Run tests with CMAKE configured environment:
+Run tests in a CMAKE configured environment:
 -------------------
 (cd $TOPDIR/build ; ./bin/llvm-lit -sv -j1 test/CodeGen/Mico32/)
 -------------------
 
-Run tests with autools configured environment:
+Run tests in an autools configured environment:
 -------------------
 Do "make check" to run the LLVM tests:
 (cd $TOPDIR/build ; make check )
