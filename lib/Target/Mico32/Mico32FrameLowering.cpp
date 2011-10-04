@@ -55,34 +55,38 @@ getInitialFrameState(std::vector<MachineMove> &Moves) const {
 /// updated the sizes. Copied from SPU.
 void Mico32FrameLowering::
 determineFrameLayout(MachineFunction &MF) const {
-  unsigned AlignMask = 4 - 1;  
-  MachineFrameInfo *MFrmInf = MF.getFrameInfo();
+  MachineFrameInfo *MFI = MF.getFrameInfo();
+
+  // Get the number of bytes to allocate from the FrameInfo
+  unsigned FrameSize = MFI->getStackSize();
+
+  // Get the alignments provided by the target, and the maximum alignment
+  // (if any) of the fixed frame objects.
+  unsigned TargetAlign = getStackAlignment();
+  unsigned Align = std::max(TargetAlign, MFI->getMaxAlignment());
+  assert(isPowerOf2_32(Align) && "Alignment is not power of 2");
+  unsigned AlignMask = Align - 1;
 
   // Get the maximum call frame size of all the calls.
-  unsigned maxCallFrameSize = MFrmInf->getMaxCallFrameSize();
+  unsigned maxCallFrameSize = MFI->getMaxCallFrameSize();
 
-  // If we have maxCallFrameSize needs to be 4 byte aligned so
+  // If we have dynamic alloca then maxCallFrameSize needs to be aligned so
   // that allocations will be aligned.
-  maxCallFrameSize = (maxCallFrameSize + AlignMask) & ~AlignMask;
-  
-  // Update maximum call frame size.
-  MFrmInf->setMaxCallFrameSize(maxCallFrameSize);
-  assert((maxCallFrameSize % 4) == 0 && "The stack should be 4 byte aligned.");
-  
-  // Get the number of bytes to allocate from the FrameInfo
-  unsigned FrameSize = MFrmInf->getStackSize();
-  assert((FrameSize % 4) == 0 && "The stack should be 4 byte aligned.");
+  if (MFI->hasVarSizedObjects())
+    maxCallFrameSize = (maxCallFrameSize + AlignMask) & ~AlignMask;
 
-  // Make sure the stack is 4 byte aligned.
-  FrameSize = (FrameSize + AlignMask) & ~AlignMask;
+  // Update maximum call frame size.
+  MFI->setMaxCallFrameSize(maxCallFrameSize);
 
   // Include call frame size in total.
   FrameSize += maxCallFrameSize;
-  
-  // Update frame info.
-  MFrmInf->setStackSize(FrameSize);
-}
 
+  // Make sure the frame is aligned.
+  FrameSize = (FrameSize + AlignMask) & ~AlignMask;
+
+  // Update frame info.
+  MFI->setStackSize(FrameSize);
+}
 
 /// hasFP - Return true if the specified function should have a dedicated frame
 /// pointer register.  This is true if the stacksize > 0 and either the 
