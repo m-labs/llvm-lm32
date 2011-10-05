@@ -402,6 +402,9 @@ SPUTargetLowering::SPUTargetLowering(SPUTargetMachine &TM)
        i <= (unsigned)MVT::LAST_VECTOR_VALUETYPE; ++i) {
     MVT::SimpleValueType VT = (MVT::SimpleValueType)i;
 
+    // Set operation actions to legal types only.
+    if (!isTypeLegal(VT)) continue;
+
     // add/sub are legal for all supported vector VT's.
     setOperationAction(ISD::ADD,     VT, Legal);
     setOperationAction(ISD::SUB,     VT, Legal);

@@ -519,9 +519,10 @@ bool ARMDAGToDAGISel::SelectLdStSOReg(SDValue N, SDValue &Base, SDValue &Offset,
       return false;
   }
 
-  if (Subtarget->isCortexA9() && !N.hasOneUse())
+  if (Subtarget->isCortexA9() && !N.hasOneUse()) {
     // Compute R +/- (R << N) and reuse it.
     return false;
+  }
 
   // Otherwise this is R +/- [possibly shifted] R.
   ARM_AM::AddrOpc AddSub = N.getOpcode() == ISD::SUB ? ARM_AM::sub:ARM_AM::add;
@@ -1287,7 +1288,6 @@ bool ARMDAGToDAGISel::SelectT2AddrModeSoReg(SDValue N,
 
   if (Subtarget->isCortexA9() && !N.hasOneUse()) {
     // Compute R + (R << [1,2,3]) and reuse it.
-    Base = N;
     return false;
   }
 

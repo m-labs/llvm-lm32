@@ -371,10 +371,7 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
 
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
     const CodeGenRegisterClass &RC = *RegisterClasses[rc];
-    OS << "  MCRegisterClass(";
-    if (!RC.Namespace.empty())
-      OS << RC.Namespace << "::";
-    OS << RC.getName() + "RegClassID" << ", "
+    OS << "  MCRegisterClass(" << RC.getQualifiedName() + "RegClassID" << ", "
        << '\"' << RC.getName() << "\", "
        << RC.SpillSize/8 << ", "
        << RC.SpillAlignment/8 << ", "
@@ -429,6 +426,8 @@ RegisterInfoEmitter::runTargetHeader(raw_ostream &OS, CodeGenTarget &Target,
      << "  unsigned getSubReg(unsigned RegNo, unsigned Index) const;\n"
      << "  unsigned getSubRegIndex(unsigned RegNo, unsigned SubRegNo) const;\n"
      << "  unsigned composeSubRegIndices(unsigned, unsigned) const;\n"
+     << "  const TargetRegisterClass *"
+        "getSubClassWithSubReg(const TargetRegisterClass*, unsigned) const;\n"
      << "};\n\n";
 
   const std::vector<Record*> &SubRegIndices = RegBank.getSubRegIndices();
@@ -556,17 +555,13 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
           SRC.at(idx-1) = i->second;
 
           // Find the register class number of i->second for SuperRegClassMap.
-          for (unsigned rc2 = 0, e2 = RegisterClasses.size(); rc2 != e2; ++rc2) {
-            const CodeGenRegisterClass &RC2 = *RegisterClasses[rc2];
-            if (RC2.TheDef == i->second) {
-              SuperRegClassMap[rc2].insert(rc);
-              break;
-            }
-          }
+          const CodeGenRegisterClass *RC2 = RegBank.getRegClass(i->second);
+          assert(RC2 && "Invalid register class in SubRegClasses");
+          SuperRegClassMap[RC2->EnumValue].insert(rc);
         }
 
         // Give the register class a legal C name if it's anonymous.
-        std::string Name = RC.TheDef->getName();
+        std::string Name = RC.getName();
 
         OS << "  // " << Name
            << " Sub-register Classes...\n"
@@ -589,7 +584,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
         const CodeGenRegisterClass &RC = *RegisterClasses[rc];
 
         // Give the register class a legal C name if it's anonymous.
-        std::string Name = RC.TheDef->getName();
+        std::string Name = RC.getName();
 
         OS << "  // " << Name
            << " Super-register Classes...\n"
@@ -605,7 +600,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
             const CodeGenRegisterClass &RC2 = *RegisterClasses[*II];
             if (!Empty)
               OS << ", ";
-            OS << "&" << getQualifiedName(RC2.TheDef) << "RegClass";
+            OS << "&" << RC2.getQualifiedName() << "RegClass";
             Empty = false;
           }
         }
@@ -620,7 +615,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
       const CodeGenRegisterClass &RC = *RegisterClasses[rc];
 
       // Give the register class a legal C name if it's anonymous.
-      std::string Name = RC.TheDef->getName();
+      std::string Name = RC.getName();
 
       OS << "  static const unsigned " << Name << "SubclassMask[] = { ";
       printBitVectorAsHex(OS, RC.getSubClasses(), 32);
@@ -639,7 +634,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
       OS << "  static const TargetRegisterClass* const "
          << RC.getName() << "Superclasses[] = {\n";
       for (unsigned i = 0; i != Supers.size(); ++i)
-        OS << "    &" << getQualifiedName(Supers[i]->TheDef) << "RegClass,\n";
+        OS << "    &" << Supers[i]->getQualifiedName() << "RegClass,\n";
       OS << "    NULL\n  };\n\n";
     }
 
@@ -675,10 +670,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
           OS << " };\n";
         }
         OS << "  const MCRegisterClass &MCR = " << Target.getName()
-           << "MCRegisterClasses[";
-        if (!RC.Namespace.empty())
-          OS << RC.Namespace << "::";
-        OS << RC.getName() + "RegClassID];"
+           << "MCRegisterClasses[" << RC.getQualifiedName() + "RegClassID];"
            << "  static const ArrayRef<unsigned> Order[] = {\n"
            << "    makeArrayRef(MCR.begin(), MCR.getNumRegs()";
         for (unsigned oi = 1, oe = RC.getNumOrders(); oi != oe; ++oi)
@@ -695,7 +687,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   OS << "\nnamespace {\n";
   OS << "  const TargetRegisterClass* const RegisterClasses[] = {\n";
   for (unsigned i = 0, e = RegisterClasses.size(); i != e; ++i)
-    OS << "    &" << getQualifiedName(RegisterClasses[i]->TheDef)
+    OS << "    &" << RegisterClasses[i]->getQualifiedName()
        << "RegClass,\n";
   OS << "  };\n";
   OS << "}\n";       // End of anonymous namespace...
@@ -811,6 +803,44 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
       OS << "    }\n";
   }
   OS << "  }\n}\n\n";
+
+  // Emit getSubClassWithSubReg.
+  OS << "const TargetRegisterClass *" << ClassName
+     << "::getSubClassWithSubReg(const TargetRegisterClass *RC, unsigned Idx)"
+        " const {\n";
+  if (SubRegIndices.empty()) {
+    OS << "  assert(Idx == 0 && \"Target has no sub-registers\");\n"
+       << "  return RC;\n";
+  } else {
+    // Use the smallest type that can hold a regclass ID with room for a
+    // sentinel.
+    if (RegisterClasses.size() < UINT8_MAX)
+      OS << "  static const uint8_t Table[";
+    else if (RegisterClasses.size() < UINT16_MAX)
+      OS << "  static const uint16_t Table[";
+    else
+      throw "Too many register classes.";
+    OS << RegisterClasses.size() << "][" << SubRegIndices.size() << "] = {\n";
+    for (unsigned rci = 0, rce = RegisterClasses.size(); rci != rce; ++rci) {
+      const CodeGenRegisterClass &RC = *RegisterClasses[rci];
+      OS << "    {\t// " << RC.getName() << "\n";
+      for (unsigned sri = 0, sre = SubRegIndices.size(); sri != sre; ++sri) {
+        Record *Idx = SubRegIndices[sri];
+        if (CodeGenRegisterClass *SRC = RC.getSubClassWithSubReg(Idx))
+          OS << "      " << SRC->EnumValue + 1 << ",\t// " << Idx->getName()
+             << " -> " << SRC->getName() << "\n";
+        else
+          OS << "      0,\t// " << Idx->getName() << "\n";
+      }
+      OS << "    },\n";
+    }
+    OS << "  };\n  assert(RC && \"Missing regclass\");\n"
+       << "  if (!Idx) return RC;\n  --Idx;\n"
+       << "  assert(Idx < " << SubRegIndices.size() << " && \"Bad subreg\");\n"
+       << "  unsigned TV = Table[RC->getID()][Idx];\n"
+       << "  return TV ? getRegClass(TV - 1) : 0;\n";
+  }
+  OS << "}\n\n";
 
   // Emit the constructor of the class...
   OS << "extern MCRegisterDesc " << TargetName << "RegDesc[];\n";

@@ -70,6 +70,7 @@ namespace llvm {
     struct Less {
       bool operator()(const CodeGenRegister *A,
                       const CodeGenRegister *B) const {
+        assert(A && B);
         return A->EnumValue < B->EnumValue;
       }
     };
@@ -86,15 +87,24 @@ namespace llvm {
 
   class CodeGenRegisterClass {
     CodeGenRegister::Set Members;
-    const std::vector<Record*> *Elements;
-    std::vector<SmallVector<Record*, 16> > AltOrders;
+    // Allocation orders. Order[0] always contains all registers in Members.
+    std::vector<SmallVector<Record*, 16> > Orders;
     // Bit mask of sub-classes including this, indexed by their EnumValue.
     BitVector SubClasses;
     // List of super-classes, topologocally ordered to have the larger classes
     // first.  This is the same as sorting by EnumValue.
     SmallVector<CodeGenRegisterClass*, 4> SuperClasses;
-  public:
     Record *TheDef;
+    std::string Name;
+
+    // For a synthesized class, inherit missing properties from the nearest
+    // super-class.
+    void inheritProperties(CodeGenRegBank&);
+
+    // Map SubRegIndex -> sub-class
+    DenseMap<Record*, CodeGenRegisterClass*> SubClassWithSubReg;
+
+  public:
     unsigned EnumValue;
     std::string Namespace;
     std::vector<MVT::SimpleValueType> VTs;
@@ -106,7 +116,12 @@ namespace llvm {
     DenseMap<Record*,Record*> SubRegClasses;
     std::string AltOrderSelect;
 
-    const std::string &getName() const;
+    // Return the Record that defined this class, or NULL if the class was
+    // created by TableGen.
+    Record *getDef() const { return TheDef; }
+
+    const std::string &getName() const { return Name; }
+    std::string getQualifiedName() const;
     const std::vector<MVT::SimpleValueType> &getValueTypes() const {return VTs;}
     unsigned getNumValueTypes() const { return VTs.size(); }
 
@@ -133,6 +148,16 @@ namespace llvm {
       return SubClasses.test(RC->EnumValue);
     }
 
+    // getSubClassWithSubReg - Returns the largest sub-class where all
+    // registers have a SubIdx sub-register.
+    CodeGenRegisterClass *getSubClassWithSubReg(Record *SubIdx) const {
+      return SubClassWithSubReg.lookup(SubIdx);
+    }
+
+    void setSubClassWithSubReg(Record *SubIdx, CodeGenRegisterClass *SubRC) {
+      SubClassWithSubReg[SubIdx] = SubRC;
+    }
+
     // getSubClasses - Returns a constant BitVector of subclasses indexed by
     // EnumValue.
     // The SubClasses vector includs an entry for this class.
@@ -148,14 +173,11 @@ namespace llvm {
     // The order of registers is the same as in the .td file.
     // No = 0 is the default allocation order, No = 1 is the first alternative.
     ArrayRef<Record*> getOrder(unsigned No = 0) const {
-      if (No == 0)
-        return *Elements;
-      else
-        return AltOrders[No - 1];
+        return Orders[No];
     }
 
     // Return the total number of allocation orders available.
-    unsigned getNumOrders() const { return 1 + AltOrders.size(); }
+    unsigned getNumOrders() const { return Orders.size(); }
 
     // Get the set of registers.  This set contains the same registers as
     // getOrder(0).
@@ -163,8 +185,36 @@ namespace llvm {
 
     CodeGenRegisterClass(CodeGenRegBank&, Record *R);
 
+    // A key representing the parts of a register class used for forming
+    // sub-classes.  Note the ordering provided by this key is not the same as
+    // the topological order used for the EnumValues.
+    struct Key {
+      const CodeGenRegister::Set *Members;
+      unsigned SpillSize;
+      unsigned SpillAlignment;
+
+      Key(const Key &O)
+        : Members(O.Members),
+          SpillSize(O.SpillSize),
+          SpillAlignment(O.SpillAlignment) {}
+
+      Key(const CodeGenRegister::Set *M, unsigned S = 0, unsigned A = 0)
+        : Members(M), SpillSize(S), SpillAlignment(A) {}
+
+      Key(const CodeGenRegisterClass &RC)
+        : Members(&RC.getMembers()),
+          SpillSize(RC.SpillSize),
+          SpillAlignment(RC.SpillAlignment) {}
+
+      // Lexicographical order of (Members, SpillSize, SpillAlignment).
+      bool operator<(const Key&) const;
+    };
+
+    // Create a non-user defined register class.
+    CodeGenRegisterClass(StringRef Name, Key Props);
+
     // Called by CodeGenRegBank::CodeGenRegBank().
-    static void computeSubClasses(ArrayRef<CodeGenRegisterClass*>);
+    static void computeSubClasses(CodeGenRegBank&);
   };
 
   // CodeGenRegBank - Represent a target's registers and the relations between
@@ -178,8 +228,17 @@ namespace llvm {
     std::vector<CodeGenRegister*> Registers;
     DenseMap<Record*, CodeGenRegister*> Def2Reg;
 
+    // Register classes.
     std::vector<CodeGenRegisterClass*> RegClasses;
     DenseMap<Record*, CodeGenRegisterClass*> Def2RC;
+    typedef std::map<CodeGenRegisterClass::Key, CodeGenRegisterClass*> RCKeyMap;
+    RCKeyMap Key2RC;
+
+    // Add RC to *2RC maps.
+    void addToMaps(CodeGenRegisterClass*);
+
+    // Infer missing register classes.
+    void computeInferredRegisterClasses();
 
     // Composite SubRegIndex instances.
     // Map (SubRegIndex, SubRegIndex) -> SubRegIndex.

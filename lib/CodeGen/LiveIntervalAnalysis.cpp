@@ -304,8 +304,19 @@ void LiveIntervals::handleVirtualRegisterDef(MachineBasicBlock *mbb,
 
     // Make sure the first definition is not a partial redefinition. Add an
     // <imp-def> of the full register.
-    if (MO.getSubReg())
+    // FIXME: LiveIntervals shouldn't modify the code like this.  Whoever
+    // created the machine instruction should annotate it with <undef> flags
+    // as needed.  Then we can simply assert here.  The REG_SEQUENCE lowering
+    // is the main suspect.
+    if (MO.getSubReg()) {
       mi->addRegisterDefined(interval.reg);
+      // Mark all defs of interval.reg on this instruction as reading <undef>.
+      for (unsigned i = MOIdx, e = mi->getNumOperands(); i != e; ++i) {
+        MachineOperand &MO2 = mi->getOperand(i);
+        if (MO2.isReg() && MO2.getReg() == interval.reg && MO2.getSubReg())
+          MO2.setIsUndef();
+      }
+    }
 
     MachineInstr *CopyMI = NULL;
     if (mi->isCopyLike()) {
