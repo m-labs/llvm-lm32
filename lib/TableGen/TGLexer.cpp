@@ -208,40 +208,40 @@ tgtok::TokKind TGLexer::LexVarName() {
 tgtok::TokKind TGLexer::LexIdentifier() {
   // The first letter is [a-zA-Z_#].
   const char *IdentStart = TokStart;
-  
+
   // Match the rest of the identifier regex: [0-9a-zA-Z_#]*
   while (isalpha(*CurPtr) || isdigit(*CurPtr) || *CurPtr == '_' ||
          *CurPtr == '#')
     ++CurPtr;
-  
-  
+
   // Check to see if this identifier is a keyword.
-  unsigned Len = CurPtr-IdentStart;
-  
-  if (Len == 3 && !memcmp(IdentStart, "int", 3)) return tgtok::Int;
-  if (Len == 3 && !memcmp(IdentStart, "bit", 3)) return tgtok::Bit;
-  if (Len == 4 && !memcmp(IdentStart, "bits", 4)) return tgtok::Bits;
-  if (Len == 6 && !memcmp(IdentStart, "string", 6)) return tgtok::String;
-  if (Len == 4 && !memcmp(IdentStart, "list", 4)) return tgtok::List;
-  if (Len == 4 && !memcmp(IdentStart, "code", 4)) return tgtok::Code;
-  if (Len == 3 && !memcmp(IdentStart, "dag", 3)) return tgtok::Dag;
-  
-  if (Len == 5 && !memcmp(IdentStart, "class", 5)) return tgtok::Class;
-  if (Len == 3 && !memcmp(IdentStart, "def", 3)) return tgtok::Def;
-  if (Len == 4 && !memcmp(IdentStart, "defm", 4)) return tgtok::Defm;
-  if (Len == 10 && !memcmp(IdentStart, "multiclass", 10))
-    return tgtok::MultiClass;
-  if (Len == 5 && !memcmp(IdentStart, "field", 5)) return tgtok::Field;
-  if (Len == 3 && !memcmp(IdentStart, "let", 3)) return tgtok::Let;
-  if (Len == 2 && !memcmp(IdentStart, "in", 2)) return tgtok::In;
-  
-  if (Len == 7 && !memcmp(IdentStart, "include", 7)) {
+  StringRef Str(IdentStart, CurPtr-IdentStart);
+
+  if (Str == "include") {
     if (LexInclude()) return tgtok::Error;
     return Lex();
   }
-    
-  CurStrVal.assign(IdentStart, CurPtr);
-  return tgtok::Id;
+
+  tgtok::TokKind Kind = StringSwitch<tgtok::TokKind>(Str)
+    .Case("int", tgtok::Int)
+    .Case("bit", tgtok::Bit)
+    .Case("bits", tgtok::Bits)
+    .Case("string", tgtok::String)
+    .Case("list", tgtok::List)
+    .Case("code", tgtok::Code)
+    .Case("dag", tgtok::Dag)
+    .Case("class", tgtok::Class)
+    .Case("def", tgtok::Def)
+    .Case("defm", tgtok::Defm)
+    .Case("multiclass", tgtok::MultiClass)
+    .Case("field", tgtok::Field)
+    .Case("let", tgtok::Let)
+    .Case("in", tgtok::In)
+    .Default(tgtok::Id);
+
+  if (Kind == tgtok::Id)
+    CurStrVal.assign(Str.begin(), Str.end());
+  return Kind;
 }
 
 /// LexInclude - We just read the "include" token.  Get the string token that

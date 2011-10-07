@@ -24,6 +24,7 @@
 #include "llvm/Config/config.h"
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 /* Can't use the recommended caml_named_value mechanism for backwards
@@ -171,6 +172,10 @@ CAMLprim value llvm_classify_type(LLVMTypeRef Ty) {
   return Val_int(LLVMGetTypeKind(Ty));
 }
 
+CAMLprim value llvm_type_is_sized(LLVMTypeRef Ty) {
+    return Val_bool(LLVMTypeIsSized(Ty));
+}
+
 /* lltype -> llcontext */
 CAMLprim LLVMContextRef llvm_type_context(LLVMTypeRef Ty) {
   return LLVMGetTypeContext(Ty);
@@ -285,6 +290,20 @@ CAMLprim LLVMTypeRef llvm_packed_struct_type(LLVMContextRef C,
                                              value ElementTypes) {
   return LLVMStructTypeInContext(C, (LLVMTypeRef *) ElementTypes,
                                  Wosize_val(ElementTypes), 1);
+}
+
+/* lltype -> string option */
+CAMLprim value llvm_struct_name(LLVMTypeRef Ty)
+{
+    CAMLparam0();
+    const char *C = LLVMGetStructName(Ty);
+    if (C) {
+	CAMLlocal1(result);
+	result = caml_alloc_small(1, 0);
+	Store_field(result, 0, caml_copy_string(C));
+	CAMLreturn(result);
+    }
+    CAMLreturn(Val_int(0));
 }
 
 /* lltype -> lltype array */
@@ -454,6 +473,32 @@ CAMLprim LLVMValueRef llvm_mdnode(LLVMContextRef C, value ElementVals) {
                              Wosize_val(ElementVals));
 }
 
+/* llvalue -> string option */
+CAMLprim value llvm_get_mdstring(LLVMValueRef V) {
+    CAMLparam0();
+    const char *S;
+    unsigned Len;
+
+    if ((S = LLVMGetMDString(V, &Len))) {
+	CAMLlocal2(Option, Str);
+
+	Str = caml_alloc_string(Len);
+	memcpy(String_val(Str), S, Len);
+	Option = alloc(1,0);
+	Store_field(Option, 0, Str);
+	CAMLreturn(Option);
+    }
+    CAMLreturn(Val_int(0));
+}
+
+CAMLprim value llvm_get_namedmd(LLVMModuleRef M, value name)
+{
+  CAMLparam1(name);
+  CAMLlocal1(Nodes);
+  Nodes = alloc(LLVMGetNamedMetadataNumOperands(M, String_val(name)), 0);
+  LLVMGetNamedMetadataOperands(M, String_val(name), (LLVMValueRef *) Nodes);
+  CAMLreturn(Nodes);
+}
 /*--... Operations on scalar constants .....................................--*/
 
 /* lltype -> int -> llvalue */
@@ -967,6 +1012,19 @@ CAMLprim value llvm_value_is_block(LLVMValueRef Val) {
 
 DEFINE_ITERATORS(instr, Instruction, LLVMBasicBlockRef, LLVMValueRef,
                  LLVMGetInstructionParent)
+
+
+/* llvalue -> ICmp.t */
+CAMLprim value llvm_instr_icmp_predicate(LLVMValueRef Val) {
+    CAMLparam0();
+    int x = LLVMGetICmpPredicate(Val);
+    if (x) {
+	value Option = alloc(1, 0);
+	Field(Option, 0) = Val_int(x - LLVMIntEQ);
+	CAMLreturn(Option);
+    }
+    CAMLreturn(Val_int(0));
+}
 
 
 /*--... Operations on call sites ...........................................--*/

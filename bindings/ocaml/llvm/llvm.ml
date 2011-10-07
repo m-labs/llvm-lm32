@@ -167,6 +167,7 @@ external set_module_inline_asm : llmodule -> string -> unit
 (*===-- Types -------------------------------------------------------------===*)
 external classify_type : lltype -> TypeKind.t = "llvm_classify_type"
 external type_context : lltype -> llcontext = "llvm_type_context"
+external type_is_sized : lltype -> bool = "llvm_type_is_sized"
 
 (*--... Operations on integer types ........................................--*)
 external i1_type : llcontext -> lltype = "llvm_i1_type"
@@ -197,6 +198,7 @@ external param_types : lltype -> lltype array = "llvm_param_types"
 external struct_type : llcontext -> lltype array -> lltype = "llvm_struct_type"
 external packed_struct_type : llcontext -> lltype array -> lltype
                             = "llvm_packed_struct_type"
+external struct_name : lltype -> string option = "llvm_struct_name"
 external struct_element_types : lltype -> lltype array
                               = "llvm_struct_element_types"
 external is_packed : lltype -> bool = "llvm_is_packed"
@@ -280,6 +282,8 @@ external clear_metadata : llvalue -> int -> unit = "llvm_clear_metadata"
 (*--... Operations on metadata .......,.....................................--*)
 external mdstring : llcontext -> string -> llvalue = "llvm_mdstring"
 external mdnode : llcontext -> llvalue array -> llvalue = "llvm_mdnode"
+external get_mdstring : llvalue -> string option = "llvm_get_mdstring"
+external get_named_metadata : llmodule -> string -> llvalue array = "llvm_get_namedmd"
 
 (*--... Operations on scalar constants .....................................--*)
 external const_int : lltype -> int -> llvalue = "llvm_const_int"
@@ -701,6 +705,8 @@ external instr_end : llbasicblock -> (llbasicblock, llvalue) llrev_pos
                      = "llvm_instr_end"
 external instr_pred : llvalue -> (llbasicblock, llvalue) llrev_pos
                      = "llvm_instr_pred"
+
+external icmp_predicate : llvalue -> Icmp.t option = "llvm_instr_icmp_predicate"
 
 let rec iter_instrs_range f i e =
   if i = e then () else

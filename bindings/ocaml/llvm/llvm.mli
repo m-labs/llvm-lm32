@@ -271,6 +271,11 @@ val set_module_inline_asm : llmodule -> string -> unit
     See the method [llvm::Type::getTypeID]. *)
 val classify_type : lltype -> TypeKind.t
 
+(** [type_is_sized ty] returns whether the type has a size or not.
+ * If it doesn't then it is not safe to call the [TargetData::] methods on it.
+ * *)
+val type_is_sized : lltype -> bool
+
 (** [type_context ty] returns the {!llcontext} corresponding to the type [ty].
     See the method [llvm::Type::getContext]. *)
 val type_context : lltype -> llcontext
@@ -371,6 +376,10 @@ val struct_type : llcontext -> lltype array -> lltype
     context [context] containing in the types in the array [tys]. See the method
     [llvm::StructType::get]. *)
 val packed_struct_type : llcontext -> lltype array -> lltype
+
+(** [struct_name ty] returns the name of the named structure type [ty],
+ * or None if the structure type is not named *)
+val struct_name : lltype -> string option
 
 
 (** [struct_element_types sty] returns the constituent types of the struct type
@@ -567,6 +576,14 @@ val mdstring : llcontext -> string -> llvalue
     See the method [llvm::MDNode::get]. *)
 val mdnode : llcontext -> llvalue array -> llvalue
 
+(** [get_mdstring v] returns the MDString.
+ * See the method [llvm::MDString::getString] *)
+val get_mdstring : llvalue -> string option
+
+(** [get_named_metadata m name] return all the MDNodes belonging to the named
+ * metadata (if any).
+ * See the method [llvm::NamedMDNode::getOperand]. *)
+val get_named_metadata : llmodule -> string -> llvalue array
 
 (** {7 Operations on scalar constants} *)
 
@@ -1422,6 +1439,8 @@ val instr_pred : llvalue -> (llbasicblock, llvalue) llrev_pos
     [f1,...,fN] are the instructions of basic block [bb]. Tail recursive. *)
 val fold_right_instrs: (llvalue -> 'a -> 'a) -> llbasicblock -> 'a -> 'a
 
+
+val icmp_predicate : llvalue -> Icmp.t option
 
 (** {7 Operations on call sites} *)
 

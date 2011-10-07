@@ -115,7 +115,10 @@ typedef enum {
     LLVMNoImplicitFloatAttribute = 1<<23,
     LLVMNakedAttribute      = 1<<24,
     LLVMInlineHintAttribute = 1<<25,
-    LLVMStackAlignment = 7<<26
+    LLVMStackAlignment = 7<<26,
+    LLVMReturnsTwice = 1 << 29,
+    LLVMUWTable = 1 << 30,
+    LLVMNonLazyBind = 1 << 31
 } LLVMAttribute;
 
 typedef enum {
@@ -176,8 +179,8 @@ typedef enum {
   LLVMPHI            = 44,
   LLVMCall           = 45,
   LLVMSelect         = 46,
-  /* UserOp1 */
-  /* UserOp2 */
+  LLVMUserOp1        = 47,
+  LLVMUserOp2        = 48,
   LLVMVAArg          = 49,
   LLVMExtractElement = 50,
   LLVMInsertElement  = 51,
@@ -192,7 +195,9 @@ typedef enum {
 
   /* Exception Handling Operators */
   LLVMResume         = 58,
-  LLVMLandingPad     = 59
+  LLVMLandingPad     = 59,
+  LLVMUnwind         = 60
+
 
 } LLVMOpcode;
 
@@ -355,6 +360,7 @@ LLVMContextRef LLVMGetModuleContext(LLVMModuleRef M);
 
 /** See llvm::LLVMTypeKind::getTypeID. */
 LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty);
+LLVMBool LLVMTypeIsSized(LLVMTypeRef Ty);
 
 /** See llvm::LLVMType::getContext. */
 LLVMContextRef LLVMGetTypeContext(LLVMTypeRef Ty);
@@ -403,6 +409,7 @@ LLVMTypeRef LLVMStructTypeInContext(LLVMContextRef C, LLVMTypeRef *ElementTypes,
 LLVMTypeRef LLVMStructType(LLVMTypeRef *ElementTypes, unsigned ElementCount,
                            LLVMBool Packed);
 LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef C, const char *Name);
+const char *LLVMGetStructName(LLVMTypeRef Ty);
 void LLVMStructSetBody(LLVMTypeRef StructTy, LLVMTypeRef *ElementTypes,
                        unsigned ElementCount, LLVMBool Packed);
 
@@ -549,6 +556,11 @@ LLVMValueRef LLVMMDString(const char *Str, unsigned SLen);
 LLVMValueRef LLVMMDNodeInContext(LLVMContextRef C, LLVMValueRef *Vals,
                                  unsigned Count);
 LLVMValueRef LLVMMDNode(LLVMValueRef *Vals, unsigned Count);
+const char  *LLVMGetMDString(LLVMValueRef V, unsigned* Len);
+int LLVMGetMDNodeNumOperands(LLVMValueRef V);
+LLVMValueRef *LLVMGetMDNodeOperand(LLVMValueRef V, unsigned i);
+unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char* name);
+void LLVMGetNamedMetadataOperands(LLVMModuleRef M, const char* name, LLVMValueRef *Dest);
 
 /* Operations on scalar constants */
 LLVMValueRef LLVMConstInt(LLVMTypeRef IntTy, unsigned long long N,
@@ -777,6 +789,7 @@ LLVMBasicBlockRef LLVMGetInstructionParent(LLVMValueRef Inst);
 LLVMValueRef LLVMGetNextInstruction(LLVMValueRef Inst);
 LLVMValueRef LLVMGetPreviousInstruction(LLVMValueRef Inst);
 void LLVMInstructionEraseFromParent(LLVMValueRef Inst);
+LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst);
 
 /* Operations on call sites */
 void LLVMSetInstructionCallConv(LLVMValueRef Instr, unsigned CC);
