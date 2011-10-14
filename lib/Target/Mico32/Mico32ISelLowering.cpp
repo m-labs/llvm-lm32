@@ -159,6 +159,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::MEMBARRIER, MVT::Other, Expand);
+  setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Expand);
   setOperationAction(ISD::FP_ROUND,   MVT::f32, Expand);
   setOperationAction(ISD::FP_ROUND,   MVT::f64, Expand);
   setOperationAction(ISD::CTPOP, MVT::i32, Expand);
