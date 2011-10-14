@@ -701,12 +701,12 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo *MFI = MF.getFrameInfo();
   Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
+  Mico32FI->setVarArgsFrameIndex(0);
 
-  // Used with vargs to acumulate store chains.
-  std::vector<SDValue> OutChains;
-
-  // Keep track of the last register used for arguments
-  unsigned ArgRegEnd = 0;
+  // Keep track of the last register used for arguments and the last stack offset
+  // used so we can find the first varargs argument.
+  unsigned ArgRegEnd = Mico32::R0;
+  int nextLocMemOffset = 0;
 
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
@@ -721,6 +721,8 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     // Arguments stored on registers
     if (VA.isRegLoc()) {
       MVT RegVT = VA.getLocVT();
+      // We're expecting registers to increase in numbering.
+      assert(ArgRegEnd < VA.getLocReg());
       ArgRegEnd = VA.getLocReg();
       TargetRegisterClass *RC = 0;
 
@@ -755,22 +757,19 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
       InVals.push_back(ArgValue);
     } else { // VA.isRegLoc()
+      assert(ArgRegEnd == Mico32::R8 &&
+              "We should have used all argument registers");
+
       // sanity check
       assert(VA.isMemLoc());
 
       // Load the argument to a virtual register
       unsigned ArgSize = VA.getLocVT().getSizeInBits()/8;
       assert(ArgSize == 4 && "This should be a word size.");
-#if 0
-      if (ArgSize > StackSlotSize) {
-        report_fatal_error("LowerFormalArguments Unhandled argument type: " +
-                         Twine((unsigned)VA.getLocVT().getSimpleVT().SimpleTy));
-      }
-#endif
-
 
       // Create the frame index object for this incoming parameter...
       int FI = MFI->CreateFixedObject(ArgSize, VA.getLocMemOffset(), true);
+      nextLocMemOffset = VA.getLocMemOffset() + ArgSize;
 
       // Create load nodes to retrieve arguments from the stack
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy());
@@ -792,16 +791,73 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
     }
   }
 
-  // For Variable argument functions Mico32 passes all parameters on the stack.
-  // The formal argument processing only processes the non-variable parameters,
-  // the variable parameters have not been processed yet so 
-  // CCInfo.getNextStackOffset() will give us the first variable argument.
-  if (isVarArg) {
-      // This will point to the next argument passed via stack.
-      Mico32FI->setVarArgsFrameIndex(
-                  MFI->CreateFixedObject(4, CCInfo.getNextStackOffset(), true));
+  // Code derived from MBlaze:
+  // To meet ABI, when VARARGS are passed on registers, the registers
+  // containing variadic values must have their values written to the
+  // very top if the callee stack frame. By doing this it aligns the
+  // callee saved regsiters on the stack with the caller arguments
+  // already on the stack. If the last non-vararg argument was placed in
+  // the stack, there's no need to save any registers since all the
+  // following vararg arguments are already on the stack. If an argument
+  // register was already handled (indicated by ArgRegEnd) we know it
+  // not a variadic argument.
+  assert(Mico32::R8 - 8 == Mico32::R0 && Mico32::R1 - 1 == Mico32::R0 &&
+          "Register numbers are expected to be sequential.");
+  if (isVarArg ) {
+    assert(ArgRegEnd < Mico32::R9 && 
+            "We should only be using 8 registers for arguments");
+    // Check if all the variadic arguments are already on the stack or if some are
+    // still in registers.
+    if (ArgRegEnd == Mico32::R8) {
+      // The variadic arguments are already on the stack.
+      // Record the frame index of the first variable argument
+      // which is a value necessary to VASTART.
+      int firstVarargFI = MFI->CreateFixedObject(4, nextLocMemOffset, true);
+      Mico32FI->setVarArgsFrameIndex(firstVarargFI);
+      DEBUG(errs() << "All varargs on stack getVarArgsFrameIndex() to:" << 
+                      Mico32FI->getVarArgsFrameIndex() << "\n");
+    } else {
+      // Used to acumulate store chains.
+      std::vector<SDValue> OutChains;
+  
+      TargetRegisterClass *RC = Mico32::GPRRegisterClass;
+  
+      // We'll save all argument registers not already saved on the stack.  Store
+      // higher numbered register at higher address.
+      unsigned Start = Mico32::R8;
+      unsigned End = ArgRegEnd + 1;
+      
+      //FIXME: correct offset to 0 when SP is corrected to point 
+      // at empty location.
+      int varArgOffset = -4;
+      int FI = 0;
+      for (; Start >= End ; Start--, varArgOffset-=4) {
+        unsigned LiveReg = MF.addLiveIn(Start, RC);
+        SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, LiveReg, MVT::i32);
+  
+        FI = MFI->CreateFixedObject(4, varArgOffset, true);
+        SDValue StoreFI = DAG.getFrameIndex(FI, getPointerTy());
+        OutChains.push_back(DAG.getStore(Chain, dl, ArgValue, StoreFI,
+                                         MachinePointerInfo(),
+                                         false, false, 0));
+        DEBUG(errs() << "Saving vararg register:" << Start - Mico32::R0 <<
+                        " at FI:" << FI << "\n");
+  
+      }
+      // Record the frame index of the first variable argument
+      // which is a value necessary to VASTART.
+      DEBUG(errs() << "setVarArgsFrameIndex to:" << FI << "\n");
+      Mico32FI->setVarArgsFrameIndex(FI);
+  
+      // All stores are grouped in one node to allow the matching between
+      // the size of Ins and InVals. This only happens when on varg functions
+      if (!OutChains.empty()) {
+        OutChains.push_back(Chain);
+        Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+                            &OutChains[0], OutChains.size());
+      }
+    }
   }
-
   return Chain;
 }
 
