@@ -166,6 +166,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "FrameIndex         : " << FrameIndex << "\n");
   DEBUG(dbgs() << "FrameOffset        : " << Offset << "\n");
   DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
+  DEBUG(dbgs() << "AdjustedOffset     : " << Offset + StackSize << "\n");
   DEBUG(dbgs() << "FPreg              : "
                << ((Mico32::RFP == FPReg) ? "FP" : "SP") << "\n");
   DEBUG(dbgs() << "getImm()           : "
@@ -215,23 +216,6 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
 #endif
 
   return;
-}
-
-
-/// From MBlaze:
-/// processFunctionBeforeFrameFinalized - This method is called immediately
-/// before the specified functions frame layout (MF.getFrameInfo()) is
-/// finalized.  Once the frame is finalized, MO_FrameIndex operands are
-/// replaced with direct constants.  This method is optional.
-void Mico32RegisterInfo::
-processFunctionBeforeFrameFinalized(MachineFunction &MF) const {
-#if 0
-  // Set the stack offset where GP must be saved/loaded from.
-  MachineFrameInfo *MFI = MF.getFrameInfo();
-  Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
-  if (Mico32FI->needGPSaveRestore())
-    MFI->setObjectOffset(Mico32FI->getGPFI(), Mico32FI->getGPStackOffset());
-#endif
 }
 
 

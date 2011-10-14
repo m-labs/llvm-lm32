@@ -84,12 +84,6 @@ struct Mico32RegisterInfo : public Mico32GenRegisterInfo {
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
                            int SPAdj, RegScavenger *RS = NULL) const;
 
-  /// processFunctionBeforeFrameFinalized - This method is called immediately
-  /// before the specified functions frame layout (MF.getFrameInfo()) is
-  /// finalized.  Once the frame is finalized, MO_FrameIndex operands are
-  /// replaced with direct constants.  This method is optional.
-  void processFunctionBeforeFrameFinalized(MachineFunction &MF) const;
-
   /// Debug information queries.
   unsigned getRARegister() const;
   unsigned getFrameRegister(const MachineFunction &MF) const;
