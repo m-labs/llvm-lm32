@@ -86,9 +86,9 @@ MICO32 ABI
 
 This is intended to suplement the LatticeMico32 Processor Reference Manual (March 2010) description.
 
-Arguments passed on the stack are in the conventional C ABI order for a descending stack. A lexically earlier parameter resides at a lower address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
+Arguments passed on the stack are in the conventional C ABI order for a descending stack. A lexically earlier parameter resides at a higher address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
 
-This convention requires varadic functions to have a prototype in scope, at the point of the call. Conventionally K&R C did not require this, but ANSI C has always required it. We have no requirement to preserve K&R compatibility.
+[ FIXME: this only applies if the parameters are earlier @ lower address: convention requires varadic functions to have a prototype in scope, at the point of the call. Conventionally K&R C did not require this, but ANSI C has always required it. We have no requirement to preserve K&R compatibility.]
 
 The called function must first initialize its stack frame. Table 1 shows the layout and sizes of the stack frame. How this is initialized is implementation defined.
 
@@ -107,9 +107,11 @@ FIXME:[How are doubles returned? How are doubles passed that cross the register/
 
 Parameters passed in registers occupy one or more registers each. FIXME:[If a type’s alignment is greater than 4 bytes, it will also be aligned into a register pair — possibly leaving an unused register between it and the previous parameter. Integral types are sign or zero extended as appropriate to the register size. Structures occupy one or more integer registers and are aligned at the most significant end. If the structure size is not a multiple of 4 bytes, the final register it occupies has unspecified tail padding.] If the data type is not supported in hardware, it shall be passed and returned as if it were an opaque structure of the correct length.
 
-The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. FIXME:is this correct[ A frame pointer is not mandated for each function, however it is necessary for functions that use alloca.] If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 8 byte alignment) and return a pointer max(Outgoing Parameters) words above this.
+The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. FIXME:is this correct[ A frame pointer is not mandated for each function, however it is necessary for functions that use alloca.] If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 4 byte alignment) and return a pointer max(Outgoing Parameters) words above this.
 
-Space allocated via alloca() is 8 byte aligned.  Additional space is allocated by alloca if needed to allow 8 byte alignment.
+Space allocated via alloca() is 4 byte aligned.  Additional space is allocated by alloca if needed to allow 4 byte alignment.
+
+FIXME: As of 10/5/2011 the SP points to the last used location - not the first unused location.
 
 Implementation note: Outgoing parameters on stack are always accessed via SP. If FP is used local workspace and callee saves are accessed via FP.
 
