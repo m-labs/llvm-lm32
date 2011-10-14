@@ -60,18 +60,15 @@ After the inital "make check" (which does some initial DejaGnu configuration) yo
 Test Results:
 
 ********************
-Testing Time: 19.21s
+Testing Time: 17.58s
 ********************
-Failing Tests (5):
-    LLVM :: CodeGen/Mico32/2005-11-30-vastart-crash.ll
+Failing Tests (2):
     LLVM :: CodeGen/Mico32/2006-12-07-LargeAlloca.ll
     LLVM :: CodeGen/Mico32/2007-04-03-PEIBug.ll
-    LLVM :: CodeGen/Mico32/private.ll
-    LLVM :: CodeGen/Mico32/vargs2.ll
 
-  Expected Passes    : 490
+  Expected Passes    : 493
   Expected Failures  : 25
-  Unexpected Failures: 5
+  Unexpected Failures: 2
 
 
 NOTES
