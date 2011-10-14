@@ -1,9 +1,9 @@
 ; Test to make sure that the 'private' is used correctly.
 ;
-; RUN: llc < %s -march=mico32 > %t
-; RUN: grep \\\$foo: %t
-; RUN: grep calli.*\\\$foo %t
-; RUN: grep \\\$baz: %t
+; RUN: llc -march=mico32 < %s > %t
+; RUN: grep \\\.Lfoo: %t
+; RUN: grep calli.*\\\.Lfoo %t
+; RUN: grep \\\.Lbaz: %t
 ; END.
 ; RUN: grep lw.*\\\$baz %t
 
