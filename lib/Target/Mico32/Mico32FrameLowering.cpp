@@ -338,24 +338,31 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
   const bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
   const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);
+  const bool isVarArg = MF.getFunction()->isVarArg();
+  
+  // CreateFixedObject allocates space relative to the SP on entry to
+  // the function.  Since SP(0) is occupied by incoming arguments (or
+  // whatever) we need to allocate the next slot on the stack (e.g. -4).
+  // FIXME: Mico32 ABI says SP[0] is empty - so this should be 0.
+  int offset = -4;
+
+  // For variadic functions we copy the parameters passed in registers
+  // onto the stack in the first positions in the frame.  Therefore
+  // we don't fix the location of the LR and FP here, The ABI doesn't
+  // specify where they should be anyways.
 
   // LR can be optimized out prior to now:
+  int FrameIdx;
   if (LRUsed) {
     MF.getRegInfo().setPhysRegUnused(Mico32::RRA);
     
-    bool isVarArg = MF.getFunction()->isVarArg();
-    int FrameIdx;
-    if (! isVarArg) {
-      // CreateFixedObject allocates space relative to the SP on entry to
-      // the function.  Since SP(0) is occupied by incoming arguments (or
-      // whatever) we need to allocate the next slot on the stack (e.g. -4).
-      FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), -4, true);
-    } else {
-      assert(0 && "Test Vararg frames.");
+    if ( !isVarArg )
+      FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), offset, true);
+    else
+      //FIXME: I'm lazy and didn't bother to assign the actual location.
       FrameIdx = MFrmInf->CreateStackObject(RC->getSize(),
-                                        RC->getAlignment(),
-                                        false);
-    }
+	                                    RC->getAlignment(), false);
+    offset -= 4;
     MFuncInf->setUsesLR(FrameIdx);
     MFuncInf->setLRSpillSlot(FrameIdx);
   }
@@ -375,7 +382,13 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     // don't bother marking it unused.
     //MF.getRegInfo().setPhysRegUnused(Mico32::RFP);
     // FIXME: shouldn't isSS be true?  XCore says no...
-    MFuncInf->setFPSpillSlot(MFrmInf->CreateFixedObject(RC->getSize(),
-                                                        (LRUsed)?-8:-4, true));
+    if ( !isVarArg )
+      FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), offset, true);
+    else
+      //FIXME: I'm lazy and didn't bother to assign the actual location.
+      FrameIdx = MFrmInf->CreateStackObject(RC->getSize(),
+	                                    RC->getAlignment(), false);
+    MFuncInf->setFPSpillSlot(FrameIdx);
+    offset -= 4;
   }
 }
