@@ -31,8 +31,7 @@ def CC_Mico32 : CallingConv<[
   CCIfType<[i8, i16], CCPromoteToType<i32>>,
 
   // Integer and float arguments are passed in integer registers.
-  CCIfNotVarArg<CCIfType<[i32, f32], 
-                CCAssignToReg<[R1, R2, R3, R4, R5, R6, R7, R8]>>>,
+  CCIfType<[i32, f32], CCAssignToReg<[R1, R2, R3, R4, R5, R6, R7, R8]>>,
 
   // Integer values and floats get stored in stack slots that are 4 bytes in
   // size and 4-byte aligned.
