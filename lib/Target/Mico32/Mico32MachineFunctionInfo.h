@@ -48,7 +48,7 @@ public:
   
   ~Mico32FunctionInfo() {}
   
-  void setVarArgsFrameIndex(int off) { VarArgsFrameIndex = off; }
+  void setVarArgsFrameIndex(int idx) { VarArgsFrameIndex = idx; }
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   
   void setUsesLR(bool val) { UsesLR = val; }
