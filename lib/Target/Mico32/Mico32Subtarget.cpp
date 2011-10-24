@@ -32,6 +32,7 @@ Mico32Subtarget::Mico32Subtarget(const std::string &TT,
   HasDIV = true;
   HasMUL = true;
   HasBarrel = true;
+  HasSPBias = true;
 
   // Parse features string.
   std::string CPUName = CPU;

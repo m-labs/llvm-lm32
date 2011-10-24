@@ -136,11 +136,12 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
   bool useFP = TFI->hasFP(MF);
 
-  // SP points to the top of stack, FP points to the callee save registers at
-  // top of the frame (the SP prior to entering the function).
-  unsigned FPReg = Mico32::RSP;
+  // SP points to the top of stack (possibly biased), FP points to the
+  // callee save registers at top of the frame (the last used stack location
+  // prior to entering the function).
+  unsigned FPRegToUse = Mico32::RSP;
   if (useFP) {
-    FPReg = Mico32::RFP;
+    FPRegToUse = Mico32::RFP;
   }
 
   // Find the frame index operand.
@@ -168,7 +169,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
   DEBUG(dbgs() << "AdjustedOffset     : " << Offset + StackSize << "\n");
   DEBUG(dbgs() << "FPreg              : "
-               << ((Mico32::RFP == FPReg) ? "FP" : "SP") << "\n");
+               << ((Mico32::RFP == FPRegToUse) ? "FP" : "SP") << "\n");
   DEBUG(dbgs() << "getImm()           : "
                <<  MI.getOperand(i + 1).getImm() << "\n");
   DEBUG(dbgs() << "isFixed            : "
@@ -182,8 +183,10 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   if (!useFP) {
     // We're using the SP - it points to the bottom of the frame, offset to top.
     Offset += StackSize;
+    assert(Offset%4 == 0 && "Misaligned stack offset");
+    Offset += Subtarget.hasSPBias()? 4 : 0;
+    DEBUG(dbgs() << "Offset from biased SP: " << Offset << "\n");
   }
-  assert(Offset%4 == 0 && "Misaligned stack offset");
 
   // Fold constant into offset.
   // I believe this can happen with vector code - it needs to be checked.
@@ -204,7 +207,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
     // encode it.
     // Replace the FrameIndex with the appropriate frame pointer 
     // register R1 (SP) or R30 (FP).
-    FrameOp.ChangeToRegister(FPReg, false);
+    FrameOp.ChangeToRegister(FPRegToUse, false);
     MI.getOperand(i+1).ChangeToImmediate(Offset);
   } else {
     assert( 0 && "Unimplemented - frame index limited to 32767 byte offset.");

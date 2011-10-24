@@ -584,7 +584,9 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
 
       // Create a store off the stack pointer for this argument.
       SDValue StackPtr = DAG.getRegister(Mico32::RSP, MVT::i32);
-      SDValue PtrOff = DAG.getIntPtrConstant(VA.getLocMemOffset());
+      int offset = VA.getLocMemOffset();
+      offset += Subtarget->hasSPBias()? 4 : 0; 
+      SDValue PtrOff = DAG.getIntPtrConstant(offset);
       PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
       MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff, 
                                          MachinePointerInfo(),
@@ -828,8 +830,7 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
       unsigned Start = Mico32::R8;
       unsigned End = ArgRegEnd + 1;
       
-      //FIXME: correct offset to 0 when SP is corrected to point 
-      // at empty location.
+      // Start varargs at the first empty stack location.
       int varArgOffset = -4;
       int FI = 0;
       for (; Start >= End ; Start--, varArgOffset-=4) {

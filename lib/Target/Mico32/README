@@ -108,7 +108,7 @@ The stack frame is created at the maximum size required for all function calls w
 
 Space allocated via alloca() is 4 byte aligned.  Additional space is allocated by alloca if needed to allow 4 byte alignment.
 
-FIXME: As of 10/5/2011 the SP points to the last used location - not the first unused location.
+There is a nospbias option available. The default Mico32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
 
 Implementation note: Outgoing parameters on stack are always accessed via SP. If FP is used local workspace and callee saves are accessed via FP.
 

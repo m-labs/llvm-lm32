@@ -46,6 +46,10 @@ def FeatureBarrel :
   SubtargetFeature<"barrel", "HasBarrel", "true",
                    "Enable barrel shifter instructions">;
 
+def FeatureSPBias : 
+  SubtargetFeature<"nospbias", "HasSPBias", "false",
+                   "SP points to last used 32 bit word on stack (not ABI compilant)">;
+
 //===----------------------------------------------------------------------===//
 // Mico32 supported processors.
 //===----------------------------------------------------------------------===//

@@ -39,6 +39,10 @@ protected:
   // Are multiply instructions enabled.
   bool HasMUL;
 
+  // If true, SP points to first unused 32 bit word (the official ABI)
+  // otherwise SP points to the last used word.
+  bool HasSPBias;
+
   // Selected instruction itineraries (one entry per itinerary class.)
   // Used by Mico32GenSubtarget.inc.
   InstrItineraryData InstrItins;
@@ -58,6 +62,7 @@ public:
   bool hasSDIV()    const { return HasSDIV; };
   bool hasDIV()     const { return HasDIV; };
   bool hasMUL()     const { return HasMUL; };
+  bool hasSPBias()  const { return HasSPBias; };
 
 };
 

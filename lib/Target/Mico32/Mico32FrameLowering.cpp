@@ -26,6 +26,7 @@
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "Mico32Subtarget.h"
 
 
 using namespace llvm;
@@ -184,6 +185,7 @@ emitPrologue(MachineFunction &MF) const {
       // Save the LR (RRA) to the preallocated stack slot.
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
         +FrameSize;
+      LRSpillOffset += Subtarget.hasSPBias()? 4 : 0;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
         .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
       MBB.addLiveIn(Mico32::RRA);
@@ -202,6 +204,7 @@ emitPrologue(MachineFunction &MF) const {
       // Save FP (R27) to the stack.
       int FPSpillOffset = 
         MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
+      FPSpillOffset += Subtarget.hasSPBias()? 4 : 0;
   
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
         .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
@@ -220,6 +223,7 @@ emitPrologue(MachineFunction &MF) const {
       unsigned FramePtr = Mico32::RFP;
       // The FP points to the beginning of the frame ( = SP on entry), 
       // hence we add in the FrameSize.
+      FrameSize += Subtarget.hasSPBias()? 4 : 0;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),FramePtr)
         .addReg(Mico32::RSP).addImm(FrameSize);
       if (emitFrameMoves) {
@@ -257,11 +261,15 @@ emitPrologue(MachineFunction &MF) const {
     MCSymbol *ReadyLabel = 0;
 
     MCSymbol *Label = FP ? ReadyLabel : FrameLabel;
+    int bias = 0;
+    if (!FP && Subtarget.hasSPBias())
+      bias = 4;
 
     // Add callee saved registers to move list.
     const std::vector<CalleeSavedInfo> &CSI = MFrmInf->getCalleeSavedInfo();
     for (unsigned I = 0, E = CSI.size(); I != E; ++I) {
       int Offset = MFrmInf->getObjectOffset(CSI[I].getFrameIdx());
+      Offset += bias;
       unsigned Reg = CSI[I].getReg();
       //if (Reg == PPC::LR || Reg == PPC::LR8 || Reg == PPC::RM) continue;
       MachineLocation CSDst(MachineLocation::VirtualFP, Offset);
@@ -294,6 +302,7 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
       // Restore FP (R27) from the stack.
       int FPSpillOffset = 
         MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
+      FPSpillOffset += Subtarget.hasSPBias()? 4 : 0;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
         .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
     }
@@ -302,6 +311,7 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
       // Restore the LR (RRA) from the preallocated stack slot.
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
           +FrameSize;
+      LRSpillOffset += Subtarget.hasSPBias()? 4 : 0;
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
         .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
     }
@@ -343,7 +353,6 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   // CreateFixedObject allocates space relative to the SP on entry to
   // the function.  Since SP(0) is occupied by incoming arguments (or
   // whatever) we need to allocate the next slot on the stack (e.g. -4).
-  // FIXME: Mico32 ABI says SP[0] is empty - so this should be 0.
   int offset = -4;
 
   // For variadic functions we copy the parameters passed in registers
@@ -389,6 +398,5 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
       FrameIdx = MFrmInf->CreateStackObject(RC->getSize(),
 	                                    RC->getAlignment(), false);
     MFuncInf->setFPSpillSlot(FrameIdx);
-    offset -= 4;
   }
 }
