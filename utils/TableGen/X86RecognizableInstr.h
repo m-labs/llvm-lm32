@@ -56,6 +56,8 @@ private:
   bool HasVEXPrefix;
   /// The hasVEX_4VPrefix field from the record
   bool HasVEX_4VPrefix;
+  /// The hasVEX_4VOp3Prefix field from the record
+  bool HasVEX_4VOp3Prefix;
   /// The hasVEX_WPrefix field from the record
   bool HasVEX_WPrefix;
   /// Inferred from the operands; indicates whether the L bit in the VEX prefix is set
@@ -70,7 +72,7 @@ private:
   bool Is64Bit;
   // Whether the instruction has the predicate "In32BitMode"
   bool Is32Bit;
-  
+
   /// The instruction name as listed in the tables
   std::string Name;
   /// The AT&T AsmString for the instruction

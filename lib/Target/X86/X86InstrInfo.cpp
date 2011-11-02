@@ -2189,9 +2189,12 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     // Copying to or from a physical H register on x86-64 requires a NOREX
     // move.  Otherwise use a normal move.
     if ((isHReg(DestReg) || isHReg(SrcReg)) &&
-        TM.getSubtarget<X86Subtarget>().is64Bit())
+        TM.getSubtarget<X86Subtarget>().is64Bit()) {
       Opc = X86::MOV8rr_NOREX;
-    else
+      // Both operands must be encodable without an REX prefix.
+      assert(X86::GR8_NOREXRegClass.contains(SrcReg, DestReg) &&
+             "8-bit H register can not be copied outside GR8_NOREX");
+    } else
       Opc = X86::MOV8rr;
   } else if (X86::VR128RegClass.contains(DestReg, SrcReg))
     Opc = HasAVX ? X86::VMOVAPSrr : X86::MOVAPSrr;
@@ -2418,6 +2421,9 @@ bool X86InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
   switch (MI->getOpcode()) {
   case X86::V_SET0:
     return Expand2AddrUndef(MI, get(HasAVX ? X86::VPXORrr : X86::PXORrr));
+  case X86::TEST8ri_NOREX:
+    MI->setDesc(get(X86::TEST8ri));
+    return true;
   }
   return false;
 }

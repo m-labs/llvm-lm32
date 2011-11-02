@@ -135,6 +135,12 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
   // for example) would be referring to the original function, and this indirect
   // jump would jump from the inlined copy of the function into the original
   // function which is extremely undefined behavior.
+  // FIXME: This logic isn't really right; we can safely inline functions
+  // with indirectbr's as long as no other function or global references the
+  // blockaddress of a block within the current function.  And as a QOI issue,
+  // if someone is using a blockaddress wihtout an indirectbr, and that
+  // reference somehow ends up in another function or global, we probably
+  // don't want to inline this function.
   if (isa<IndirectBrInst>(BB->getTerminator()))
     containsIndirectBr = true;
 
@@ -225,12 +231,11 @@ unsigned CodeMetrics::CountCodeReductionForAlloca(Value *V) {
 /// analyzeFunction - Fill in the current structure with information gleaned
 /// from the specified function.
 void CodeMetrics::analyzeFunction(Function *F, const TargetData *TD) {
-  // If this function contains a call to setjmp or _setjmp, never inline
-  // it.  This is a hack because we depend on the user marking their local
-  // variables as volatile if they are live across a setjmp call, and they
-  // probably won't do this in callers.
-  if (F->callsFunctionThatReturnsTwice())
-    callsSetJmp = true;
+  // If this function contains a call that "returns twice" (e.g., setjmp or
+  // _setjmp), never inline it. This is a hack because we depend on the user
+  // marking their local variables as volatile if they are live across a setjmp
+  // call, and they probably won't do this in callers.
+  callsSetJmp = F->callsFunctionThatReturnsTwice();
 
   // Look at the size of the callee.
   for (Function::const_iterator BB = F->begin(), E = F->end(); BB != E; ++BB)

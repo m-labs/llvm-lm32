@@ -83,6 +83,12 @@ cl::opt<bool> EnableNested(
 
 cl::opt<bool> EnableRetry(
     "enable-lsr-retry", cl::Hidden, cl::desc("Enable LSR retry"));
+
+// Temporary flag to cleanup congruent phis after LSR phi expansion.
+// It's currently disabled until we can determine whether it's truly useful or
+// not. The flag should be removed after the v3.0 release.
+cl::opt<bool> EnablePhiElim(
+    "enable-lsr-phielim", cl::Hidden, cl::desc("Enable LSR phi elimination"));
 }
 
 namespace {
@@ -1199,7 +1205,7 @@ static bool isLegalUse(const TargetLowering::AddrMode &AM,
     // If we have low-level target information, ask the target if it can fold an
     // integer immediate on an icmp.
     if (AM.BaseOffs != 0) {
-      if (TLI) return TLI->isLegalICmpImmediate(-AM.BaseOffs);
+      if (TLI) return TLI->isLegalICmpImmediate(-(uint64_t)AM.BaseOffs);
       return false;
     }
 
@@ -3587,7 +3593,7 @@ Value *LSRInstance::Expand(const LSRFixup &LF,
       // The other interesting way of "folding" with an ICmpZero is to use a
       // negated immediate.
       if (!ICmpScaledV)
-        ICmpScaledV = ConstantInt::get(IntTy, -Offset);
+        ICmpScaledV = ConstantInt::get(IntTy, -(uint64_t)Offset);
       else {
         Ops.push_back(SE.getUnknown(ICmpScaledV));
         ICmpScaledV = ConstantInt::get(IntTy, Offset);
@@ -3770,6 +3776,7 @@ LSRInstance::ImplementSolution(const SmallVectorImpl<const Formula *> &Solution,
 
   SCEVExpander Rewriter(SE, "lsr");
   Rewriter.disableCanonicalMode();
+  Rewriter.enableLSRMode();
   Rewriter.setIVIncInsertPos(L, IVIncInsertPos);
 
   // Expand the new value definitions and update the users.
@@ -3815,6 +3822,14 @@ LSRInstance::LSRInstance(const TargetLowering *tli, Loop *l, Pass *P)
 
   // Skip nested loops until we can model them better with formulae.
   if (!EnableNested && !L->empty()) {
+
+    if (EnablePhiElim) {
+      // Remove any extra phis created by processing inner loops.
+      SmallVector<WeakVH, 16> DeadInsts;
+      SCEVExpander Rewriter(SE, "lsr");
+      Changed |= Rewriter.replaceCongruentIVs(L, &DT, DeadInsts);
+      Changed |= DeleteTriviallyDeadInstructions(DeadInsts);
+    }
     DEBUG(dbgs() << "LSR skipping outer loop " << *L << "\n");
     return;
   }
@@ -3860,6 +3875,14 @@ LSRInstance::LSRInstance(const TargetLowering *tli, Loop *l, Pass *P)
 
   // Now that we've decided what we want, make it so.
   ImplementSolution(Solution, P);
+
+  if (EnablePhiElim) {
+    // Remove any extra phis created by processing inner loops.
+    SmallVector<WeakVH, 16> DeadInsts;
+    SCEVExpander Rewriter(SE, "lsr");
+    Changed |= Rewriter.replaceCongruentIVs(L, &DT, DeadInsts);
+    Changed |= DeleteTriviallyDeadInstructions(DeadInsts);
+  }
 }
 
 void LSRInstance::print_factors_and_types(raw_ostream &OS) const {

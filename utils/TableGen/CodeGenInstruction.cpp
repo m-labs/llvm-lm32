@@ -423,6 +423,18 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
     return true;
   }
 
+  // For register operands, the source register class can be a subclass
+  // of the instruction register class, not just an exact match.
+  if (ADI && ADI->getDef()->isSubClassOf("RegisterClass")) {
+    if (!InstOpRec->isSubClassOf("RegisterClass"))
+      return false;
+    if (!T.getRegisterClass(InstOpRec)
+              .hasSubClass(&T.getRegisterClass(ADI->getDef())))
+      return false;
+    ResOp = ResultOperand(Result->getArgName(AliasOpNo), ADI->getDef());
+    return true;
+  }
+
   // Handle explicit registers.
   if (ADI && ADI->getDef()->isSubClassOf("Register")) {
     if (InstOpRec->isSubClassOf("OptionalDefOperand")) {
@@ -464,6 +476,7 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
     return true;
   }
 
+  // Literal integers.
   if (IntInit *II = dynamic_cast<IntInit*>(Arg)) {
     if (hasSubOps || !InstOpRec->isSubClassOf("Operand"))
       return false;
@@ -472,6 +485,19 @@ bool CodeGenInstAlias::tryAliasOpMatch(DagInit *Result, unsigned AliasOpNo,
       throw TGError(Loc, "result argument #" + utostr(AliasOpNo) +
                     " must not have a name!");
     ResOp = ResultOperand(II->getValue());
+    return true;
+  }
+
+  // If both are Operands with the same MVT, allow the conversion. It's
+  // up to the user to make sure the values are appropriate, just like
+  // for isel Pat's.
+  if (InstOpRec->isSubClassOf("Operand") &&
+      ADI->getDef()->isSubClassOf("Operand")) {
+    // FIXME: What other attributes should we check here? Identical
+    // MIOperandInfo perhaps?
+    if (InstOpRec->getValueInit("Type") != ADI->getDef()->getValueInit("Type"))
+      return false;
+    ResOp = ResultOperand(Result->getArgName(AliasOpNo), ADI->getDef());
     return true;
   }
 

@@ -39,6 +39,9 @@ DIDescriptor::DIDescriptor(const DIFile F) : DbgNode(F.DbgNode) {
 DIDescriptor::DIDescriptor(const DISubprogram F) : DbgNode(F.DbgNode) {
 }
 
+DIDescriptor::DIDescriptor(const DILexicalBlockFile F) : DbgNode(F.DbgNode) {
+}
+
 DIDescriptor::DIDescriptor(const DILexicalBlock F) : DbgNode(F.DbgNode) {
 }
 
@@ -263,9 +266,17 @@ bool DIDescriptor::isNameSpace() const {
   return DbgNode && getTag() == dwarf::DW_TAG_namespace;
 }
 
+/// isLexicalBlockFile - Return true if the specified descriptor is a
+/// lexical block with an extra file.
+bool DIDescriptor::isLexicalBlockFile() const {
+  return DbgNode && getTag() == dwarf::DW_TAG_lexical_block &&
+    (DbgNode->getNumOperands() == 3);
+}
+
 /// isLexicalBlock - Return true if the specified tag is DW_TAG_lexical_block.
 bool DIDescriptor::isLexicalBlock() const {
-  return DbgNode && getTag() == dwarf::DW_TAG_lexical_block;
+  return DbgNode && getTag() == dwarf::DW_TAG_lexical_block &&
+    (DbgNode->getNumOperands() > 3);
 }
 
 /// isSubrange - Return true if the specified tag is DW_TAG_subrange_type.
@@ -540,6 +551,8 @@ DIArray DISubprogram::getVariables() const {
 StringRef DIScope::getFilename() const {
   if (!DbgNode)
     return StringRef();
+  if (isLexicalBlockFile())
+    return DILexicalBlockFile(DbgNode).getFilename();
   if (isLexicalBlock())
     return DILexicalBlock(DbgNode).getFilename();
   if (isSubprogram())
@@ -559,6 +572,8 @@ StringRef DIScope::getFilename() const {
 StringRef DIScope::getDirectory() const {
   if (!DbgNode)
     return StringRef();
+  if (isLexicalBlockFile())
+    return DILexicalBlockFile(DbgNode).getDirectory();
   if (isLexicalBlock())
     return DILexicalBlock(DbgNode).getDirectory();
   if (isSubprogram())
@@ -912,9 +927,30 @@ DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
 
 /// processModule - Process entire module and collect debug info.
 void DebugInfoFinder::processModule(Module &M) {
-  if (NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu"))
-    for (unsigned i = 0, e = CU_Nodes->getNumOperands(); i != e; ++i)
-      addCompileUnit(DICompileUnit(CU_Nodes->getOperand(i)));
+  if (NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu")) {
+    for (unsigned i = 0, e = CU_Nodes->getNumOperands(); i != e; ++i) {
+      DICompileUnit CU(CU_Nodes->getOperand(i));
+      addCompileUnit(CU);
+      if (CU.getVersion() > LLVMDebugVersion10) {
+	DIArray GVs = CU.getGlobalVariables();
+	for (unsigned i = 0, e = GVs.getNumElements(); i != e; ++i) {
+	  DIGlobalVariable DIG(GVs.getElement(i));
+	  if (addGlobalVariable(DIG))
+	    processType(DIG.getType());
+	}
+	DIArray SPs = CU.getSubprograms();
+	for (unsigned i = 0, e = SPs.getNumElements(); i != e; ++i)
+	  processSubprogram(DISubprogram(SPs.getElement(i)));
+	DIArray EnumTypes = CU.getEnumTypes();
+	for (unsigned i = 0, e = EnumTypes.getNumElements(); i != e; ++i)
+	  processType(DIType(EnumTypes.getElement(i)));
+	DIArray RetainedTypes = CU.getRetainedTypes();
+	for (unsigned i = 0, e = RetainedTypes.getNumElements(); i != e; ++i)
+	  processType(DIType(RetainedTypes.getElement(i)));
+	return;
+      }
+    }
+  }
 
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
     for (Function::iterator FI = (*I).begin(), FE = (*I).end(); FI != FE; ++FI)
@@ -934,6 +970,10 @@ void DebugInfoFinder::processModule(Module &M) {
           addCompileUnit(DICompileUnit(Scope));
         else if (Scope.isSubprogram())
           processSubprogram(DISubprogram(Scope));
+        else if (Scope.isLexicalBlockFile()) {
+          DILexicalBlockFile DBF = DILexicalBlockFile(Scope);
+          processLexicalBlock(DILexicalBlock(DBF.getScope()));
+        }
         else if (Scope.isLexicalBlock())
           processLexicalBlock(DILexicalBlock(Scope));
 
@@ -967,6 +1007,10 @@ void DebugInfoFinder::processLocation(DILocation Loc) {
     processSubprogram(DISubprogram(S));
   else if (S.isLexicalBlock())
     processLexicalBlock(DILexicalBlock(S));
+  else if (S.isLexicalBlockFile()) {
+    DILexicalBlockFile DBF = DILexicalBlockFile(S);
+    processLexicalBlock(DILexicalBlock(DBF.getScope()));
+  }
   processLocation(Loc.getOrigLocation());
 }
 
@@ -998,6 +1042,10 @@ void DebugInfoFinder::processLexicalBlock(DILexicalBlock LB) {
   DIScope Context = LB.getContext();
   if (Context.isLexicalBlock())
     return processLexicalBlock(DILexicalBlock(Context));
+  else if (Context.isLexicalBlockFile()) {
+    DILexicalBlockFile DBF = DILexicalBlockFile(Context);
+    return processLexicalBlock(DILexicalBlock(DBF.getScope()));
+  }
   else
     return processSubprogram(DISubprogram(Context));
 }
@@ -1081,6 +1129,9 @@ DISubprogram llvm::getDISubprogram(const MDNode *Scope) {
   if (D.isSubprogram())
     return DISubprogram(Scope);
 
+  if (D.isLexicalBlockFile())
+    return getDISubprogram(DILexicalBlockFile(Scope).getContext());
+  
   if (D.isLexicalBlock())
     return getDISubprogram(DILexicalBlock(Scope).getContext());
 

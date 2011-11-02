@@ -86,7 +86,7 @@ let Defs = [EAX,EDX,EFLAGS], Uses = [EAX] in
 def MUL32m : I<0xF7, MRM4m, (outs), (ins i32mem:$src),
               "mul{l}\t$src",
               []>;          // EAX,EDX = EAX*[mem32]
-let Defs = [RAX,RDX,EFLAGS], Uses = [RAX], neverHasSideEffects = 1 in
+let Defs = [RAX,RDX,EFLAGS], Uses = [RAX] in
 def MUL64m : RI<0xF7, MRM4m, (outs), (ins i64mem:$src),
                 "mul{q}\t$src", []>;         // RAX,RDX = RAX*[mem64]
 }
@@ -101,7 +101,7 @@ def IMUL16r : I<0xF7, MRM5r, (outs),  (ins GR16:$src), "imul{w}\t$src", []>,
 let Defs = [EAX,EDX,EFLAGS], Uses = [EAX] in
 def IMUL32r : I<0xF7, MRM5r, (outs),  (ins GR32:$src), "imul{l}\t$src", []>;
               // EAX,EDX = EAX*GR32
-let Defs = [RAX,RDX,EFLAGS], Uses = [RAX], neverHasSideEffects = 1 in
+let Defs = [RAX,RDX,EFLAGS], Uses = [RAX] in
 def IMUL64r : RI<0xF7, MRM5r, (outs), (ins GR64:$src), "imul{q}\t$src", []>;
               // RAX,RDX = RAX*GR64
 
@@ -115,7 +115,7 @@ def IMUL16m : I<0xF7, MRM5m, (outs), (ins i16mem:$src),
 let Defs = [EAX,EDX,EFLAGS], Uses = [EAX] in
 def IMUL32m : I<0xF7, MRM5m, (outs), (ins i32mem:$src),
                 "imul{l}\t$src", []>;  // EAX,EDX = EAX*[mem32]
-let Defs = [RAX,RDX,EFLAGS], Uses = [RAX], neverHasSideEffects = 1 in
+let Defs = [RAX,RDX,EFLAGS], Uses = [RAX] in
 def IMUL64m : RI<0xF7, MRM5m, (outs), (ins i64mem:$src),
                  "imul{q}\t$src", []>;         // RAX,RDX = RAX*[mem64]
 }
@@ -285,8 +285,8 @@ def IDIV32r: I<0xF7, MRM7r, (outs),  (ins GR32:$src),   // EDX:EAX/r32 = EAX,EDX
 let Defs = [RAX,RDX,EFLAGS], Uses = [RAX,RDX] in
 def IDIV64r: RI<0xF7, MRM7r, (outs), (ins GR64:$src),
                 "idiv{q}\t$src", []>;
-               
-let mayLoad = 1, mayLoad = 1 in {
+
+let mayLoad = 1 in {
 let Defs = [AL,EFLAGS,AX], Uses = [AX] in
 def IDIV8m : I<0xF6, MRM7m, (outs), (ins i8mem:$src),   // AX/[mem8] = AL,AH
                "idiv{b}\t$src", []>;
@@ -1145,5 +1145,53 @@ let Defs = [EFLAGS] in {
                            "{$src, %eax|EAX, $src}">;
   def TEST64i32  : BinOpAI<0xA8, "test", Xi64, RAX,
                            "{$src, %rax|RAX, $src}">;
-}                          
 
+  // When testing the result of EXTRACT_SUBREG sub_8bit_hi, make sure the
+  // register class is constrained to GR8_NOREX.
+  let isPseudo = 1 in
+  def TEST8ri_NOREX : I<0, Pseudo, (outs), (ins GR8_NOREX:$src, i8imm:$mask),
+                        "", []>;
+}
+
+//===----------------------------------------------------------------------===//
+// ANDN Instruction
+//
+multiclass bmi_andn<string mnemonic, RegisterClass RC, X86MemOperand x86memop,
+                    PatFrag ld_frag> {
+  def rr : I<0xF2, MRMSrcReg, (outs RC:$dst), (ins RC:$src1, RC:$src2),
+            !strconcat(mnemonic, "\t{$src2, $src1, $dst|$dst, $src1, $src2}"),
+            [(set RC:$dst, EFLAGS, (X86andn_flag RC:$src1, RC:$src2))]>;
+  def rm : I<0xF2, MRMSrcMem, (outs RC:$dst), (ins RC:$src1, x86memop:$src2),
+            !strconcat(mnemonic, "\t{$src2, $src1, $dst|$dst, $src1, $src2}"),
+            [(set RC:$dst, EFLAGS,
+             (X86andn_flag RC:$src1, (ld_frag addr:$src2)))]>;
+}
+
+let Predicates = [HasBMI], Defs = [EFLAGS] in {
+  defm ANDN32 : bmi_andn<"andn{l}", GR32, i32mem, loadi32>, T8, VEX_4V;
+  defm ANDN64 : bmi_andn<"andn{q}", GR64, i64mem, loadi64>, T8, VEX_4V, VEX_W;
+}
+
+//===----------------------------------------------------------------------===//
+// MULX Instruction
+//
+multiclass bmi_mulx<string mnemonic, RegisterClass RC, X86MemOperand x86memop> {
+let neverHasSideEffects = 1 in {
+  let isCommutable = 1 in
+  def rr : I<0xF6, MRMSrcReg, (outs RC:$dst1, RC:$dst2), (ins RC:$src),
+             !strconcat(mnemonic, "\t{$src, $dst2, $dst1|$dst1, $dst2, $src}"),
+             []>, T8XD, VEX_4V;
+
+  let mayLoad = 1 in
+  def rm : I<0xF6, MRMSrcMem, (outs RC:$dst1, RC:$dst2), (ins x86memop:$src),
+             !strconcat(mnemonic, "\t{$src, $dst2, $dst1|$dst1, $dst2, $src}"),
+             []>, T8XD, VEX_4V;
+}
+}
+
+let Predicates = [HasBMI2] in {
+  let Uses = [EDX] in
+    defm MULX32 : bmi_mulx<"mulx{l}", GR32, i32mem>;
+  let Uses = [RDX] in
+    defm MULX64 : bmi_mulx<"mulx{q}", GR64, i64mem>, VEX_W;
+}

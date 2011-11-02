@@ -133,6 +133,9 @@ cl::opt<bool> DisableDotLoc("disable-dot-loc", cl::Hidden,
 cl::opt<bool> DisableCFI("disable-cfi", cl::Hidden,
                          cl::desc("Do not use .cfi_* directives"));
 
+cl::opt<bool> EnableDwarfDirectory("enable-dwarf-directory", cl::Hidden,
+    cl::desc("Use .file directives with an explicit directory."));
+
 static cl::opt<bool>
 DisableRedZone("disable-red-zone",
   cl::desc("Do not emit code that uses the red zone."),
@@ -247,7 +250,7 @@ int main(int argc, char **argv) {
 
   M.reset(ParseIRFile(InputFilename, Err, Context));
   if (M.get() == 0) {
-    Err.Print(argv[0], errs());
+    Err.print(argv[0], errs());
     return 1;
   }
   Module &mod = *M.get();
@@ -258,7 +261,7 @@ int main(int argc, char **argv) {
 
   Triple TheTriple(mod.getTargetTriple());
   if (TheTriple.getTriple().empty())
-    TheTriple.setTriple(sys::getHostTriple());
+    TheTriple.setTriple(sys::getDefaultTargetTriple());
 
   // Allocate target machine.  First, check whether the user has explicitly
   // specified an architecture to compile for. If so we have to look it up by
@@ -315,6 +318,9 @@ int main(int argc, char **argv) {
 
   if (DisableCFI)
     Target.setMCUseCFI(false);
+
+  if (EnableDwarfDirectory)
+    Target.setMCUseDwarfDirectory(true);
 
   // Disable .loc support for older OS X versions.
   if (TheTriple.isMacOSX() &&

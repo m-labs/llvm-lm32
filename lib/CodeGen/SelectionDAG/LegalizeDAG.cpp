@@ -1008,6 +1008,31 @@ SDValue SelectionDAGLegalize::LegalizeOp(SDValue Op) {
 #endif
     assert(0 && "Do not know how to legalize this operator!");
 
+  case ISD::SRA:
+  case ISD::SRL:
+  case ISD::SHL: {
+    // Scalarize vector SRA/SRL/SHL.
+    EVT VT = Node->getValueType(0);
+    assert(VT.isVector() && "Unable to legalize non-vector shift");
+    assert(TLI.isTypeLegal(VT.getScalarType())&& "Element type must be legal");
+    unsigned NumElem = VT.getVectorNumElements();
+
+    SmallVector<SDValue, 8> Scalars;
+    for (unsigned Idx = 0; Idx < NumElem; Idx++) {
+      SDValue Ex = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
+                               VT.getScalarType(),
+                               Node->getOperand(0), DAG.getIntPtrConstant(Idx));
+      SDValue Sh = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
+                               VT.getScalarType(),
+                               Node->getOperand(1), DAG.getIntPtrConstant(Idx));
+      Scalars.push_back(DAG.getNode(Node->getOpcode(), dl,
+                                    VT.getScalarType(), Ex, Sh));
+    }
+    Result = DAG.getNode(ISD::BUILD_VECTOR, dl, Node->getValueType(0),
+                         &Scalars[0], Scalars.size());
+    break;
+  }
+
   case ISD::BUILD_VECTOR:
     switch (TLI.getOperationAction(ISD::BUILD_VECTOR, Node->getValueType(0))) {
     default: assert(0 && "This action is not supported yet!");
@@ -1363,89 +1388,8 @@ SDValue SelectionDAGLegalize::LegalizeOp(SDValue Op) {
           break;
         }
 
-        // If this is a promoted vector load, and the vector element types are
-        // legal, then scalarize it.
-        if (ExtType == ISD::EXTLOAD && SrcVT.isVector() &&
-          TLI.isTypeLegal(Node->getValueType(0).getScalarType())) {
-          SmallVector<SDValue, 8> LoadVals;
-          SmallVector<SDValue, 8> LoadChains;
-          unsigned NumElem = SrcVT.getVectorNumElements();
-          unsigned Stride = SrcVT.getScalarType().getSizeInBits()/8;
-
-          for (unsigned Idx=0; Idx<NumElem; Idx++) {
-            Tmp2 = DAG.getNode(ISD::ADD, dl, Tmp2.getValueType(), Tmp2,
-                                DAG.getIntPtrConstant(Stride));
-            SDValue ScalarLoad = DAG.getExtLoad(ISD::EXTLOAD, dl,
-                  Node->getValueType(0).getScalarType(),
-                  Tmp1, Tmp2, LD->getPointerInfo().getWithOffset(Idx * Stride),
-                  SrcVT.getScalarType(),
-                  LD->isVolatile(), LD->isNonTemporal(),
-                  LD->getAlignment());
-
-            LoadVals.push_back(ScalarLoad.getValue(0));
-            LoadChains.push_back(ScalarLoad.getValue(1));
-          }
-          Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-            &LoadChains[0], LoadChains.size());
-          SDValue ValRes = DAG.getNode(ISD::BUILD_VECTOR, dl,
-            Node->getValueType(0), &LoadVals[0], LoadVals.size());
-
-          Tmp1 = LegalizeOp(ValRes);  // Relegalize new nodes.
-          Tmp2 = LegalizeOp(Result.getValue(0));  // Relegalize new nodes.
-          break;
-        }
-
-        // If this is a promoted vector load, and the vector element types are
-        // illegal, create the promoted vector from bitcasted segments.
-        if (ExtType == ISD::EXTLOAD && SrcVT.isVector()) {
-          EVT MemElemTy = Node->getValueType(0).getScalarType();
-          EVT SrcSclrTy = SrcVT.getScalarType();
-          unsigned SizeRatio =
-            (MemElemTy.getSizeInBits() / SrcSclrTy.getSizeInBits());
-
-          SmallVector<SDValue, 8> LoadVals;
-          SmallVector<SDValue, 8> LoadChains;
-          unsigned NumElem = SrcVT.getVectorNumElements();
-          unsigned Stride = SrcVT.getScalarType().getSizeInBits()/8;
-
-          for (unsigned Idx=0; Idx<NumElem; Idx++) {
-            Tmp2 = DAG.getNode(ISD::ADD, dl, Tmp2.getValueType(), Tmp2,
-                                DAG.getIntPtrConstant(Stride));
-            SDValue ScalarLoad = DAG.getExtLoad(ISD::EXTLOAD, dl,
-                  SrcVT.getScalarType(),
-                  Tmp1, Tmp2, LD->getPointerInfo().getWithOffset(Idx * Stride),
-                  SrcVT.getScalarType(),
-                  LD->isVolatile(), LD->isNonTemporal(),
-                  LD->getAlignment());
-            if (TLI.isBigEndian()) {
-              // MSB (which is garbage, comes first)
-              LoadVals.push_back(ScalarLoad.getValue(0));
-              for (unsigned i = 0; i<SizeRatio-1; ++i)
-                LoadVals.push_back(DAG.getUNDEF(SrcVT.getScalarType()));
-            } else {
-              // LSB (which is data, comes first)
-              for (unsigned i = 0; i<SizeRatio-1; ++i)
-                LoadVals.push_back(DAG.getUNDEF(SrcVT.getScalarType()));
-              LoadVals.push_back(ScalarLoad.getValue(0));
-            }
-            LoadChains.push_back(ScalarLoad.getValue(1));
-          }
-
-          Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-            &LoadChains[0], LoadChains.size());
-          EVT TempWideVector = EVT::getVectorVT(*DAG.getContext(),
-            SrcVT.getScalarType(), NumElem*SizeRatio);
-          SDValue ValRes = DAG.getNode(ISD::BUILD_VECTOR, dl, 
-            TempWideVector, &LoadVals[0], LoadVals.size());
-
-          // Cast to the correct type
-          ValRes = DAG.getNode(ISD::BITCAST, dl, Node->getValueType(0), ValRes);
-
-          Tmp1 = LegalizeOp(ValRes);  // Relegalize new nodes.
-          Tmp2 = LegalizeOp(Result.getValue(0));  // Relegalize new nodes.
-          break;
-
-        }
+        assert(!SrcVT.isVector() &&
+               "Vector Loads are handled in LegalizeVectorOps");
 
         // FIXME: This does not work for vectors on most targets.  Sign- and
         // zero-extend operations are currently folded into extending loads,
@@ -1622,87 +1566,8 @@ SDValue SelectionDAGLegalize::LegalizeOp(SDValue Op) {
           Result = TLI.LowerOperation(Result, DAG);
           break;
         case TargetLowering::Expand:
-
-          EVT WideScalarVT = Tmp3.getValueType().getScalarType();
-          EVT NarrowScalarVT = StVT.getScalarType();
-
-          // The Store type is illegal, must scalarize the vector store.
-          SmallVector<SDValue, 8> Stores;
-          bool ScalarLegal = TLI.isTypeLegal(WideScalarVT);
-          if (!TLI.isTypeLegal(StVT) && StVT.isVector() && ScalarLegal) {
-            unsigned NumElem = StVT.getVectorNumElements();
-
-            unsigned ScalarSize = StVT.getScalarType().getSizeInBits();
-            EVT EltVT = EVT::getIntegerVT(*DAG.getContext(), ScalarSize);
-            assert(TLI.isTypeLegal(EltVT) && "Scalar store type must be legal");
-
-            // Round odd types to the next pow of two.
-            if (!isPowerOf2_32(ScalarSize))
-              ScalarSize = NextPowerOf2(ScalarSize);
-            // Types smaller than 8 bits are promoted to 8 bits.
-            ScalarSize = std::max<unsigned>(ScalarSize, 8);
-            // Store stride
-            unsigned Stride = ScalarSize/8;
-            assert(isPowerOf2_32(Stride) && "Stride must be a power of two");
-
-            for (unsigned Idx=0; Idx<NumElem; Idx++) {
-              SDValue Ex = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
-                                WideScalarVT, Tmp3, DAG.getIntPtrConstant(Idx));
-
-              Ex = DAG.getNode(ISD::TRUNCATE, dl, EltVT, Ex);
-              Tmp2 = DAG.getNode(ISD::ADD, dl, Tmp2.getValueType(), Tmp2,
-                                 DAG.getIntPtrConstant(Stride));
-              SDValue Store = DAG.getStore(Tmp1, dl, Ex, Tmp2,
-                                 ST->getPointerInfo().getWithOffset(Idx*Stride),
-                                 isVolatile, isNonTemporal, Alignment);
-              Stores.push_back(Store);
-            }
-            Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                                 &Stores[0], Stores.size());
-            break;
-          }
-
-          // The Store type is illegal, must scalarize the vector store.
-          // However, the scalar type is illegal. Must bitcast the result
-          // and store it in smaller parts.
-          if (!TLI.isTypeLegal(StVT) && StVT.isVector()) {
-            unsigned WideNumElem = StVT.getVectorNumElements();
-            unsigned Stride = NarrowScalarVT.getSizeInBits()/8;
-
-            unsigned SizeRatio =
-              (WideScalarVT.getSizeInBits() / NarrowScalarVT.getSizeInBits());
-
-            EVT CastValueVT = EVT::getVectorVT(*DAG.getContext(), NarrowScalarVT,
-                                               SizeRatio*WideNumElem);
-
-            // Cast the wide elem vector to wider vec with smaller elem type.
-            // Example <2 x i64> -> <4 x i32>
-            Tmp3 = DAG.getNode(ISD::BITCAST, dl, CastValueVT, Tmp3);
-
-            for (unsigned Idx=0; Idx<WideNumElem*SizeRatio; Idx++) {
-              // Extract elment i
-              SDValue Ex = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
-                               NarrowScalarVT, Tmp3, DAG.getIntPtrConstant(Idx));
-              // bump pointer.
-              Tmp2 = DAG.getNode(ISD::ADD, dl, Tmp2.getValueType(), Tmp2,
-                                 DAG.getIntPtrConstant(Stride));
-
-              // Store if, this element is:
-              //  - First element on big endian, or
-              //  - Last element on little endian
-              if (( TLI.isBigEndian() && (Idx%SizeRatio == 0)) ||
-                  ((!TLI.isBigEndian() && (Idx%SizeRatio == SizeRatio-1)))) {
-                SDValue Store = DAG.getStore(Tmp1, dl, Ex, Tmp2,
-                                  ST->getPointerInfo().getWithOffset(Idx*Stride),
-                                  isVolatile, isNonTemporal, Alignment);
-                Stores.push_back(Store);
-              }
-            }
-            Result = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                                 &Stores[0], Stores.size());
-            break;
-          }
-
+          assert(!StVT.isVector() &&
+                 "Vector Stores are handled in LegalizeVectorOps");
 
           // TRUNCSTORE:i16 i32 -> STORE i16
           assert(TLI.isTypeLegal(StVT) && "Do not know how to expand this store!");

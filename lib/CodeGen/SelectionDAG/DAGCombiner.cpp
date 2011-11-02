@@ -1756,7 +1756,7 @@ SDValue DAGCombiner::visitSDIV(SDNode *N) {
   if (N0C && N1C && !N1C->isNullValue())
     return DAG.FoldConstantArithmetic(ISD::SDIV, VT, N0C, N1C);
   // fold (sdiv X, 1) -> X
-  if (N1C && N1C->getSExtValue() == 1LL)
+  if (N1C && N1C->getAPIntValue() == 1LL)
     return N0;
   // fold (sdiv X, -1) -> 0-X
   if (N1C && N1C->isAllOnesValue())
@@ -1771,16 +1771,14 @@ SDValue DAGCombiner::visitSDIV(SDNode *N) {
   }
   // fold (sdiv X, pow2) -> simple ops after legalize
   if (N1C && !N1C->isNullValue() && !TLI.isIntDivCheap() &&
-      (isPowerOf2_64(N1C->getSExtValue()) ||
-       isPowerOf2_64(-N1C->getSExtValue()))) {
+      (N1C->getAPIntValue().isPowerOf2() ||
+       (-N1C->getAPIntValue()).isPowerOf2())) {
     // If dividing by powers of two is cheap, then don't perform the following
     // fold.
     if (TLI.isPow2DivCheap())
       return SDValue();
 
-    int64_t pow2 = N1C->getSExtValue();
-    int64_t abs2 = pow2 > 0 ? pow2 : -pow2;
-    unsigned lg2 = Log2_64(abs2);
+    unsigned lg2 = N1C->getAPIntValue().countTrailingZeros();
 
     // Splat the sign bit into the register
     SDValue SGN = DAG.getNode(ISD::SRA, N->getDebugLoc(), VT, N0,
@@ -1800,7 +1798,7 @@ SDValue DAGCombiner::visitSDIV(SDNode *N) {
 
     // If we're dividing by a positive value, we're done.  Otherwise, we must
     // negate the result.
-    if (pow2 > 0)
+    if (N1C->getAPIntValue().isNonNegative())
       return SRA;
 
     AddToWorkList(SRA.getNode());
@@ -1810,8 +1808,7 @@ SDValue DAGCombiner::visitSDIV(SDNode *N) {
 
   // if integer divide is expensive and we satisfy the requirements, emit an
   // alternate sequence.
-  if (N1C && (N1C->getSExtValue() < -1 || N1C->getSExtValue() > 1) &&
-      !TLI.isIntDivCheap()) {
+  if (N1C && !N1C->isNullValue() && !TLI.isIntDivCheap()) {
     SDValue Op = BuildSDIV(N);
     if (Op.getNode()) return Op;
   }
@@ -6939,7 +6936,103 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
 
 SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
   unsigned NumInScalars = N->getNumOperands();
+  DebugLoc dl = N->getDebugLoc();
   EVT VT = N->getValueType(0);
+  // Check to see if this is a BUILD_VECTOR of a bunch of values
+  // which come from any_extend or zero_extend nodes. If so, we can create
+  // a new BUILD_VECTOR using bit-casts which may enable other BUILD_VECTOR
+  // optimizations. We do not handle sign-extend because we can't fill the sign
+  // using shuffles.
+  EVT SourceType = MVT::Other;
+  bool allAnyExt = true;
+  for (unsigned i = 0; i < NumInScalars; ++i) {
+    SDValue In = N->getOperand(i);
+    // Ignore undef inputs.
+    if (In.getOpcode() == ISD::UNDEF) continue;
+
+    bool AnyExt  = In.getOpcode() == ISD::ANY_EXTEND;
+    bool ZeroExt = In.getOpcode() == ISD::ZERO_EXTEND;
+
+    // Abort if the element is not an extension.
+    if (!ZeroExt && !AnyExt) {
+      SourceType = MVT::Other;
+      break;
+    }
+
+    // The input is a ZeroExt or AnyExt. Check the original type.
+    EVT InTy = In.getOperand(0).getValueType();
+
+    // Check that all of the widened source types are the same.
+    if (SourceType == MVT::Other)
+      // First time.
+      SourceType = InTy;
+    else if (InTy != SourceType) {
+      // Multiple income types. Abort.
+      SourceType = MVT::Other;
+      break;
+    }
+
+    // Check if all of the extends are ANY_EXTENDs.
+    allAnyExt &= AnyExt;
+  }
+
+
+  // In order to have valid types, all of the inputs must be extended from the
+  // same source type and all of the inputs must be any or zero extend.
+  // Scalar sizes must be a power of two.
+  EVT OutScalarTy = N->getValueType(0).getScalarType();
+  bool validTypes = SourceType != MVT::Other &&
+                 isPowerOf2_32(OutScalarTy.getSizeInBits()) &&
+                 isPowerOf2_32(SourceType.getSizeInBits());
+
+  // We perform this optimization post type-legalization because
+  // the type-legalizer often scalarizes integer-promoted vectors.
+  // Performing this optimization before may create bit-casts which
+  // will be type-legalized to complex code sequences.
+  // We perform this optimization only before the operation legalizer because we
+  // may introduce illegal operations.
+  if (LegalTypes && !LegalOperations && validTypes) {
+    bool isLE = TLI.isLittleEndian();
+    unsigned ElemRatio = OutScalarTy.getSizeInBits()/SourceType.getSizeInBits();
+    assert(ElemRatio > 1 && "Invalid element size ratio");
+    SDValue Filler = allAnyExt ? DAG.getUNDEF(SourceType):
+                                 DAG.getConstant(0, SourceType);
+
+    unsigned NewBVElems = ElemRatio * N->getValueType(0).getVectorNumElements();
+    SmallVector<SDValue, 8> Ops(NewBVElems, Filler);
+
+    // Populate the new build_vector
+    for (unsigned i=0; i < N->getNumOperands(); ++i) {
+      SDValue Cast = N->getOperand(i);
+      assert((Cast.getOpcode() == ISD::ANY_EXTEND ||
+              Cast.getOpcode() == ISD::ZERO_EXTEND ||
+              Cast.getOpcode() == ISD::UNDEF) && "Invalid cast opcode");
+      SDValue In;
+      if (Cast.getOpcode() == ISD::UNDEF)
+        In = DAG.getUNDEF(SourceType);
+      else
+        In = Cast->getOperand(0);
+      unsigned Index = isLE ? (i * ElemRatio) :
+                              (i * ElemRatio + (ElemRatio - 1));
+
+      assert(Index < Ops.size() && "Invalid index");
+      Ops[Index] = In;
+    }
+
+    // The type of the new BUILD_VECTOR node.
+    EVT VecVT = EVT::getVectorVT(*DAG.getContext(), SourceType, NewBVElems);
+    assert(VecVT.getSizeInBits() == N->getValueType(0).getSizeInBits() &&
+           "Invalid vector size");
+    // Check if the new vector type is legal.
+    if (!isTypeLegal(VecVT)) return SDValue();
+
+    // Make the new BUILD_VECTOR.
+    SDValue BV = DAG.getNode(ISD::BUILD_VECTOR, N->getDebugLoc(),
+                                 VecVT, &Ops[0], Ops.size());
+
+    // Bitcast to the desired type.
+    return DAG.getNode(ISD::BITCAST, dl, N->getValueType(0), BV);
+  }
 
   // Check to see if this is a BUILD_VECTOR of a bunch of EXTRACT_VECTOR_ELT
   // operations.  If so, and if the EXTRACT_VECTOR_ELT vector inputs come from
@@ -7261,8 +7354,19 @@ SDValue DAGCombiner::SimplifyVBinOp(SDNode *N) {
       }
 
       EVT VT = LHSOp.getValueType();
-      assert(RHSOp.getValueType() == VT &&
-             "SimplifyVBinOp with different BUILD_VECTOR element types");
+      EVT RVT = RHSOp.getValueType();
+      if (RVT != VT) {
+        // Integer BUILD_VECTOR operands may have types larger than the element
+        // size (e.g., when the element type is not legal).  Prior to type
+        // legalization, the types may not match between the two BUILD_VECTORS.
+        // Truncate one of the operands to make them match.
+        if (RVT.getSizeInBits() > VT.getSizeInBits()) {
+          RHSOp = DAG.getNode(ISD::TRUNCATE, N->getDebugLoc(), VT, RHSOp);
+        } else {
+          LHSOp = DAG.getNode(ISD::TRUNCATE, N->getDebugLoc(), RVT, LHSOp);
+          VT = RVT;
+        }
+      }
       SDValue FoldOp = DAG.getNode(N->getOpcode(), LHS.getDebugLoc(), VT,
                                    LHSOp, RHSOp);
       if (FoldOp.getOpcode() != ISD::UNDEF &&
@@ -7517,8 +7621,6 @@ SDValue DAGCombiner::SimplifySelectCC(DebugLoc DL, SDValue N0, SDValue N1,
   // Check to see if we can perform the "gzip trick", transforming
   // (select_cc setlt X, 0, A, 0) -> (and (sra X, (sub size(X), 1), A)
   if (N1C && N3C && N3C->isNullValue() && CC == ISD::SETLT &&
-      N0.getValueType().isInteger() &&
-      N2.getValueType().isInteger() &&
       (N1C->isNullValue() ||                         // (a < 0) ? b : 0
        (N1C->getAPIntValue() == 1 && N0 == N2))) {   // (a < 1) ? a : 0
     EVT XType = N0.getValueType();

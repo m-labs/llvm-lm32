@@ -31,7 +31,7 @@ dnl===
 dnl===-----------------------------------------------------------------------===
 dnl Initialize autoconf and define the package name, version number and
 dnl email address for reporting bugs.
-AC_INIT([[llvm]],[[3.0svn]],[llvmbugs@cs.uiuc.edu])
+AC_INIT([[llvm]],[[3.1svn]],[llvmbugs@cs.uiuc.edu])
 
 dnl Provide a copyright substitution and ensure the copyright notice is included
 dnl in the output of --version option of the generated configure script.
@@ -352,14 +352,11 @@ AC_CACHE_CHECK([target architecture],[llvm_cv_target_arch],
   amd64-* | x86_64-*)     llvm_cv_target_arch="x86_64" ;;
   sparc*-*)               llvm_cv_target_arch="Sparc" ;;
   powerpc*-*)             llvm_cv_target_arch="PowerPC" ;;
-  alpha*-*)               llvm_cv_target_arch="Alpha" ;;
   arm*-*)                 llvm_cv_target_arch="ARM" ;;
   mico32-*)               llvm_cv_target_arch="Mico32" ;;
   mips-*)                 llvm_cv_target_arch="Mips" ;;
   xcore-*)                llvm_cv_target_arch="XCore" ;;
   msp430-*)               llvm_cv_target_arch="MSP430" ;;
-  s390x-*)                llvm_cv_target_arch="SystemZ" ;;
-  bfin-*)                 llvm_cv_target_arch="Blackfin" ;;
   mblaze-*)               llvm_cv_target_arch="MBlaze" ;;
   ptx-*)                  llvm_cv_target_arch="PTX" ;;
   *)                      llvm_cv_target_arch="Unknown" ;;
@@ -490,14 +487,11 @@ else
     Sparc)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     PowerPC)     AC_SUBST(TARGET_HAS_JIT,1) ;;
     x86_64)      AC_SUBST(TARGET_HAS_JIT,1) ;;
-    Alpha)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     ARM)         AC_SUBST(TARGET_HAS_JIT,1) ;;
     Mico32)      AC_SUBST(TARGET_HAS_JIT,0) ;;
     Mips)        AC_SUBST(TARGET_HAS_JIT,1) ;;
     XCore)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     MSP430)      AC_SUBST(TARGET_HAS_JIT,0) ;;
-    SystemZ)     AC_SUBST(TARGET_HAS_JIT,0) ;;
-    Blackfin)    AC_SUBST(TARGET_HAS_JIT,0) ;;
     MBlaze)      AC_SUBST(TARGET_HAS_JIT,0) ;;
     PTX)         AC_SUBST(TARGET_HAS_JIT,0) ;;
     *)           AC_SUBST(TARGET_HAS_JIT,0) ;;
@@ -582,12 +576,12 @@ esac
 dnl Allow libstdc++ is embedded in LLVM.dll.
 AC_ARG_ENABLE(embed-stdcxx,
   AS_HELP_STRING([--enable-embed-stdcxx],
-                 [Build a shared library with embedded libstdc++ for Win32 DLL (default is YES)]),,
+                 [Build a shared library with embedded libstdc++ for Win32 DLL (default is NO)]),,
                  enableval=default)
 case "$enableval" in
   yes) AC_SUBST(ENABLE_EMBED_STDCXX,[1]) ;;
   no)  AC_SUBST(ENABLE_EMBED_STDCXX,[0]) ;;
-  default) AC_SUBST(ENABLE_EMBED_STDCXX,[1]) ;;
+  default) AC_SUBST(ENABLE_EMBED_STDCXX,[0]) ;;
   *) AC_MSG_ERROR([Invalid setting for --enable-embed-stdcxx. Use "yes" or "no"]) ;;
 esac
 
@@ -609,29 +603,26 @@ dnl Allow specific targets to be specified for building (or not)
 TARGETS_TO_BUILD=""
 AC_ARG_ENABLE([targets],AS_HELP_STRING([--enable-targets],
     [Build specific host targets: all or target1,target2,... Valid targets are:
-     host, x86, x86_64, sparc, powerpc, alpha, arm, mico32, mips, spu,
-     xcore, msp430, systemz, blackfin, ptx, cbe, and cpp (default=all)]),,
+     host, x86, x86_64, sparc, powerpc, arm, mico32, mips, spu,
+     xcore, msp430, ptx, cbe, and cpp (default=all)]),,
     enableval=all)
 if test "$enableval" = host-only ; then
   enableval=host
 fi
 case "$enableval" in
-  all) TARGETS_TO_BUILD="X86 Sparc PowerPC Alpha ARM Mico32 Mips CellSPU XCore MSP430 SystemZ Blackfin CBackend CppBackend MBlaze PTX" ;;
+  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM Mico32 Mips CellSPU XCore MSP430 CBackend CppBackend MBlaze PTX" ;;
   *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
       case "$a_target" in
         x86)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
         x86_64)   TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
         sparc)    TARGETS_TO_BUILD="Sparc $TARGETS_TO_BUILD" ;;
         powerpc)  TARGETS_TO_BUILD="PowerPC $TARGETS_TO_BUILD" ;;
-        alpha)    TARGETS_TO_BUILD="Alpha $TARGETS_TO_BUILD" ;;
         arm)      TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
         mico32)   TARGETS_TO_BUILD="Mico32 $TARGETS_TO_BUILD" ;;
         mips)     TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
         spu)      TARGETS_TO_BUILD="CellSPU $TARGETS_TO_BUILD" ;;
         xcore)    TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
         msp430)   TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
-        systemz)  TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
-        blackfin) TARGETS_TO_BUILD="Blackfin $TARGETS_TO_BUILD" ;;
         cbe)      TARGETS_TO_BUILD="CBackend $TARGETS_TO_BUILD" ;;
         cpp)      TARGETS_TO_BUILD="CppBackend $TARGETS_TO_BUILD" ;;
         mblaze)   TARGETS_TO_BUILD="MBlaze $TARGETS_TO_BUILD" ;;
@@ -641,7 +632,6 @@ case "$enableval" in
             x86_64)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
             Sparc)       TARGETS_TO_BUILD="Sparc $TARGETS_TO_BUILD" ;;
             PowerPC)     TARGETS_TO_BUILD="PowerPC $TARGETS_TO_BUILD" ;;
-            Alpha)       TARGETS_TO_BUILD="Alpha $TARGETS_TO_BUILD" ;;
             ARM)         TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
             Mico32)      TARGETS_TO_BUILD="Mico32 $TARGETS_TO_BUILD" ;;
             Mips)        TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
@@ -649,8 +639,6 @@ case "$enableval" in
             CellSPU|SPU) TARGETS_TO_BUILD="CellSPU $TARGETS_TO_BUILD" ;;
             XCore)       TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
             MSP430)      TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
-            s390x)       TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
-            Blackfin)    TARGETS_TO_BUILD="Blackfin $TARGETS_TO_BUILD" ;;
             PTX)         TARGETS_TO_BUILD="PTX $TARGETS_TO_BUILD" ;;
             *)       AC_MSG_ERROR([Can not set target to build]) ;;
           esac ;;
@@ -798,6 +786,17 @@ case "$withval" in
   /* | [[A-Za-z]]:[[\\/]]*) with_ocaml_libdir="$withval" ;;
   *) AC_MSG_ERROR([Invalid path for --with-ocaml-libdir. Provide full path]) ;;
 esac
+
+AC_ARG_WITH(clang-srcdir,
+  AS_HELP_STRING([--with-clang-srcdir],
+    [Directory to the out-of-tree Clang source]),,
+    withval="-")
+case "$withval" in
+  -) clang_src_root="" ;;
+  /* | [[A-Za-z]]:[[\\/]]*) clang_src_root="$withval" ;;
+  *) clang_src_root="$ac_pwd/$withval" ;;
+esac
+AC_SUBST(CLANG_SRC_ROOT,[$clang_src_root])
 
 AC_ARG_WITH(clang-resource-dir,
   AS_HELP_STRING([--with-clang-resource-dir],
@@ -1458,8 +1457,8 @@ AC_DEFINE_UNQUOTED(LLVM_MANDIR, "$LLVM_MANDIR",
                    [Installation directory for man pages])
 AC_DEFINE_UNQUOTED(LLVM_CONFIGTIME, "$LLVM_CONFIGTIME",
                    [Time at which LLVM was configured])
-AC_DEFINE_UNQUOTED(LLVM_HOSTTRIPLE, "$host",
-                   [Host triple we were built on])
+AC_DEFINE_UNQUOTED(LLVM_DEFAULT_TARGET_TRIPLE, "$target",
+                   [Target triple LLVM will generate code for by default])
 
 # Determine which bindings to build.
 if test "$BINDINGS_TO_BUILD" = auto ; then
@@ -1566,6 +1565,9 @@ fi
 
 dnl Do the first stage of configuration for llvm-config.in.
 AC_CONFIG_FILES([tools/llvm-config/llvm-config.in])
+
+dnl OCaml findlib META file
+AC_CONFIG_FILES([bindings/ocaml/llvm/META.llvm])
 
 dnl Do special configuration of Makefiles
 AC_CONFIG_COMMANDS([setup],,[llvm_src="${srcdir}"])

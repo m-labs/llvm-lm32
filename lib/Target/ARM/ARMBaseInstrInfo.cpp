@@ -640,37 +640,9 @@ void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   bool SPRSrc  = ARM::SPRRegClass.contains(SrcReg);
 
   unsigned Opc = 0;
-  if (SPRDest && SPRSrc) {
+  if (SPRDest && SPRSrc)
     Opc = ARM::VMOVS;
-
-    // An even S-S copy may be feeding a NEON v2f32 instruction being used for
-    // f32 operations.  In that case, it is better to copy the full D-regs with
-    // a VMOVD since that can be converted to a NEON-domain move by
-    // NEONMoveFix.cpp.  Check that MI is the original COPY instruction, and
-    // that it really defines the whole D-register.
-    if (WidenVMOVS &&
-        (DestReg - ARM::S0) % 2 == 0 && (SrcReg - ARM::S0) % 2 == 0 &&
-        I != MBB.end() && I->isCopy() &&
-        I->getOperand(0).getReg() == DestReg &&
-        I->getOperand(1).getReg() == SrcReg) {
-      // I is pointing to the ortiginal COPY instruction.
-      // Find the parent D-registers.
-      const TargetRegisterInfo *TRI = &getRegisterInfo();
-      unsigned SrcD = TRI->getMatchingSuperReg(SrcReg, ARM::ssub_0,
-                                               &ARM::DPRRegClass);
-      unsigned DestD = TRI->getMatchingSuperReg(DestReg, ARM::ssub_0,
-                                                &ARM::DPRRegClass);
-      // Be careful to not clobber an INSERT_SUBREG that reads and redefines a
-      // D-register.  There must be an <imp-def> of destD, and no <imp-use>.
-      if (I->definesRegister(DestD, TRI) && !I->readsRegister(DestD, TRI)) {
-        Opc = ARM::VMOVD;
-        SrcReg = SrcD;
-        DestReg = DestD;
-        if (KillSrc)
-          KillSrc = I->killsRegister(SrcReg, TRI);
-      }
-    }
-  } else if (GPRDest && SPRSrc)
+  else if (GPRDest && SPRSrc)
     Opc = ARM::VMOVRS;
   else if (SPRDest && GPRSrc)
     Opc = ARM::VMOVSR;
@@ -1022,6 +994,72 @@ unsigned ARMBaseInstrInfo::isLoadFromStackSlotPostFE(const MachineInstr *MI,
                                              int &FrameIndex) const {
   const MachineMemOperand *Dummy;
   return MI->getDesc().mayLoad() && hasLoadFromStackSlot(MI, Dummy, FrameIndex);
+}
+
+bool ARMBaseInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const{
+  // This hook gets to expand COPY instructions before they become
+  // copyPhysReg() calls.  Look for VMOVS instructions that can legally be
+  // widened to VMOVD.  We prefer the VMOVD when possible because it may be
+  // changed into a VORR that can go down the NEON pipeline.
+  if (!WidenVMOVS || !MI->isCopy())
+    return false;
+
+  // Look for a copy between even S-registers.  That is where we keep floats
+  // when using NEON v2f32 instructions for f32 arithmetic.
+  unsigned DstRegS = MI->getOperand(0).getReg();
+  unsigned SrcRegS = MI->getOperand(1).getReg();
+  if (!ARM::SPRRegClass.contains(DstRegS, SrcRegS))
+    return false;
+
+  const TargetRegisterInfo *TRI = &getRegisterInfo();
+  unsigned DstRegD = TRI->getMatchingSuperReg(DstRegS, ARM::ssub_0,
+                                              &ARM::DPRRegClass);
+  unsigned SrcRegD = TRI->getMatchingSuperReg(SrcRegS, ARM::ssub_0,
+                                              &ARM::DPRRegClass);
+  if (!DstRegD || !SrcRegD)
+    return false;
+
+  // We want to widen this into a DstRegD = VMOVD SrcRegD copy.  This is only
+  // legal if the COPY already defines the full DstRegD, and it isn't a
+  // sub-register insertion.
+  if (!MI->definesRegister(DstRegD, TRI) || MI->readsRegister(DstRegD, TRI))
+    return false;
+
+  // A dead copy shouldn't show up here, but reject it just in case.
+  if (MI->getOperand(0).isDead())
+    return false;
+
+  // All clear, widen the COPY.
+  DEBUG(dbgs() << "widening:    " << *MI);
+
+  // Get rid of the old <imp-def> of DstRegD.  Leave it if it defines a Q-reg
+  // or some other super-register.
+  int ImpDefIdx = MI->findRegisterDefOperandIdx(DstRegD);
+  if (ImpDefIdx != -1)
+    MI->RemoveOperand(ImpDefIdx);
+
+  // Change the opcode and operands.
+  MI->setDesc(get(ARM::VMOVD));
+  MI->getOperand(0).setReg(DstRegD);
+  MI->getOperand(1).setReg(SrcRegD);
+  AddDefaultPred(MachineInstrBuilder(MI));
+
+  // We are now reading SrcRegD instead of SrcRegS.  This may upset the
+  // register scavenger and machine verifier, so we need to indicate that we
+  // are reading an undefined value from SrcRegD, but a proper value from
+  // SrcRegS.
+  MI->getOperand(1).setIsUndef();
+  MachineInstrBuilder(MI).addReg(SrcRegS, RegState::Implicit);
+
+  // SrcRegD may actually contain an unrelated value in the ssub_1
+  // sub-register.  Don't kill it.  Only kill the ssub_0 sub-register.
+  if (MI->getOperand(1).isKill()) {
+    MI->getOperand(1).setIsKill(false);
+    MI->addRegisterKilled(SrcRegS, TRI, true);
+  }
+
+  DEBUG(dbgs() << "replaced by: " << *MI);
+  return true;
 }
 
 MachineInstr*
@@ -1440,7 +1478,6 @@ static AddSubFlagsOpcodePair AddSubFlagsOpcodeMap[] = {
   {ARM::SUBSrsr, ARM::SUBrsr},
 
   {ARM::RSBSri, ARM::RSBri},
-  {ARM::RSBSrr, ARM::RSBrr},
   {ARM::RSBSrsi, ARM::RSBrsi},
   {ARM::RSBSrsr, ARM::RSBrsr},
 
@@ -2364,10 +2401,14 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD1q16:
     case ARM::VLD1q32:
     case ARM::VLD1q64:
-    case ARM::VLD1q8_UPD:
-    case ARM::VLD1q16_UPD:
-    case ARM::VLD1q32_UPD:
-    case ARM::VLD1q64_UPD:
+    case ARM::VLD1q8wb_fixed:
+    case ARM::VLD1q16wb_fixed:
+    case ARM::VLD1q32wb_fixed:
+    case ARM::VLD1q64wb_fixed:
+    case ARM::VLD1q8wb_register:
+    case ARM::VLD1q16wb_register:
+    case ARM::VLD1q32wb_register:
+    case ARM::VLD1q64wb_register:
     case ARM::VLD2d8:
     case ARM::VLD2d16:
     case ARM::VLD2d32:
@@ -2387,7 +2428,8 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD3d8_UPD:
     case ARM::VLD3d16_UPD:
     case ARM::VLD3d32_UPD:
-    case ARM::VLD1d64T_UPD:
+    case ARM::VLD1d64Twb_fixed:
+    case ARM::VLD1d64Twb_register:
     case ARM::VLD3q8_UPD:
     case ARM::VLD3q16_UPD:
     case ARM::VLD3q32_UPD:
@@ -2398,7 +2440,8 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD4d8_UPD:
     case ARM::VLD4d16_UPD:
     case ARM::VLD4d32_UPD:
-    case ARM::VLD1d64Q_UPD:
+    case ARM::VLD1d64Qwb_fixed:
+    case ARM::VLD1d64Qwb_register:
     case ARM::VLD4q8_UPD:
     case ARM::VLD4q16_UPD:
     case ARM::VLD4q32_UPD:
@@ -2525,10 +2568,14 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD1q16Pseudo:
     case ARM::VLD1q32Pseudo:
     case ARM::VLD1q64Pseudo:
-    case ARM::VLD1q8Pseudo_UPD:
-    case ARM::VLD1q16Pseudo_UPD:
-    case ARM::VLD1q32Pseudo_UPD:
-    case ARM::VLD1q64Pseudo_UPD:
+    case ARM::VLD1q8PseudoWB_register:
+    case ARM::VLD1q16PseudoWB_register:
+    case ARM::VLD1q32PseudoWB_register:
+    case ARM::VLD1q64PseudoWB_register:
+    case ARM::VLD1q8PseudoWB_fixed:
+    case ARM::VLD1q16PseudoWB_fixed:
+    case ARM::VLD1q32PseudoWB_fixed:
+    case ARM::VLD1q64PseudoWB_fixed:
     case ARM::VLD2d8Pseudo:
     case ARM::VLD2d16Pseudo:
     case ARM::VLD2d32Pseudo:
@@ -2548,7 +2595,6 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD3d8Pseudo_UPD:
     case ARM::VLD3d16Pseudo_UPD:
     case ARM::VLD3d32Pseudo_UPD:
-    case ARM::VLD1d64TPseudo_UPD:
     case ARM::VLD3q8Pseudo_UPD:
     case ARM::VLD3q16Pseudo_UPD:
     case ARM::VLD3q32Pseudo_UPD:
@@ -2565,7 +2611,6 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD4d8Pseudo_UPD:
     case ARM::VLD4d16Pseudo_UPD:
     case ARM::VLD4d32Pseudo_UPD:
-    case ARM::VLD1d64QPseudo_UPD:
     case ARM::VLD4q8Pseudo_UPD:
     case ARM::VLD4q16Pseudo_UPD:
     case ARM::VLD4q32Pseudo_UPD:
@@ -2788,5 +2833,5 @@ ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
 
   // Add the extra source operand and new predicates.
   // This will go before any implicit ops.
-  AddDefaultPred(MachineInstrBuilder(MI).addReg(MI->getOperand(1).getReg()));
+  AddDefaultPred(MachineInstrBuilder(MI).addOperand(MI->getOperand(1)));
 }

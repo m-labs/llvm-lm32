@@ -1279,7 +1279,9 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
 
   // If we had a phi translation failure, we'll have a single entry which is a
   // clobber in the current block.  Reject this early.
-  if (Deps.size() == 1 && Deps[0].getResult().isUnknown()) {
+  if (Deps.size() == 1
+      && !Deps[0].getResult().isDef() && !Deps[0].getResult().isClobber())
+  {
     DEBUG(
       dbgs() << "GVN: non-local load ";
       WriteAsOperand(dbgs(), LI);
@@ -1299,7 +1301,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
     BasicBlock *DepBB = Deps[i].getBB();
     MemDepResult DepInfo = Deps[i].getResult();
 
-    if (DepInfo.isUnknown()) {
+    if (!DepInfo.isDef() && !DepInfo.isClobber()) {
       UnavailableBlocks.push_back(DepBB);
       continue;
     }
@@ -1364,7 +1366,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
       continue;
     }
 
-    assert(DepInfo.isDef() && "Expecting def here");
+    // DepInfo.isDef() here
 
     Instruction *DepInst = DepInfo.getInst();
 
@@ -1761,7 +1763,11 @@ bool GVN::processLoad(LoadInst *L) {
     return false;
   }
 
-  if (Dep.isUnknown()) {
+  // If it is defined in another block, try harder.
+  if (Dep.isNonLocal())
+    return processNonLocalLoad(L);
+
+  if (!Dep.isDef()) {
     DEBUG(
       // fast print dep, using operator<< on instruction is too slow.
       dbgs() << "GVN: load ";
@@ -1770,12 +1776,6 @@ bool GVN::processLoad(LoadInst *L) {
     );
     return false;
   }
-
-  // If it is defined in another block, try harder.
-  if (Dep.isNonLocal())
-    return processNonLocalLoad(L);
-
-  assert(Dep.isDef() && "Expecting def here");
 
   Instruction *DepInst = Dep.getInst();
   if (StoreInst *DepSI = dyn_cast<StoreInst>(DepInst)) {
@@ -1935,10 +1935,15 @@ bool GVN::propagateEquality(Value *LHS, Value *RHS, BasicBlock *Root) {
   // to 'LHS' then ensure it will be turned into 'RHS'.
   addToLeaderTable(VN.lookup_or_add(LHS), RHS, Root);
 
-  // Replace all occurrences of 'LHS' with 'RHS' everywhere in the scope.
-  unsigned NumReplacements = replaceAllDominatedUsesWith(LHS, RHS, Root);
-  bool Changed = NumReplacements > 0;
-  NumGVNEqProp += NumReplacements;
+  // Replace all occurrences of 'LHS' with 'RHS' everywhere in the scope.  As
+  // LHS always has at least one use that is not dominated by Root, this will
+  // never do anything if LHS has only one use.
+  bool Changed = false;
+  if (!LHS->hasOneUse()) {
+    unsigned NumReplacements = replaceAllDominatedUsesWith(LHS, RHS, Root);
+    Changed |= NumReplacements > 0;
+    NumGVNEqProp += NumReplacements;
+  }
 
   // Now try to deduce additional equalities from this one.  For example, if the
   // known equality was "(A != B)" == "false" then it follows that A and B are

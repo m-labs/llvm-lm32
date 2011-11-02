@@ -1190,8 +1190,7 @@ Instruction *InstCombiner::visitBranchInst(BranchInst &BI) {
       !isa<Constant>(X)) {
     // Swap Destinations and condition...
     BI.setCondition(X);
-    BI.setSuccessor(0, FalseDest);
-    BI.setSuccessor(1, TrueDest);
+    BI.swapSuccessors();
     return &BI;
   }
 
@@ -1206,8 +1205,7 @@ Instruction *InstCombiner::visitBranchInst(BranchInst &BI) {
       Cond->setPredicate(FCmpInst::getInversePredicate(FPred));
       
       // Swap Destinations and condition.
-      BI.setSuccessor(0, FalseDest);
-      BI.setSuccessor(1, TrueDest);
+      BI.swapSuccessors();
       Worklist.Add(Cond);
       return &BI;
     }
@@ -1223,8 +1221,7 @@ Instruction *InstCombiner::visitBranchInst(BranchInst &BI) {
       ICmpInst *Cond = cast<ICmpInst>(BI.getCondition());
       Cond->setPredicate(ICmpInst::getInversePredicate(IPred));
       // Swap Destinations and condition.
-      BI.setSuccessor(0, FalseDest);
-      BI.setSuccessor(1, TrueDest);
+      BI.swapSuccessors();
       Worklist.Add(Cond);
       return &BI;
     }
@@ -1417,7 +1414,8 @@ Instruction *InstCombiner::visitExtractValueInst(ExtractValueInst &EV) {
 enum Personality_Type {
   Unknown_Personality,
   GNU_Ada_Personality,
-  GNU_CXX_Personality
+  GNU_CXX_Personality,
+  GNU_ObjC_Personality
 };
 
 /// RecognizePersonality - See if the given exception handling personality
@@ -1429,7 +1427,8 @@ static Personality_Type RecognizePersonality(Value *Pers) {
     return Unknown_Personality;
   return StringSwitch<Personality_Type>(F->getName())
     .Case("__gnat_eh_personality", GNU_Ada_Personality)
-    .Case("__gxx_personality_v0", GNU_CXX_Personality)
+    .Case("__gxx_personality_v0",  GNU_CXX_Personality)
+    .Case("__objc_personality_v0", GNU_ObjC_Personality)
     .Default(Unknown_Personality);
 }
 
@@ -1443,6 +1442,7 @@ static bool isCatchAll(Personality_Type Personality, Constant *TypeInfo) {
     // match foreign exceptions (or didn't, before gcc-4.7).
     return false;
   case GNU_CXX_Personality:
+  case GNU_ObjC_Personality:
     return TypeInfo->isNullValue();
   }
   llvm_unreachable("Unknown personality!");
@@ -2028,9 +2028,10 @@ bool InstCombiner::DoOneIteration(Function &F, unsigned Iteration) {
         BasicBlock *InstParent = I->getParent();
         BasicBlock::iterator InsertPos = I;
 
-        if (!isa<PHINode>(Result))        // If combining a PHI, don't insert
-          while (isa<PHINode>(InsertPos)) // middle of a block of PHIs.
-            ++InsertPos;
+        // If we replace a PHI with something that isn't a PHI, fix up the
+        // insertion point.
+        if (!isa<PHINode>(Result) && isa<PHINode>(InsertPos))
+          InsertPos = InstParent->getFirstInsertionPt();
 
         InstParent->getInstList().insert(InsertPos, Result);
 

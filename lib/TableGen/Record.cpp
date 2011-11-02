@@ -760,7 +760,9 @@ Init *UnOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
             return VarInit::get(Name, RV->getType());
           }
 
-          std::string TemplateArgName = CurRec->getName()+":"+Name;
+          Init *TemplateArgName = QualifyName(*CurRec, CurMultiClass, Name,
+                                              ":");
+      
           if (CurRec->isTemplateArg(TemplateArgName)) {
             const RecordVal *RV = CurRec->getValue(TemplateArgName);
             assert(RV && "Template arg doesn't exist??");
@@ -773,7 +775,8 @@ Init *UnOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
         }
 
         if (CurMultiClass) {
-          std::string MCName = CurMultiClass->Rec.getName()+"::"+Name;
+          Init *MCName = QualifyName(CurMultiClass->Rec, CurMultiClass, Name, "::");
+
           if (CurMultiClass->Rec.isTemplateArg(MCName)) {
             const RecordVal *RV = CurMultiClass->Rec.getValue(MCName);
             assert(RV && "Template arg doesn't exist??");
@@ -1298,7 +1301,12 @@ TypedInit::convertInitListSlice(const std::vector<unsigned> &Elements) const {
 
 
 VarInit *VarInit::get(const std::string &VN, RecTy *T) {
-  typedef std::pair<RecTy *, TableGenStringKey> Key;
+  Init *Value = StringInit::get(VN);
+  return VarInit::get(Value, T);
+}
+
+VarInit *VarInit::get(Init *VN, RecTy *T) {
+  typedef std::pair<RecTy *, Init *> Key;
   typedef DenseMap<Key, VarInit *> Pool;
   static Pool ThePool;
 
@@ -1307,6 +1315,13 @@ VarInit *VarInit::get(const std::string &VN, RecTy *T) {
   VarInit *&I = ThePool[TheKey];
   if (!I) I = new VarInit(VN, T);
   return I;
+}
+
+const std::string &VarInit::getName() const {
+  StringInit *NameString =
+    dynamic_cast<StringInit *>(getNameInit());
+  assert(NameString && "VarInit name is not a string!");
+  return NameString->getValue();
 }
 
 Init *VarInit::resolveBitReference(Record &R, const RecordVal *IRV,
@@ -1659,7 +1674,7 @@ void RecordVal::dump() const { errs() << *this; }
 
 void RecordVal::print(raw_ostream &OS, bool PrintSem) const {
   if (getPrefix()) OS << "field ";
-  OS << *getType() << " " << getName();
+  OS << *getType() << " " << getNameInitAsString();
 
   if (getValue())
     OS << " = " << *getValue();
@@ -1668,6 +1683,15 @@ void RecordVal::print(raw_ostream &OS, bool PrintSem) const {
 }
 
 unsigned Record::LastID = 0;
+
+void Record::init() {
+  checkName();
+
+  // Every record potentially has a def at the top.  This value is
+  // replaced with the top-level def name at instantiation time.
+  RecordVal DN("NAME", StringRecTy::get(), 0);
+  addValue(DN);
+}
 
 void Record::checkName() {
   // Ensure the record name has string type.
@@ -1695,13 +1719,12 @@ const std::string &Record::getName() const {
 void Record::setName(Init *NewName) {
   if (TrackedRecords.getDef(Name->getAsUnquotedString()) == this) {
     TrackedRecords.removeDef(Name->getAsUnquotedString());
-    Name = NewName;
     TrackedRecords.addDef(this);
-  } else {
+  } else if (TrackedRecords.getClass(Name->getAsUnquotedString()) == this) {
     TrackedRecords.removeClass(Name->getAsUnquotedString());
-    Name = NewName;
     TrackedRecords.addClass(this);
-  }
+  }  // Otherwise this isn't yet registered.
+  Name = NewName;
   checkName();
   // Since the Init for the name was changed, see if we can resolve
   // any of it using members of the Record.
@@ -1726,6 +1749,18 @@ void Record::setName(const std::string &Name) {
   setName(StringInit::get(Name));
 }
 
+const RecordVal *Record::getValue(Init *Name) const {
+  for (unsigned i = 0, e = Values.size(); i != e; ++i)
+    if (Values[i].getNameInit() == Name) return &Values[i];
+  return 0;
+}
+
+RecordVal *Record::getValue(Init *Name) {
+  for (unsigned i = 0, e = Values.size(); i != e; ++i)
+    if (Values[i].getNameInit() == Name) return &Values[i];
+  return 0;
+}
+
 /// resolveReferencesTo - If anything in this record refers to RV, replace the
 /// reference to RV with the RHS of RV.  If RV is null, we resolve all possible
 /// references.
@@ -1734,14 +1769,20 @@ void Record::resolveReferencesTo(const RecordVal *RV) {
     if (Init *V = Values[i].getValue())
       Values[i].setValue(V->resolveReferences(*this, RV));
   }
+  Init *OldName = getNameInit();
+  Init *NewName = Name->resolveReferences(*this, RV);
+  if (NewName != OldName) {
+    // Re-register with RecordKeeper.
+    setName(NewName);
+  }
 }
 
 void Record::dump() const { errs() << *this; }
 
 raw_ostream &llvm::operator<<(raw_ostream &OS, const Record &R) {
-  OS << R.getName();
+  OS << R.getNameInitAsString();
 
-  const std::vector<std::string> &TArgs = R.getTemplateArgs();
+  const std::vector<Init *> &TArgs = R.getTemplateArgs();
   if (!TArgs.empty()) {
     OS << "<";
     for (unsigned i = 0, e = TArgs.size(); i != e; ++i) {
@@ -1758,7 +1799,7 @@ raw_ostream &llvm::operator<<(raw_ostream &OS, const Record &R) {
   if (!SC.empty()) {
     OS << "\t//";
     for (unsigned i = 0, e = SC.size(); i != e; ++i)
-      OS << " " << SC[i]->getName();
+      OS << " " << SC[i]->getNameInitAsString();
   }
   OS << "\n";
 
@@ -2017,3 +2058,39 @@ RecordKeeper::getAllDerivedDefinitions(const std::string &ClassName) const {
   return Defs;
 }
 
+/// QualifyName - Return an Init with a qualifier prefix referring
+/// to CurRec's name.
+Init *llvm::QualifyName(Record &CurRec, MultiClass *CurMultiClass,
+                        Init *Name, const std::string &Scoper) {
+  RecTy *Type = dynamic_cast<TypedInit *>(Name)->getType();
+
+  BinOpInit *NewName =
+    BinOpInit::get(BinOpInit::STRCONCAT, 
+                      BinOpInit::get(BinOpInit::STRCONCAT,
+                                        CurRec.getNameInit(),
+                                        StringInit::get(Scoper),
+                                        Type)->Fold(&CurRec, CurMultiClass),
+                      Name,
+                      Type);
+
+  if (CurMultiClass && Scoper != "::") {
+    NewName =
+      BinOpInit::get(BinOpInit::STRCONCAT, 
+                        BinOpInit::get(BinOpInit::STRCONCAT,
+                                          CurMultiClass->Rec.getNameInit(),
+                                          StringInit::get("::"),
+                                          Type)->Fold(&CurRec, CurMultiClass),
+                        NewName->Fold(&CurRec, CurMultiClass),
+                        Type);
+  }
+
+  return NewName->Fold(&CurRec, CurMultiClass);
+}
+
+/// QualifyName - Return an Init with a qualifier prefix referring
+/// to CurRec's name.
+Init *llvm::QualifyName(Record &CurRec, MultiClass *CurMultiClass,
+                        const std::string &Name,
+                        const std::string &Scoper) {
+  return QualifyName(CurRec, CurMultiClass, StringInit::get(Name), Scoper);
+}

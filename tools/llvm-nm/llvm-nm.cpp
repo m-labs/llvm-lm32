@@ -192,9 +192,9 @@ static void SortAndPrintSymbolList() {
       strcpy(SymbolSizeStr, "        ");
 
     if (i->Address != object::UnknownAddressOrSize)
-      format("%08x", i->Address).print(SymbolAddrStr, sizeof(SymbolAddrStr));
+      format("%08"PRIx64, i->Address).print(SymbolAddrStr, sizeof(SymbolAddrStr));
     if (i->Size != object::UnknownAddressOrSize)
-      format("%08x", i->Size).print(SymbolSizeStr, sizeof(SymbolSizeStr));
+      format("%08"PRIx64, i->Size).print(SymbolSizeStr, sizeof(SymbolSizeStr));
 
     if (OutputFormat == posix) {
       outs() << i->Name << " " << i->TypeChar << " "
@@ -271,9 +271,9 @@ static void DumpSymbolNamesFromModule(Module *M) {
 
 static void DumpSymbolNamesFromObject(ObjectFile *obj) {
   error_code ec;
-  for (ObjectFile::symbol_iterator i = obj->begin_symbols(),
-                                   e = obj->end_symbols();
-                                   i != e; i.increment(ec)) {
+  for (symbol_iterator i = obj->begin_symbols(),
+                       e = obj->end_symbols();
+                       i != e; i.increment(ec)) {
     if (error(ec)) break;
     bool internal;
     if (error(i->isInternal(internal))) break;
@@ -330,10 +330,10 @@ static void DumpSymbolNamesFromFile(std::string &Filename) {
         OwningPtr<Binary> child;
         if (error_code ec = i->getAsBinary(child)) {
           // Try opening it as a bitcode file.
-          MemoryBuffer *buff = i->getBuffer();
+          OwningPtr<MemoryBuffer> buff(i->getBuffer());
           Module *Result = 0;
           if (buff)
-            Result = ParseBitcodeFile(buff, Context, &ErrorMessage);
+            Result = ParseBitcodeFile(buff.get(), Context, &ErrorMessage);
 
           if (Result) {
             DumpSymbolNamesFromModule(Result);

@@ -201,9 +201,36 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
     ComputeMaskedBits(I->getOperand(1), Mask2, KnownZero, KnownOne, TD,Depth+1);
     ComputeMaskedBits(I->getOperand(0), Mask2, KnownZero2, KnownOne2, TD,
                       Depth+1);
-    assert((KnownZero & KnownOne) == 0 && "Bits known to be one AND zero?"); 
-    assert((KnownZero2 & KnownOne2) == 0 && "Bits known to be one AND zero?"); 
-    
+    assert((KnownZero & KnownOne) == 0 && "Bits known to be one AND zero?");
+    assert((KnownZero2 & KnownOne2) == 0 && "Bits known to be one AND zero?");
+
+    bool isKnownNegative = false;
+    bool isKnownNonNegative = false;
+    // If the multiplication is known not to overflow, compute the sign bit.
+    if (Mask.isNegative() &&
+        cast<OverflowingBinaryOperator>(I)->hasNoSignedWrap()) {
+      Value *Op1 = I->getOperand(1), *Op2 = I->getOperand(0);
+      if (Op1 == Op2) {
+        // The product of a number with itself is non-negative.
+        isKnownNonNegative = true;
+      } else {
+        bool isKnownNonNegative1 = KnownZero.isNegative();
+        bool isKnownNonNegative2 = KnownZero2.isNegative();
+        bool isKnownNegative1 = KnownOne.isNegative();
+        bool isKnownNegative2 = KnownOne2.isNegative();
+        // The product of two numbers with the same sign is non-negative.
+        isKnownNonNegative = (isKnownNegative1 && isKnownNegative2) ||
+          (isKnownNonNegative1 && isKnownNonNegative2);
+        // The product of a negative number and a non-negative number is either
+        // negative or zero.
+        if (!isKnownNonNegative)
+          isKnownNegative = (isKnownNegative1 && isKnownNonNegative2 &&
+                             isKnownNonZero(Op2, TD, Depth)) ||
+                            (isKnownNegative2 && isKnownNonNegative1 &&
+                             isKnownNonZero(Op1, TD, Depth));
+      }
+    }
+
     // If low bits are zero in either operand, output low known-0 bits.
     // Also compute a conserative estimate for high known-0 bits.
     // More trickiness is possible, but this is sufficient for the
@@ -220,6 +247,12 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
     KnownZero = APInt::getLowBitsSet(BitWidth, TrailZ) |
                 APInt::getHighBitsSet(BitWidth, LeadZ);
     KnownZero &= Mask;
+
+    if (isKnownNonNegative)
+      KnownZero.setBit(BitWidth - 1);
+    else if (isKnownNegative)
+      KnownOne.setBit(BitWidth - 1);
+
     return;
   }
   case Instruction::UDiv: {
@@ -712,10 +745,15 @@ void llvm::ComputeSignBit(Value *V, bool &KnownZero, bool &KnownOne,
 /// bit set when defined. For vectors return true if every element is known to
 /// be a power of two when defined.  Supports values with integer or pointer
 /// types and vectors of integers.
-bool llvm::isPowerOfTwo(Value *V, const TargetData *TD, unsigned Depth) {
-  if (ConstantInt *CI = dyn_cast<ConstantInt>(V))
-    return CI->getValue().isPowerOf2();
-  // TODO: Handle vector constants.
+bool llvm::isPowerOfTwo(Value *V, const TargetData *TD, bool OrZero,
+                        unsigned Depth) {
+  if (Constant *C = dyn_cast<Constant>(V)) {
+    if (C->isNullValue())
+      return OrZero;
+    if (ConstantInt *CI = dyn_cast<ConstantInt>(C))
+      return CI->getValue().isPowerOf2();
+    // TODO: Handle vector constants.
+  }
 
   // 1 << X is clearly a power of two if the one is not shifted off the end.  If
   // it is shifted off the end then the result is undefined.
@@ -731,12 +769,29 @@ bool llvm::isPowerOfTwo(Value *V, const TargetData *TD, unsigned Depth) {
   if (Depth++ == MaxDepth)
     return false;
 
+  Value *X = 0, *Y = 0;
+  // A shift of a power of two is a power of two or zero.
+  if (OrZero && (match(V, m_Shl(m_Value(X), m_Value())) ||
+                 match(V, m_Shr(m_Value(X), m_Value()))))
+    return isPowerOfTwo(X, TD, /*OrZero*/true, Depth);
+
   if (ZExtInst *ZI = dyn_cast<ZExtInst>(V))
-    return isPowerOfTwo(ZI->getOperand(0), TD, Depth);
+    return isPowerOfTwo(ZI->getOperand(0), TD, OrZero, Depth);
 
   if (SelectInst *SI = dyn_cast<SelectInst>(V))
-    return isPowerOfTwo(SI->getTrueValue(), TD, Depth) &&
-      isPowerOfTwo(SI->getFalseValue(), TD, Depth);
+    return isPowerOfTwo(SI->getTrueValue(), TD, OrZero, Depth) &&
+      isPowerOfTwo(SI->getFalseValue(), TD, OrZero, Depth);
+
+  if (OrZero && match(V, m_And(m_Value(X), m_Value(Y)))) {
+    // A power of two and'd with anything is a power of two or zero.
+    if (isPowerOfTwo(X, TD, /*OrZero*/true, Depth) ||
+        isPowerOfTwo(Y, TD, /*OrZero*/true, Depth))
+      return true;
+    // X & (-X) is always a power of two or zero.
+    if (match(X, m_Neg(m_Specific(Y))) || match(Y, m_Neg(m_Specific(X))))
+      return true;
+    return false;
+  }
 
   // An exact divide or right shift can only shift off zero bits, so the result
   // is a power of two only if the first operand is a power of two and not
@@ -745,7 +800,7 @@ bool llvm::isPowerOfTwo(Value *V, const TargetData *TD, unsigned Depth) {
       match(V, m_UDiv(m_Value(), m_Value()))) {
     PossiblyExactOperator *PEO = cast<PossiblyExactOperator>(V);
     if (PEO->isExact())
-      return isPowerOfTwo(PEO->getOperand(0), TD, Depth);
+      return isPowerOfTwo(PEO->getOperand(0), TD, OrZero, Depth);
   }
 
   return false;
@@ -767,7 +822,7 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
   }
 
   // The remaining tests are all recursive, so bail out if we hit the limit.
-  if (Depth++ == MaxDepth)
+  if (Depth++ >= MaxDepth)
     return false;
 
   unsigned BitWidth = getBitWidth(V->getType(), TD);
@@ -785,7 +840,7 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
   // if the lowest bit is shifted off the end.
   if (BitWidth && match(V, m_Shl(m_Value(X), m_Value(Y)))) {
     // shl nuw can't remove any non-zero bits.
-    BinaryOperator *BO = cast<BinaryOperator>(V);
+    OverflowingBinaryOperator *BO = cast<OverflowingBinaryOperator>(V);
     if (BO->hasNoUnsignedWrap())
       return isKnownNonZero(X, TD, Depth);
 
@@ -799,7 +854,7 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
   // defined if the sign bit is shifted off the end.
   else if (match(V, m_Shr(m_Value(X), m_Value(Y)))) {
     // shr exact can only shift out zero bits.
-    BinaryOperator *BO = cast<BinaryOperator>(V);
+    PossiblyExactOperator *BO = cast<PossiblyExactOperator>(V);
     if (BO->isExact())
       return isKnownNonZero(X, TD, Depth);
 
@@ -810,7 +865,7 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
   }
   // div exact can only produce a zero if the dividend is zero.
   else if (match(V, m_IDiv(m_Value(X), m_Value()))) {
-    BinaryOperator *BO = cast<BinaryOperator>(V);
+    PossiblyExactOperator *BO = cast<PossiblyExactOperator>(V);
     if (BO->isExact())
       return isKnownNonZero(X, TD, Depth);
   }
@@ -846,9 +901,18 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
     }
 
     // The sum of a non-negative number and a power of two is not zero.
-    if (XKnownNonNegative && isPowerOfTwo(Y, TD, Depth))
+    if (XKnownNonNegative && isPowerOfTwo(Y, TD, /*OrZero*/false, Depth))
       return true;
-    if (YKnownNonNegative && isPowerOfTwo(X, TD, Depth))
+    if (YKnownNonNegative && isPowerOfTwo(X, TD, /*OrZero*/false, Depth))
+      return true;
+  }
+  // X * Y.
+  else if (match(V, m_Mul(m_Value(X), m_Value(Y)))) {
+    OverflowingBinaryOperator *BO = cast<OverflowingBinaryOperator>(V);
+    // If X and Y are non-zero then so is X * Y as long as the multiplication
+    // does not overflow.
+    if ((BO->hasNoSignedWrap() || BO->hasNoUnsignedWrap()) &&
+        isKnownNonZero(X, TD, Depth) && isKnownNonZero(Y, TD, Depth))
       return true;
   }
   // (C ? X : Y) != 0 if X != 0 and Y != 0.
@@ -1525,8 +1589,7 @@ Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
 /// null-terminated C string pointed to by V.  If successful, it returns true
 /// and returns the string in Str.  If unsuccessful, it returns false.
 bool llvm::GetConstantStringInfo(const Value *V, std::string &Str,
-                                 uint64_t Offset,
-                                 bool StopAtNul) {
+                                 uint64_t Offset, bool StopAtNul) {
   // If V is NULL then return false;
   if (V == NULL) return false;
 
@@ -1536,7 +1599,7 @@ bool llvm::GetConstantStringInfo(const Value *V, std::string &Str,
   
   // If the value is not a GEP instruction nor a constant expression with a
   // GEP instruction, then return false because ConstantArray can't occur
-  // any other way
+  // any other way.
   const User *GEP = 0;
   if (const GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(V)) {
     GEP = GEPI;
@@ -1576,7 +1639,7 @@ bool llvm::GetConstantStringInfo(const Value *V, std::string &Str,
     return GetConstantStringInfo(GEP->getOperand(0), Str, StartIdx+Offset,
                                  StopAtNul);
   }
-  
+
   // The GEP instruction, constant or instruction, must reference a global
   // variable that is a constant and is initialized. The referenced constant
   // initializer is the array that we'll use for optimization.
@@ -1585,8 +1648,8 @@ bool llvm::GetConstantStringInfo(const Value *V, std::string &Str,
     return false;
   const Constant *GlobalInit = GV->getInitializer();
   
-  // Handle the ConstantAggregateZero case
-  if (isa<ConstantAggregateZero>(GlobalInit)) {
+  // Handle the all-zeros case
+  if (GlobalInit->isNullValue()) {
     // This is a degenerate case. The initializer is constant zero so the
     // length of the string must be zero.
     Str.clear();
@@ -1665,6 +1728,14 @@ static uint64_t GetStringLengthH(Value *V, SmallPtrSet<PHINode*, 32> &PHIs) {
     if (Len2 == ~0ULL) return Len1;
     if (Len1 != Len2) return 0;
     return Len1;
+  }
+
+  // As a special-case, "@string = constant i8 0" is also a string with zero
+  // length, not wrapped in a bitcast or GEP.
+  if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+    if (GV->isConstant() && GV->hasDefinitiveInitializer())
+      if (GV->getInitializer()->isNullValue()) return 1;
+    return 0;
   }
 
   // If the value is not a GEP instruction nor a constant expression with a

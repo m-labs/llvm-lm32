@@ -152,6 +152,10 @@ NoInitialTextSection("n", cl::desc("Don't assume assembly file starts "
 static cl::opt<bool>
 SaveTempLabels("L", cl::desc("Don't discard temporary labels"));
 
+static cl::opt<bool>
+GenDwarfForAssembly("g", cl::desc("Generate dwarf debugging info for assembly "
+                                  "source files"));
+
 enum ActionType {
   AC_AsLex,
   AC_Assemble,
@@ -175,7 +179,7 @@ Action(cl::desc("Action to perform:"),
 static const Target *GetTarget(const char *ProgName) {
   // Figure out the target triple.
   if (TripleName.empty())
-    TripleName = sys::getHostTriple();
+    TripleName = sys::getDefaultTargetTriple();
   Triple TheTriple(Triple::normalize(TripleName));
 
   const Target *TheTarget = 0;
@@ -267,7 +271,8 @@ static int AsLexInput(const char *ProgName) {
 
     switch (Tok.getKind()) {
     default:
-      SrcMgr.PrintMessage(Lexer.getLoc(), "unknown token", "warning");
+      SrcMgr.PrintMessage(Lexer.getLoc(), SourceMgr::DK_Warning,
+                          "unknown token");
       Error = true;
       break;
     case AsmToken::Error:
@@ -376,6 +381,8 @@ static int AssembleInput(const char *ProgName) {
   if (SaveTempLabels)
     Ctx.setAllowTemporaryLabels(false);
 
+  Ctx.setGenDwarfForAssembly(GenDwarfForAssembly);
+
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;
   if (MAttrs.size()) {
@@ -408,8 +415,10 @@ static int AssembleInput(const char *ProgName) {
     }
     Str.reset(TheTarget->createAsmStreamer(Ctx, FOS, /*asmverbose*/true,
                                            /*useLoc*/ true,
-                                           /*useCFI*/ true, IP, CE, MAB,
-                                           ShowInst));
+                                           /*useCFI*/ true,
+                                           /*useDwarfDirectory*/ true,
+                                           IP, CE, MAB, ShowInst));
+                                           
   } else if (FileType == OFT_Null) {
     Str.reset(createNullStreamer(Ctx));
   } else {
@@ -514,4 +523,3 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-

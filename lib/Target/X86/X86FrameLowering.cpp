@@ -1113,9 +1113,7 @@ int X86FrameLowering::getFrameIndexOffset(const MachineFunction &MF, int FI) con
       // Skip the saved EBP.
       Offset += RI->getSlotSize();
     } else {
-      unsigned Align = MFI->getObjectAlignment(FI);
-      assert((-(Offset + StackSize)) % Align == 0);
-      Align = 0;
+      assert((-(Offset + StackSize)) % MFI->getObjectAlignment(FI) == 0);
       return Offset + StackSize;
     }
     // FIXME: Support tail calls
@@ -1267,7 +1265,7 @@ X86FrameLowering::processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                           true);
     assert(FrameIdx == MFI->getObjectIndexBegin() &&
            "Slot for EBP register must be last in order to be found!");
-    FrameIdx = 0;
+    (void)FrameIdx;
   }
 }
 
@@ -1335,6 +1333,9 @@ X86FrameLowering::adjustForSegmentedStacks(MachineFunction &MF) const {
   // We need to know if the function has a nest argument only in 64 bit mode.
   if (Is64Bit)
     IsNested = HasNestArgument(&MF);
+
+  // The MOV R10, RAX needs to be in a different block, since the RET we emit in
+  // allocMBB needs to be last (terminating) instruction.
 
   for (MachineBasicBlock::livein_iterator i = prologueMBB.livein_begin(),
          e = prologueMBB.livein_end(); i != e; i++) {
@@ -1414,12 +1415,13 @@ X86FrameLowering::adjustForSegmentedStacks(MachineFunction &MF) const {
   if (!Is64Bit)
     BuildMI(allocMBB, DL, TII.get(X86::ADD32ri), X86::ESP).addReg(X86::ESP)
       .addImm(8);
-  BuildMI(allocMBB, DL, TII.get(X86::RET));
-
-  if (Is64Bit && IsNested)
-    BuildMI(allocMBB, DL, TII.get(X86::MOV64rr), X86::R10).addReg(X86::RAX);
+  if (IsNested)
+    BuildMI(allocMBB, DL, TII.get(X86::MORESTACK_RET_RESTORE_R10));
+  else
+    BuildMI(allocMBB, DL, TII.get(X86::MORESTACK_RET));
 
   allocMBB->addSuccessor(&prologueMBB);
+
   checkMBB->addSuccessor(allocMBB);
   checkMBB->addSuccessor(&prologueMBB);
 

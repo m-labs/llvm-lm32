@@ -286,15 +286,14 @@ include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-Wno-variadic-macros" SUPPORTS_NO_VARIADIC_MACROS_FLAG)
 
 include(GetTargetTriple)
-get_target_triple(LLVM_HOSTTRIPLE)
+get_target_triple(LLVM_DEFAULT_TARGET_TRIPLE)
 
-# FIXME: We don't distinguish the target and the host. :(
-set(TARGET_TRIPLE "${LLVM_HOSTTRIPLE}")
+set(TARGET_TRIPLE "${LLVM_DEFAULT_TARGET_TRIPLE}")
 
 # Determine the native architecture.
 string(TOLOWER "${LLVM_TARGET_ARCH}" LLVM_NATIVE_ARCH)
 if( LLVM_NATIVE_ARCH STREQUAL "host" )
-  string(REGEX MATCH "^[^-]*" LLVM_NATIVE_ARCH ${LLVM_HOSTTRIPLE})
+  string(REGEX MATCH "^[^-]*" LLVM_NATIVE_ARCH ${LLVM_DEFAULT_TARGET_TRIPLE})
 endif ()
 
 if (LLVM_NATIVE_ARCH MATCHES "i[2-6]86")
@@ -309,8 +308,6 @@ elseif (LLVM_NATIVE_ARCH MATCHES "sparc")
   set(LLVM_NATIVE_ARCH Sparc)
 elseif (LLVM_NATIVE_ARCH MATCHES "powerpc")
   set(LLVM_NATIVE_ARCH PowerPC)
-elseif (LLVM_NATIVE_ARCH MATCHES "alpha")
-  set(LLVM_NATIVE_ARCH Alpha)
 elseif (LLVM_NATIVE_ARCH MATCHES "arm")
   set(LLVM_NATIVE_ARCH ARM)
 elseif (LLVM_NATIVE_ARCH MATCHES "mips")

@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Object/COFF.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 
@@ -97,21 +98,7 @@ error_code COFFObjectFile::getSymbolNext(DataRefImpl Symb,
  error_code COFFObjectFile::getSymbolName(DataRefImpl Symb,
                                           StringRef &Result) const {
   const coff_symbol *symb = toSymb(Symb);
-  // Check for string table entry. First 4 bytes are 0.
-  if (symb->Name.Offset.Zeroes == 0) {
-    uint32_t Offset = symb->Name.Offset.Offset;
-    if (error_code ec = getString(Offset, Result))
-      return ec;
-    return object_error::success;
-  }
-
-  if (symb->Name.ShortName[7] == 0)
-    // Null terminated, let ::strlen figure out the length.
-    Result = StringRef(symb->Name.ShortName);
-  else
-    // Not null terminated, use all 8 bytes.
-    Result = StringRef(symb->Name.ShortName, 8);
-  return object_error::success;
+  return getSymbolName(symb, Result);
 }
 
 error_code COFFObjectFile::getSymbolOffset(DataRefImpl Symb,
@@ -153,14 +140,14 @@ error_code COFFObjectFile::getSymbolAddress(DataRefImpl Symb,
 }
 
 error_code COFFObjectFile::getSymbolType(DataRefImpl Symb,
-                                         SymbolRef::SymbolType &Result) const {
+                                         SymbolRef::Type &Result) const {
   const coff_symbol *symb = toSymb(Symb);
   Result = SymbolRef::ST_Other;
   if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL &&
       symb->SectionNumber == COFF::IMAGE_SYM_UNDEFINED) {
     Result = SymbolRef::ST_External;
   } else {
-    if (symb->Type.ComplexType == COFF::IMAGE_SYM_DTYPE_FUNCTION) {
+    if (symb->getComplexType() == COFF::IMAGE_SYM_DTYPE_FUNCTION) {
       Result = SymbolRef::ST_Function;
     } else {
       char Type;
@@ -178,6 +165,13 @@ error_code COFFObjectFile::isSymbolGlobal(DataRefImpl Symb,
                                           bool &Result) const {
   const coff_symbol *symb = toSymb(Symb);
   Result = (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL);
+  return object_error::success;
+}
+
+error_code COFFObjectFile::isSymbolWeak(DataRefImpl Symb,
+                                          bool &Result) const {
+  const coff_symbol *symb = toSymb(Symb);
+  Result = (symb->StorageClass == COFF::IMAGE_SYM_CLASS_WEAK_EXTERNAL);
   return object_error::success;
 }
 
@@ -274,6 +268,29 @@ error_code COFFObjectFile::isSymbolInternal(DataRefImpl Symb,
   return object_error::success;
 }
 
+error_code COFFObjectFile::isSymbolAbsolute(DataRefImpl Symb,
+                                            bool &Result) const {
+  const coff_symbol *symb = toSymb(Symb);
+  Result = symb->SectionNumber == COFF::IMAGE_SYM_ABSOLUTE;
+  return object_error::success;
+}
+
+error_code COFFObjectFile::getSymbolSection(DataRefImpl Symb,
+                                            section_iterator &Result) const {
+  const coff_symbol *symb = toSymb(Symb);
+  if (symb->SectionNumber <= COFF::IMAGE_SYM_UNDEFINED)
+    Result = end_sections();
+  else {
+    const coff_section *sec;
+    if (error_code ec = getSection(symb->SectionNumber, sec)) return ec;
+    DataRefImpl Sec;
+    std::memset(&Sec, 0, sizeof(Sec));
+    Sec.p = reinterpret_cast<uintptr_t>(sec);
+    Result = section_iterator(SectionRef(Sec, this));
+  }
+  return object_error::success;
+}
+
 error_code COFFObjectFile::getSectionNext(DataRefImpl Sec,
                                           SectionRef &Result) const {
   const coff_section *sec = toSec(Sec);
@@ -335,6 +352,15 @@ error_code COFFObjectFile::getSectionContents(DataRefImpl Sec,
   return object_error::success;
 }
 
+error_code COFFObjectFile::getSectionAlignment(DataRefImpl Sec,
+                                               uint64_t &Res) const {
+  const coff_section *sec = toSec(Sec);
+  if (!sec)
+    return object_error::parse_failed;
+  Res = uint64_t(1) << (((sec->Characteristics & 0x00F00000) >> 20) - 1);
+  return object_error::success;
+}
+
 error_code COFFObjectFile::isSectionText(DataRefImpl Sec,
                                          bool &Result) const {
   const coff_section *sec = toSec(Sec);
@@ -359,9 +385,42 @@ error_code COFFObjectFile::isSectionBSS(DataRefImpl Sec,
 error_code COFFObjectFile::sectionContainsSymbol(DataRefImpl Sec,
                                                  DataRefImpl Symb,
                                                  bool &Result) const {
-  // FIXME: Unimplemented.
-  Result = false;
+  const coff_section *sec = toSec(Sec);
+  const coff_symbol *symb = toSymb(Symb);
+  const coff_section *symb_sec;
+  if (error_code ec = getSection(symb->SectionNumber, symb_sec)) return ec;
+  if (symb_sec == sec)
+    Result = true;
+  else
+    Result = false;
   return object_error::success;
+}
+
+relocation_iterator COFFObjectFile::getSectionRelBegin(DataRefImpl Sec) const {
+  const coff_section *sec = toSec(Sec);
+  DataRefImpl ret;
+  std::memset(&ret, 0, sizeof(ret));
+  if (sec->NumberOfRelocations == 0)
+    ret.p = 0;
+  else
+    ret.p = reinterpret_cast<uintptr_t>(base() + sec->PointerToRelocations);
+
+  return relocation_iterator(RelocationRef(ret, this));
+}
+
+relocation_iterator COFFObjectFile::getSectionRelEnd(DataRefImpl Sec) const {
+  const coff_section *sec = toSec(Sec);
+  DataRefImpl ret;
+  std::memset(&ret, 0, sizeof(ret));
+  if (sec->NumberOfRelocations == 0)
+    ret.p = 0;
+  else
+    ret.p = reinterpret_cast<uintptr_t>(
+              reinterpret_cast<const coff_relocation*>(
+                base() + sec->PointerToRelocations)
+              + sec->NumberOfRelocations);
+
+  return relocation_iterator(RelocationRef(ret, this));
 }
 
 COFFObjectFile::COFFObjectFile(MemoryBuffer *Object, error_code &ec)
@@ -427,14 +486,14 @@ COFFObjectFile::COFFObjectFile(MemoryBuffer *Object, error_code &ec)
   ec = object_error::success;
 }
 
-ObjectFile::symbol_iterator COFFObjectFile::begin_symbols() const {
+symbol_iterator COFFObjectFile::begin_symbols() const {
   DataRefImpl ret;
   std::memset(&ret, 0, sizeof(DataRefImpl));
   ret.p = reinterpret_cast<intptr_t>(SymbolTable);
   return symbol_iterator(SymbolRef(ret, this));
 }
 
-ObjectFile::symbol_iterator COFFObjectFile::end_symbols() const {
+symbol_iterator COFFObjectFile::end_symbols() const {
   // The symbol table ends where the string table begins.
   DataRefImpl ret;
   std::memset(&ret, 0, sizeof(DataRefImpl));
@@ -442,14 +501,14 @@ ObjectFile::symbol_iterator COFFObjectFile::end_symbols() const {
   return symbol_iterator(SymbolRef(ret, this));
 }
 
-ObjectFile::section_iterator COFFObjectFile::begin_sections() const {
+section_iterator COFFObjectFile::begin_sections() const {
   DataRefImpl ret;
   std::memset(&ret, 0, sizeof(DataRefImpl));
   ret.p = reinterpret_cast<intptr_t>(SectionTable);
   return section_iterator(SectionRef(ret, this));
 }
 
-ObjectFile::section_iterator COFFObjectFile::end_sections() const {
+section_iterator COFFObjectFile::end_sections() const {
   DataRefImpl ret;
   std::memset(&ret, 0, sizeof(DataRefImpl));
   ret.p = reinterpret_cast<intptr_t>(SectionTable + Header->NumberOfSections);
@@ -482,6 +541,11 @@ unsigned COFFObjectFile::getArch() const {
   }
 }
 
+error_code COFFObjectFile::getHeader(const coff_file_header *&Res) const {
+  Res = Header;
+  return object_error::success;
+}
+
 error_code COFFObjectFile::getSection(int32_t index,
                                       const coff_section *&Result) const {
   // Check for special index values.
@@ -508,76 +572,140 @@ error_code COFFObjectFile::getString(uint32_t offset,
   return object_error::success;
 }
 
+error_code COFFObjectFile::getSymbol(uint32_t index,
+                                     const coff_symbol *&Result) const {
+  if (index < Header->NumberOfSymbols)
+    Result = SymbolTable + index;
+  else
+    return object_error::parse_failed;
+  return object_error::success;
+}
+
+error_code COFFObjectFile::getSymbolName(const coff_symbol *symbol,
+                                         StringRef &Res) const {
+  // Check for string table entry. First 4 bytes are 0.
+  if (symbol->Name.Offset.Zeroes == 0) {
+    uint32_t Offset = symbol->Name.Offset.Offset;
+    if (error_code ec = getString(Offset, Res))
+      return ec;
+    return object_error::success;
+  }
+
+  if (symbol->Name.ShortName[7] == 0)
+    // Null terminated, let ::strlen figure out the length.
+    Res = StringRef(symbol->Name.ShortName);
+  else
+    // Not null terminated, use all 8 bytes.
+    Res = StringRef(symbol->Name.ShortName, 8);
+  return object_error::success;
+}
+
 const coff_relocation *COFFObjectFile::toRel(DataRefImpl Rel) const {
-  assert(Rel.d.b < Header->NumberOfSections && "Section index out of range!");
-  const coff_section *Sect = NULL;
-  getSection(Rel.d.b, Sect);
-  assert(Rel.d.a < Sect->NumberOfRelocations && "Relocation index out of range!");
-  return
-    reinterpret_cast<const coff_relocation*>(base() +
-                                             Sect->PointerToRelocations) +
-                                             Rel.d.a;
+  return reinterpret_cast<const coff_relocation*>(Rel.p);
 }
 error_code COFFObjectFile::getRelocationNext(DataRefImpl Rel,
                                              RelocationRef &Res) const {
-  const coff_section *Sect = NULL;
-  if (error_code ec = getSection(Rel.d.b, Sect))
-    return ec;
-  if (++Rel.d.a >= Sect->NumberOfRelocations) {
-    Rel.d.a = 0;
-    while (++Rel.d.b < Header->NumberOfSections) {
-      const coff_section *Sect = NULL;
-      getSection(Rel.d.b, Sect);
-      if (Sect->NumberOfRelocations > 0)
-        break;
-    }
-  }
+  Rel.p = reinterpret_cast<uintptr_t>(
+            reinterpret_cast<const coff_relocation*>(Rel.p) + 1);
   Res = RelocationRef(Rel, this);
   return object_error::success;
 }
 error_code COFFObjectFile::getRelocationAddress(DataRefImpl Rel,
                                                 uint64_t &Res) const {
-  const coff_section *Sect = NULL;
-  if (error_code ec = getSection(Rel.d.b, Sect))
-    return ec;
-  const coff_relocation* R = toRel(Rel);
-  Res = reinterpret_cast<uintptr_t>(base() +
-                                    Sect->PointerToRawData +
-                                    R->VirtualAddress);
+  Res = toRel(Rel)->VirtualAddress;
   return object_error::success;
 }
 error_code COFFObjectFile::getRelocationSymbol(DataRefImpl Rel,
                                                SymbolRef &Res) const {
   const coff_relocation* R = toRel(Rel);
   DataRefImpl Symb;
+  std::memset(&Symb, 0, sizeof(Symb));
   Symb.p = reinterpret_cast<uintptr_t>(SymbolTable + R->SymbolTableIndex);
   Res = SymbolRef(Symb, this);
   return object_error::success;
 }
 error_code COFFObjectFile::getRelocationType(DataRefImpl Rel,
-                                             uint32_t &Res) const {
+                                             uint64_t &Res) const {
   const coff_relocation* R = toRel(Rel);
   Res = R->Type;
   return object_error::success;
 }
+
+#define LLVM_COFF_SWITCH_RELOC_TYPE_NAME(enum) \
+  case COFF::enum: res = #enum; break;
+
+error_code COFFObjectFile::getRelocationTypeName(DataRefImpl Rel,
+                                          SmallVectorImpl<char> &Result) const {
+  const coff_relocation *reloc = toRel(Rel);
+  StringRef res;
+  switch (Header->Machine) {
+  case COFF::IMAGE_FILE_MACHINE_AMD64:
+    switch (reloc->Type) {
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_ABSOLUTE);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_ADDR64);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_ADDR32);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_ADDR32NB);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32_1);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32_2);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32_3);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32_4);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_REL32_5);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_SECTION);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_SECREL);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_SECREL7);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_TOKEN);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_SREL32);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_PAIR);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_AMD64_SSPAN32);
+    default:
+      res = "Unknown";
+    }
+    break;
+  case COFF::IMAGE_FILE_MACHINE_I386:
+    switch (reloc->Type) {
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_ABSOLUTE);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_DIR16);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_REL16);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_DIR32);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_DIR32NB);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_SEG12);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_SECTION);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_SECREL);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_TOKEN);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_SECREL7);
+    LLVM_COFF_SWITCH_RELOC_TYPE_NAME(IMAGE_REL_I386_REL32);
+    default:
+      res = "Unknown";
+    }
+    break;
+  default:
+    res = "Unknown";
+  }
+  Result.append(res.begin(), res.end());
+  return object_error::success;
+}
+
+#undef LLVM_COFF_SWITCH_RELOC_TYPE_NAME
+
 error_code COFFObjectFile::getRelocationAdditionalInfo(DataRefImpl Rel,
                                                        int64_t &Res) const {
   Res = 0;
   return object_error::success;
 }
-ObjectFile::relocation_iterator COFFObjectFile::begin_relocations() const {
-  DataRefImpl ret;
-  ret.d.a = 0;
-  ret.d.b = 1;
-  return relocation_iterator(RelocationRef(ret, this));
+error_code COFFObjectFile::getRelocationValueString(DataRefImpl Rel,
+                                          SmallVectorImpl<char> &Result) const {
+  const coff_relocation *reloc = toRel(Rel);
+  const coff_symbol *symb = 0;
+  if (error_code ec = getSymbol(reloc->SymbolTableIndex, symb)) return ec;
+  DataRefImpl sym;
+  ::memset(&sym, 0, sizeof(sym));
+  sym.p = reinterpret_cast<uintptr_t>(symb);
+  StringRef symname;
+  if (error_code ec = getSymbolName(sym, symname)) return ec;
+  Result.append(symname.begin(), symname.end());
+  return object_error::success;
 }
-ObjectFile::relocation_iterator COFFObjectFile::end_relocations() const {
-  DataRefImpl ret;
-  ret.d.a = 0;
-  ret.d.b = Header->NumberOfSections;
-  return relocation_iterator(RelocationRef(ret, this));
-}
-
 
 namespace llvm {
 

@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This is a target description file for the Intel i386 architecture, referred to
-// here as the "X86" architecture.
+// This is a target description file for the Intel i386 architecture, referred
+// to here as the "X86" architecture.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,9 +22,6 @@ include "llvm/Target/Target.td"
 
 def Mode64Bit : SubtargetFeature<"64bit-mode", "In64BitMode", "true",
                                   "64-bit mode (x86_64)">;
-
-def ModeNaCl  : SubtargetFeature<"nacl-mode", "InNaClMode", "true",
-                                 "Native Client mode">;
 
 //===----------------------------------------------------------------------===//
 // X86 Subtarget features.
@@ -85,6 +82,9 @@ def FeatureSSE4A   : SubtargetFeature<"sse4a", "HasSSE4A", "true",
 
 def FeatureAVX     : SubtargetFeature<"avx", "HasAVX", "true",
                                       "Enable AVX instructions">;
+def FeatureAVX2    : SubtargetFeature<"avx2", "HasAVX2", "true",
+                                      "Enable AVX2 instructions",
+                                      [FeatureAVX]>;
 def FeatureCLMUL   : SubtargetFeature<"clmul", "HasCLMUL", "true",
                                "Enable carry-less multiplication instructions">;
 def FeatureFMA3    : SubtargetFeature<"fma3", "HasFMA3", "true",
@@ -100,6 +100,16 @@ def FeatureMOVBE   : SubtargetFeature<"movbe", "HasMOVBE", "true",
                                       "Support MOVBE instruction">;
 def FeatureRDRAND  : SubtargetFeature<"rdrand", "HasRDRAND", "true",
                                       "Support RDRAND instruction">;
+def FeatureF16C    : SubtargetFeature<"f16c", "HasF16C", "true",
+                       "Support 16-bit floating point conversion instructions">;
+def FeatureFSGSBase : SubtargetFeature<"fsgsbase", "HasFSGSBase", "true",
+                                       "Support FS/GS Base instructions">;
+def FeatureLZCNT   : SubtargetFeature<"lzcnt", "HasLZCNT", "true",
+                                      "Support LZCNT instruction">;
+def FeatureBMI     : SubtargetFeature<"bmi", "HasBMI", "true",
+                                      "Support BMI instructions">;
+def FeatureBMI2    : SubtargetFeature<"bmi2", "HasBMI2", "true",
+                                      "Support BMI2 instructions">;
 
 //===----------------------------------------------------------------------===//
 // X86 processors supported.
@@ -131,7 +141,7 @@ def : Proc<"core2",           [FeatureSSSE3, FeatureCMPXCHG16B,
                                FeatureSlowBTMem]>;
 def : Proc<"penryn",          [FeatureSSE41, FeatureCMPXCHG16B,
                                FeatureSlowBTMem]>;
-def : Proc<"atom",            [FeatureSSE3,  FeatureCMPXCHG16B,
+def : Proc<"atom",            [FeatureSSE3, FeatureCMPXCHG16B, FeatureMOVBE,
                                FeatureSlowBTMem]>;
 // "Arrandale" along with corei3 and corei5
 def : Proc<"corei7",          [FeatureSSE42, FeatureCMPXCHG16B,
@@ -143,11 +153,23 @@ def : Proc<"nehalem",         [FeatureSSE42,  FeatureCMPXCHG16B,
 def : Proc<"westmere",        [FeatureSSE42, FeatureCMPXCHG16B,
                                FeatureSlowBTMem, FeatureFastUAMem, FeatureAES,
                                FeatureCLMUL]>;
+// Sandy Bridge
 // SSE is not listed here since llvm treats AVX as a reimplementation of SSE,
 // rather than a superset.
 // FIXME: Disabling AVX for now since it's not ready.
 def : Proc<"corei7-avx",      [FeatureSSE42, FeatureCMPXCHG16B,
                                FeatureAES, FeatureCLMUL]>;
+// Ivy Bridge
+def : Proc<"core-avx-i",      [FeatureSSE42, FeatureCMPXCHG16B,
+                               FeatureAES, FeatureCLMUL,
+                               FeatureRDRAND, FeatureF16C, FeatureFSGSBase]>;
+
+// Haswell
+// FIXME: Disabling AVX/AVX2 for now since it's not ready.
+def : Proc<"core-avx2",       [FeatureSSE42, FeatureCMPXCHG16B, FeatureAES,
+                               FeatureCLMUL, FeatureRDRAND, FeatureF16C,
+                               FeatureFSGSBase, FeatureFMA3, FeatureMOVBE,
+                               FeatureLZCNT, FeatureBMI, FeatureBMI2]>;
 
 def : Proc<"k6",              [FeatureMMX]>;
 def : Proc<"k6-2",            [Feature3DNow]>;
@@ -178,9 +200,8 @@ def : Proc<"barcelona",       [FeatureSSE3,   FeatureSSE4A,
                                Feature3DNowA, FeatureCMPXCHG16B,
                                FeatureSlowBTMem]>;
 def : Proc<"istanbul",        [Feature3DNowA, FeatureCMPXCHG16B,
-                               FeatureSSE4A, Feature3DNowA]>;
-def : Proc<"shanghai",        [Feature3DNowA, FeatureCMPXCHG16B, FeatureSSE4A,
-                               Feature3DNowA]>;
+                               FeatureSSE4A]>;
+def : Proc<"shanghai",        [Feature3DNowA, FeatureCMPXCHG16B, FeatureSSE4A]>;
 
 def : Proc<"winchip-c6",      [FeatureMMX]>;
 def : Proc<"winchip2",        [Feature3DNow]>;

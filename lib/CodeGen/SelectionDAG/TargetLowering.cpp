@@ -36,7 +36,7 @@ using namespace llvm;
 /// - the promotion of vector elements. This feature is disabled by default
 /// and only enabled using this flag.
 static cl::opt<bool>
-AllowPromoteIntElem("promote-elements", cl::Hidden,
+AllowPromoteIntElem("promote-elements", cl::Hidden, cl::init(true),
   cl::desc("Allow promotion of integer vector element types"));
 
 namespace llvm {
@@ -317,7 +317,7 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::SYNC_FETCH_AND_OR_8] = "__sync_fetch_and_or_8";
   Names[RTLIB::SYNC_FETCH_AND_XOR_1] = "__sync_fetch_and_xor_1";
   Names[RTLIB::SYNC_FETCH_AND_XOR_2] = "__sync_fetch_and_xor_2";
-  Names[RTLIB::SYNC_FETCH_AND_XOR_4] = "__sync_fetch_and-xor_4";
+  Names[RTLIB::SYNC_FETCH_AND_XOR_4] = "__sync_fetch_and_xor_4";
   Names[RTLIB::SYNC_FETCH_AND_XOR_8] = "__sync_fetch_and_xor_8";
   Names[RTLIB::SYNC_FETCH_AND_NAND_1] = "__sync_fetch_and_nand_1";
   Names[RTLIB::SYNC_FETCH_AND_NAND_2] = "__sync_fetch_and_nand_2";
@@ -610,7 +610,7 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   ExceptionSelectorRegister = 0;
   BooleanContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
-  SchedPreferenceInfo = Sched::Latency;
+  SchedPreferenceInfo = Sched::ILP;
   JumpBufSize = 0;
   JumpBufAlignment = 0;
   MinFunctionAlignment = 0;
@@ -2760,16 +2760,8 @@ getRegForInlineAsmConstraint(const std::string &Constraint,
 
     // If none of the value types for this register class are valid, we
     // can't use it.  For example, 64-bit reg classes on 32-bit targets.
-    bool isLegal = false;
-    for (TargetRegisterClass::vt_iterator I = RC->vt_begin(), E = RC->vt_end();
-         I != E; ++I) {
-      if (isTypeLegal(*I)) {
-        isLegal = true;
-        break;
-      }
-    }
-
-    if (!isLegal) continue;
+    if (!isLegalRC(RC))
+      continue;
 
     for (TargetRegisterClass::iterator I = RC->begin(), E = RC->end();
          I != E; ++I) {

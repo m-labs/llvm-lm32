@@ -68,6 +68,20 @@ static Constant *getTrue(Type *Ty) {
   return Constant::getAllOnesValue(Ty);
 }
 
+/// isSameCompare - Is V equivalent to the comparison "LHS Pred RHS"?
+static bool isSameCompare(Value *V, CmpInst::Predicate Pred, Value *LHS,
+                          Value *RHS) {
+  CmpInst *Cmp = dyn_cast<CmpInst>(V);
+  if (!Cmp)
+    return false;
+  CmpInst::Predicate CPred = Cmp->getPredicate();
+  Value *CLHS = Cmp->getOperand(0), *CRHS = Cmp->getOperand(1);
+  if (CPred == Pred && CLHS == LHS && CRHS == RHS)
+    return true;
+  return CPred == CmpInst::getSwappedPredicate(Pred) && CLHS == RHS &&
+    CRHS == LHS;
+}
+
 /// ValueDominatesPHI - Does the given value dominate the specified phi node?
 static bool ValueDominatesPHI(Value *V, PHINode *P, const DominatorTree *DT) {
   Instruction *I = dyn_cast<Instruction>(V);
@@ -416,39 +430,61 @@ static Value *ThreadCmpOverSelect(CmpInst::Predicate Pred, Value *LHS,
   }
   assert(isa<SelectInst>(LHS) && "Not comparing with a select instruction!");
   SelectInst *SI = cast<SelectInst>(LHS);
+  Value *Cond = SI->getCondition();
+  Value *TV = SI->getTrueValue();
+  Value *FV = SI->getFalseValue();
 
   // Now that we have "cmp select(Cond, TV, FV), RHS", analyse it.
   // Does "cmp TV, RHS" simplify?
-  if (Value *TCmp = SimplifyCmpInst(Pred, SI->getTrueValue(), RHS, TD, DT,
-                                    MaxRecurse)) {
-    // It does!  Does "cmp FV, RHS" simplify?
-    if (Value *FCmp = SimplifyCmpInst(Pred, SI->getFalseValue(), RHS, TD, DT,
-                                      MaxRecurse)) {
-      // It does!  If they simplified to the same value, then use it as the
-      // result of the original comparison.
-      if (TCmp == FCmp)
-        return TCmp;
-      Value *Cond = SI->getCondition();
-      // If the false value simplified to false, then the result of the compare
-      // is equal to "Cond && TCmp".  This also catches the case when the false
-      // value simplified to false and the true value to true, returning "Cond".
-      if (match(FCmp, m_Zero()))
-        if (Value *V = SimplifyAndInst(Cond, TCmp, TD, DT, MaxRecurse))
-          return V;
-      // If the true value simplified to true, then the result of the compare
-      // is equal to "Cond || FCmp".
-      if (match(TCmp, m_One()))
-        if (Value *V = SimplifyOrInst(Cond, FCmp, TD, DT, MaxRecurse))
-          return V;
-      // Finally, if the false value simplified to true and the true value to
-      // false, then the result of the compare is equal to "!Cond".
-      if (match(FCmp, m_One()) && match(TCmp, m_Zero()))
-        if (Value *V =
-            SimplifyXorInst(Cond, Constant::getAllOnesValue(Cond->getType()),
-                            TD, DT, MaxRecurse))
-          return V;
-    }
+  Value *TCmp = SimplifyCmpInst(Pred, TV, RHS, TD, DT, MaxRecurse);
+  if (TCmp == Cond) {
+    // It not only simplified, it simplified to the select condition.  Replace
+    // it with 'true'.
+    TCmp = getTrue(Cond->getType());
+  } else if (!TCmp) {
+    // It didn't simplify.  However if "cmp TV, RHS" is equal to the select
+    // condition then we can replace it with 'true'.  Otherwise give up.
+    if (!isSameCompare(Cond, Pred, TV, RHS))
+      return 0;
+    TCmp = getTrue(Cond->getType());
   }
+
+  // Does "cmp FV, RHS" simplify?
+  Value *FCmp = SimplifyCmpInst(Pred, FV, RHS, TD, DT, MaxRecurse);
+  if (FCmp == Cond) {
+    // It not only simplified, it simplified to the select condition.  Replace
+    // it with 'false'.
+    FCmp = getFalse(Cond->getType());
+  } else if (!FCmp) {
+    // It didn't simplify.  However if "cmp FV, RHS" is equal to the select
+    // condition then we can replace it with 'false'.  Otherwise give up.
+    if (!isSameCompare(Cond, Pred, FV, RHS))
+      return 0;
+    FCmp = getFalse(Cond->getType());
+  }
+
+  // If both sides simplified to the same value, then use it as the result of
+  // the original comparison.
+  if (TCmp == FCmp)
+    return TCmp;
+  // If the false value simplified to false, then the result of the compare
+  // is equal to "Cond && TCmp".  This also catches the case when the false
+  // value simplified to false and the true value to true, returning "Cond".
+  if (match(FCmp, m_Zero()))
+    if (Value *V = SimplifyAndInst(Cond, TCmp, TD, DT, MaxRecurse))
+      return V;
+  // If the true value simplified to true, then the result of the compare
+  // is equal to "Cond || FCmp".
+  if (match(TCmp, m_One()))
+    if (Value *V = SimplifyOrInst(Cond, FCmp, TD, DT, MaxRecurse))
+      return V;
+  // Finally, if the false value simplified to true and the true value to
+  // false, then the result of the compare is equal to "!Cond".
+  if (match(FCmp, m_One()) && match(TCmp, m_Zero()))
+    if (Value *V =
+        SimplifyXorInst(Cond, Constant::getAllOnesValue(Cond->getType()),
+                        TD, DT, MaxRecurse))
+      return V;
 
   return 0;
 }
@@ -758,7 +794,8 @@ static Value *SimplifyMulInst(Value *Op0, Value *Op1, const TargetData *TD,
   Value *X = 0, *Y = 0;
   if ((match(Op0, m_IDiv(m_Value(X), m_Value(Y))) && Y == Op1) || // (X / Y) * Y
       (match(Op1, m_IDiv(m_Value(X), m_Value(Y))) && Y == Op0)) { // Y * (X / Y)
-    BinaryOperator *Div = cast<BinaryOperator>(Y == Op1 ? Op0 : Op1);
+    PossiblyExactOperator *Div =
+      cast<PossiblyExactOperator>(Y == Op1 ? Op0 : Op1);
     if (Div->isExact())
       return X;
   }
@@ -842,7 +879,7 @@ static Value *SimplifyDiv(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
   Value *X = 0, *Y = 0;
   if (match(Op0, m_Mul(m_Value(X), m_Value(Y))) && (X == Op1 || Y == Op1)) {
     if (Y != Op1) std::swap(X, Y); // Ensure expression is (X * Y) / Y, Y = Op1
-    BinaryOperator *Mul = cast<BinaryOperator>(Op0);
+    OverflowingBinaryOperator *Mul = cast<OverflowingBinaryOperator>(Op0);
     // If the Mul knows it does not overflow, then we are good to go.
     if ((isSigned && Mul->hasNoSignedWrap()) ||
         (!isSigned && Mul->hasNoUnsignedWrap()))
@@ -1196,6 +1233,15 @@ static Value *SimplifyAndInst(Value *Op0, Value *Op1, const TargetData *TD,
   if (match(Op1, m_Or(m_Value(A), m_Value(B))) &&
       (A == Op0 || B == Op0))
     return Op0;
+
+  // A & (-A) = A if A is a power of two or zero.
+  if (match(Op0, m_Neg(m_Specific(Op1))) ||
+      match(Op1, m_Neg(m_Specific(Op0)))) {
+    if (isPowerOfTwo(Op0, TD, /*OrZero*/true))
+      return Op0;
+    if (isPowerOfTwo(Op1, TD, /*OrZero*/true))
+      return Op1;
+  }
 
   // Try some generic simplifications for associative operations.
   if (Value *V = SimplifyAssociativeBinOp(Instruction::And, Op0, Op1, TD, DT,
@@ -1564,6 +1610,9 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
       // 'srem x, CI2' produces (-|CI2|, |CI2|).
       Upper = CI2->getValue().abs();
       Lower = (-Upper) + 1;
+    } else if (match(LHS, m_UDiv(m_ConstantInt(CI2), m_Value()))) {
+      // 'udiv CI2, x' produces [0, CI2].
+      Upper = CI2->getValue();
     } else if (match(LHS, m_UDiv(m_Value(), m_ConstantInt(CI2)))) {
       // 'udiv x, CI2' produces [0, UINT_MAX / CI2].
       APInt NegOne = APInt::getAllOnesValue(Width);
@@ -1868,6 +1917,15 @@ static Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
     case ICmpInst::ICMP_ULE:
       return getFalse(ITy);
     }
+  }
+
+  // x udiv y <=u x.
+  if (LBO && match(LBO, m_UDiv(m_Specific(RHS), m_Value()))) {
+    // icmp pred (X /u Y), X
+    if (Pred == ICmpInst::ICMP_UGT)
+      return getFalse(ITy);
+    if (Pred == ICmpInst::ICMP_ULE)
+      return getTrue(ITy);
   }
 
   if (MaxRecurse && LBO && RBO && LBO->getOpcode() == RBO->getOpcode() &&

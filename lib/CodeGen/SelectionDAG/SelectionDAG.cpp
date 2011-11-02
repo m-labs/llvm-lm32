@@ -2800,6 +2800,7 @@ SDValue SelectionDAG::getNode(unsigned Opcode, DebugLoc DL, EVT VT,
             EVT.getVectorNumElements() == VT.getVectorNumElements()) &&
            "Vector element counts must match in FP_ROUND_INREG");
     assert(EVT.bitsLE(VT) && "Not rounding down!");
+    (void)EVT;
     if (cast<VTSDNode>(N2)->getVT() == VT) return N1;  // Not actually rounding.
     break;
   }
@@ -3344,7 +3345,7 @@ static bool isMemSrcFromString(SDValue Src, std::string &Str) {
 static bool FindOptimalMemOpLowering(std::vector<EVT> &MemOps,
                                      unsigned Limit, uint64_t Size,
                                      unsigned DstAlign, unsigned SrcAlign,
-                                     bool NonScalarIntSafe,
+                                     bool IsZeroVal,
                                      bool MemcpyStrSrc,
                                      SelectionDAG &DAG,
                                      const TargetLowering &TLI) {
@@ -3358,7 +3359,7 @@ static bool FindOptimalMemOpLowering(std::vector<EVT> &MemOps,
   // 'MemcpyStrSrc' indicates whether the memcpy source is constant so it does
   // not need to be loaded.
   EVT VT = TLI.getOptimalMemOpType(Size, DstAlign, SrcAlign,
-                                   NonScalarIntSafe, MemcpyStrSrc,
+                                   IsZeroVal, MemcpyStrSrc,
                                    DAG.getMachineFunction());
 
   if (VT == MVT::Other) {
@@ -3605,11 +3606,11 @@ static SDValue getMemsetStores(SelectionDAG &DAG, DebugLoc dl,
   FrameIndexSDNode *FI = dyn_cast<FrameIndexSDNode>(Dst);
   if (FI && !MFI->isFixedObjectIndex(FI->getIndex()))
     DstAlignCanChange = true;
-  bool NonScalarIntSafe =
+  bool IsZeroVal =
     isa<ConstantSDNode>(Src) && cast<ConstantSDNode>(Src)->isNullValue();
   if (!FindOptimalMemOpLowering(MemOps, TLI.getMaxStoresPerMemset(OptSize),
                                 Size, (DstAlignCanChange ? 0 : Align), 0,
-                                NonScalarIntSafe, false, DAG, TLI))
+                                IsZeroVal, false, DAG, TLI))
     return SDValue();
 
   if (DstAlignCanChange) {
@@ -6351,8 +6352,7 @@ void SDNode::print(raw_ostream &OS, const SelectionDAG *G) const {
 
 static void printrWithDepthHelper(raw_ostream &OS, const SDNode *N,
                                   const SelectionDAG *G, unsigned depth,
-                                  unsigned indent)
-{
+                                  unsigned indent) {
   if (depth == 0)
     return;
 
@@ -6593,7 +6593,7 @@ static void DumpNodesr(raw_ostream &OS, const SDNode *N, unsigned indent,
     return;
 
   // Dump the current SDNode, but don't end the line yet.
-  OS << std::string(indent, ' ');
+  OS.indent(indent);
   N->printr(OS, G);
 
   // Having printed this SDNode, walk the children:

@@ -213,8 +213,7 @@ def IsARM            : Predicate<"!Subtarget->isThumb()">,
                                  AssemblerPredicate<"!ModeThumb">;
 def IsDarwin         : Predicate<"Subtarget->isTargetDarwin()">;
 def IsNotDarwin      : Predicate<"!Subtarget->isTargetDarwin()">;
-def IsNaCl           : Predicate<"Subtarget->isTargetNaCl()">,
-                                 AssemblerPredicate<"ModeNaCl">;
+def IsNaCl           : Predicate<"Subtarget->isTargetNaCl()">;
 
 // FIXME: Eventually this will be just "hasV6T2Ops".
 def UseMovt          : Predicate<"Subtarget->useMovt()">;
@@ -259,10 +258,16 @@ def so_imm_neg :
     return ARM_AM::getSOImmVal(-(uint32_t)N->getZExtValue()) != -1;
   }], so_imm_neg_XFORM>;
 
+// Note: this pattern doesn't require an encoder method and such, as it's
+// only used on aliases (Pat<> and InstAlias<>). The actual encoding
+// is handled by the destination instructions, which use t2_so_imm.
+def so_imm_not_asmoperand : AsmOperandClass { let Name = "ARMSOImmNot"; }
 def so_imm_not :
-  PatLeaf<(imm), [{
+  Operand<i32>, PatLeaf<(imm), [{
     return ARM_AM::getSOImmVal(~(uint32_t)N->getZExtValue()) != -1;
-  }], so_imm_not_XFORM>;
+  }], so_imm_not_XFORM> {
+  let ParserMatchClass = so_imm_not_asmoperand;
+}
 
 // sext_16_node predicate - True if the SDNode is sign-extended 16 or more bits.
 def sext_16_node : PatLeaf<(i32 GPR:$a), [{
@@ -651,8 +656,10 @@ def postidx_imm8 : Operand<i32> {
 // 9 bit value:
 //  {8}       1 is imm8 is non-negative. 0 otherwise.
 //  {7-0}     [0,255] imm8 value, scaled by 4.
+def PostIdxImm8s4AsmOperand : AsmOperandClass { let Name = "PostIdxImm8s4"; }
 def postidx_imm8s4 : Operand<i32> {
   let PrintMethod = "printPostIdxImm8s4Operand";
+  let ParserMatchClass = PostIdxImm8s4AsmOperand;
   let MIOperandInfo = (ops i32imm);
 }
 
@@ -762,12 +769,14 @@ def addrmode5 : Operand<i32>,
 
 // addrmode6 := reg with optional alignment
 //
+def AddrMode6AsmOperand : AsmOperandClass { let Name = "AlignedMemory"; }
 def addrmode6 : Operand<i32>,
                 ComplexPattern<i32, 2, "SelectAddrMode6", [], [SDNPWantParent]>{
   let PrintMethod = "printAddrMode6Operand";
-  let MIOperandInfo = (ops GPR:$addr, i32imm);
+  let MIOperandInfo = (ops GPR:$addr, i32imm:$align);
   let EncoderMethod = "getAddrMode6AddressOpValue";
   let DecoderMethod = "DecodeAddrMode6Operand";
+  let ParserMatchClass = AddrMode6AsmOperand;
 }
 
 def am6offset : Operand<i32>,
@@ -837,6 +846,14 @@ def CoprocRegAsmOperand : AsmOperandClass {
 def c_imm : Operand<i32> {
   let PrintMethod = "printCImmediate";
   let ParserMatchClass = CoprocRegAsmOperand;
+}
+def CoprocOptionAsmOperand : AsmOperandClass {
+  let Name = "CoprocOption";
+  let ParserMethod = "parseCoprocOptionOperand";
+}
+def coproc_option_imm : Operand<i32> {
+  let PrintMethod = "printCoprocOptionImm";
+  let ParserMatchClass = CoprocOptionAsmOperand;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1029,69 +1046,58 @@ multiclass AsI1_rbin_irs<bits<4> opcod, string opc,
 
 }
 
-/// AsI1_rbin_s_is - Same as AsI1_rbin_s_is except it sets 's' bit by default.
-///
-/// These opcodes will be converted to the real non-S opcodes by
-/// AdjustInstrPostInstrSelection after giving then an optional CPSR operand.
-let hasPostISelHook = 1, isCodeGenOnly = 1, isPseudo = 1, Defs = [CPSR] in {
-multiclass AsI1_rbin_s_is<bits<4> opcod, string opc,
-                     InstrItinClass iii, InstrItinClass iir, InstrItinClass iis,
-                        PatFrag opnode, bit Commutable = 0> {
-  def ri : AsI1<opcod, (outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm), DPFrm,
-               iii, opc, "\t$Rd, $Rn, $imm",
-               [(set GPR:$Rd, CPSR, (opnode so_imm:$imm, GPR:$Rn))]>;
-
-  def rr : AsI1<opcod, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm), DPFrm,
-               iir, opc, "\t$Rd, $Rn, $Rm",
-               [/* pattern left blank */]>;
-
-  def rsi : AsI1<opcod, (outs GPR:$Rd),
-               (ins GPR:$Rn, so_reg_imm:$shift), DPSoRegImmFrm,
-               iis, opc, "\t$Rd, $Rn, $shift",
-               [(set GPR:$Rd, CPSR, (opnode so_reg_imm:$shift, GPR:$Rn))]>;
-
-  def rsr : AsI1<opcod, (outs GPR:$Rd),
-               (ins GPR:$Rn, so_reg_reg:$shift), DPSoRegRegFrm,
-               iis, opc, "\t$Rd, $Rn, $shift",
-               [(set GPR:$Rd, CPSR, (opnode so_reg_reg:$shift, GPR:$Rn))]> {
-    bits<4> Rd;
-    bits<4> Rn;
-    bits<12> shift;
-    let Inst{25} = 0;
-    let Inst{19-16} = Rn;
-    let Inst{15-12} = Rd;
-    let Inst{11-8} = shift{11-8};
-    let Inst{7} = 0;
-    let Inst{6-5} = shift{6-5};
-    let Inst{4} = 1;
-    let Inst{3-0} = shift{3-0};
-  }
-}
-}
-
 /// AsI1_bin_s_irs - Same as AsI1_bin_irs except it sets the 's' bit by default.
 ///
 /// These opcodes will be converted to the real non-S opcodes by
-/// AdjustInstrPostInstrSelection after giving then an optional CPSR operand.
-let hasPostISelHook = 1, isCodeGenOnly = 1, isPseudo = 1, Defs = [CPSR] in {
-multiclass AsI1_bin_s_irs<bits<4> opcod, string opc,
-                     InstrItinClass iii, InstrItinClass iir, InstrItinClass iis,
-                         PatFrag opnode, bit Commutable = 0> {
-  def ri : AsI1<opcod, (outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm), DPFrm,
-               iii, opc, "\t$Rd, $Rn, $imm",
-               [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, so_imm:$imm))]>;
-  def rr : AsI1<opcod, (outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm), DPFrm,
-               iir, opc, "\t$Rd, $Rn, $Rm",
-               [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, GPR:$Rm))]>;
-  def rsi : AsI1<opcod, (outs GPR:$Rd),
-               (ins GPR:$Rn, so_reg_imm:$shift), DPSoRegImmFrm,
-               iis, opc, "\t$Rd, $Rn, $shift",
-               [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, so_reg_imm:$shift))]>;
+/// AdjustInstrPostInstrSelection after giving them an optional CPSR operand.
+let hasPostISelHook = 1, Defs = [CPSR] in {
+multiclass AsI1_bin_s_irs<InstrItinClass iii, InstrItinClass iir,
+                          InstrItinClass iis, PatFrag opnode,
+                          bit Commutable = 0> {
+  def ri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm, pred:$p),
+                         4, iii,
+                         [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, so_imm:$imm))]>;
 
-  def rsr : AsI1<opcod, (outs GPR:$Rd),
-               (ins GPR:$Rn, so_reg_reg:$shift), DPSoRegRegFrm,
-               iis, opc, "\t$Rd, $Rn, $shift",
-               [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, so_reg_reg:$shift))]>;
+  def rr : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, GPR:$Rm, pred:$p),
+                         4, iir,
+                         [(set GPR:$Rd, CPSR, (opnode GPR:$Rn, GPR:$Rm))]> {
+    let isCommutable = Commutable;
+  }
+  def rsi : ARMPseudoInst<(outs GPR:$Rd),
+                          (ins GPR:$Rn, so_reg_imm:$shift, pred:$p),
+                          4, iis,
+                          [(set GPR:$Rd, CPSR, (opnode GPR:$Rn,
+                                                so_reg_imm:$shift))]>;
+
+  def rsr : ARMPseudoInst<(outs GPR:$Rd),
+                          (ins GPR:$Rn, so_reg_reg:$shift, pred:$p),
+                          4, iis,
+                          [(set GPR:$Rd, CPSR, (opnode GPR:$Rn,
+                                                so_reg_reg:$shift))]>;
+}
+}
+
+/// AsI1_rbin_s_is - Same as AsI1_bin_s_irs, except selection DAG
+/// operands are reversed.
+let hasPostISelHook = 1, Defs = [CPSR] in {
+multiclass AsI1_rbin_s_is<InstrItinClass iii, InstrItinClass iir,
+                          InstrItinClass iis, PatFrag opnode,
+                          bit Commutable = 0> {
+  def ri : ARMPseudoInst<(outs GPR:$Rd), (ins GPR:$Rn, so_imm:$imm, pred:$p),
+                         4, iii,
+                         [(set GPR:$Rd, CPSR, (opnode so_imm:$imm, GPR:$Rn))]>;
+
+  def rsi : ARMPseudoInst<(outs GPR:$Rd),
+                          (ins GPR:$Rn, so_reg_imm:$shift, pred:$p),
+                          4, iis,
+                          [(set GPR:$Rd, CPSR, (opnode so_reg_imm:$shift,
+                                             GPR:$Rn))]>;
+
+  def rsr : ARMPseudoInst<(outs GPR:$Rd),
+                          (ins GPR:$Rn, so_reg_reg:$shift, pred:$p),
+                          4, iis,
+                          [(set GPR:$Rd, CPSR, (opnode so_reg_reg:$shift,
+                                             GPR:$Rn))]>;
 }
 }
 
@@ -1640,7 +1646,7 @@ class CPS<dag iops, string asm_ops>
   let Inst{27-20} = 0b00010000;
   let Inst{19-18} = imod;
   let Inst{17}    = M; // Enabled if mode is set;
-  let Inst{16}    = 0;
+  let Inst{16-9}  = 0b00000000;
   let Inst{8-6}   = iflags;
   let Inst{5}     = 0;
   let Inst{4-0}   = mode;
@@ -2133,7 +2139,7 @@ def RFEIB_UPD : RFEI<1, "rfeib\t$Rn!"> {
 }
 
 //===----------------------------------------------------------------------===//
-//  Load / store Instructions.
+//  Load / Store Instructions.
 //
 
 // Load
@@ -2848,7 +2854,7 @@ def MOVr : AsI1<0b1101, (outs GPR:$Rd), (ins GPR:$Rm), DPFrm, IIC_iMOVr,
   let Inst{15-12} = Rd;
 }
 
-def : ARMInstAlias<"movs${p} $Rd, $Rm", 
+def : ARMInstAlias<"movs${p} $Rd, $Rm",
                    (MOVr GPR:$Rd, GPR:$Rm, pred:$p, CPSR)>;
 
 // A version for the smaller set of tail call registers.
@@ -3068,20 +3074,18 @@ defm SUB  : AsI1_bin_irs<0b0010, "sub",
 
 // ADD and SUB with 's' bit set.
 //
-// Currently, t2ADDS/t2SUBS are pseudo opcodes that exist only in the
-// selection DAG. They are "lowered" to real t2ADD/t2SUB opcodes by
+// Currently, ADDS/SUBS are pseudo opcodes that exist only in the
+// selection DAG. They are "lowered" to real ADD/SUB opcodes by
 // AdjustInstrPostInstrSelection where we determine whether or not to
 // set the "s" bit based on CPSR liveness.
 //
-// FIXME: Eliminate t2ADDS/t2SUBS pseudo opcodes after adding tablegen
+// FIXME: Eliminate ADDS/SUBS pseudo opcodes after adding tablegen
 // support for an optional CPSR definition that corresponds to the DAG
 // node's second value. We can then eliminate the implicit def of CPSR.
-defm ADDS : AsI1_bin_s_irs<0b0100, "add",
-                          IIC_iALUi, IIC_iALUr, IIC_iALUsr,
-                          BinOpFrag<(ARMaddc node:$LHS, node:$RHS)>, 1>;
-defm SUBS : AsI1_bin_s_irs<0b0010, "sub",
-                          IIC_iALUi, IIC_iALUr, IIC_iALUsr,
-                          BinOpFrag<(ARMsubc node:$LHS, node:$RHS)>>;
+defm ADDS : AsI1_bin_s_irs<IIC_iALUi, IIC_iALUr, IIC_iALUsr,
+                           BinOpFrag<(ARMaddc node:$LHS, node:$RHS)>, 1>;
+defm SUBS : AsI1_bin_s_irs<IIC_iALUi, IIC_iALUr, IIC_iALUsr,
+                           BinOpFrag<(ARMsubc node:$LHS, node:$RHS)>>;
 
 defm ADC : AI1_adde_sube_irs<0b0101, "adc",
                   BinOpWithFlagFrag<(ARMadde node:$LHS, node:$RHS, node:$FLAG)>,
@@ -3096,9 +3100,8 @@ defm RSB  : AsI1_rbin_irs <0b0011, "rsb",
 
 // FIXME: Eliminate them if we can write def : Pat patterns which defines
 // CPSR and the implicit def of CPSR is not needed.
-defm RSBS : AsI1_rbin_s_is<0b0011, "rsb",
-                         IIC_iALUi, IIC_iALUr, IIC_iALUsr,
-                         BinOpFrag<(ARMsubc node:$LHS, node:$RHS)>>;
+defm RSBS : AsI1_rbin_s_is<IIC_iALUi, IIC_iALUr, IIC_iALUsr,
+                           BinOpFrag<(ARMsubc node:$LHS, node:$RHS)>>;
 
 defm RSC : AI1_rsc_irs<0b0111, "rsc",
                   BinOpWithFlagFrag<(ARMsube node:$LHS, node:$RHS, node:$FLAG)>,
@@ -4244,113 +4247,168 @@ def CDP2 : ABXI<0b1110, (outs), (ins p_imm:$cop, imm0_15:$opc1,
 
 class ACI<dag oops, dag iops, string opc, string asm,
           IndexMode im = IndexModeNone>
-  : InoP<oops, iops, AddrModeNone, 4, im, BrFrm, NoItinerary,
-         opc, asm, "", []> {
+  : I<oops, iops, AddrModeNone, 4, im, BrFrm, NoItinerary,
+      opc, asm, "", []> {
   let Inst{27-25} = 0b110;
 }
-
-multiclass LdStCop<bits<4> op31_28, bit load, dag ops, string opc, string cond>{
-  def _OFFSET : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addrmode2:$addr), ops),
-      !strconcat(opc, cond), "\tp$cop, cr$CRd, $addr"> {
-    let Inst{31-28} = op31_28;
+class ACInoP<dag oops, dag iops, string opc, string asm,
+          IndexMode im = IndexModeNone>
+  : InoP<oops, iops, AddrModeNone, 4, im, BrFrm, NoItinerary,
+         opc, asm, "", []> {
+  let Inst{31-28} = 0b1111;
+  let Inst{27-25} = 0b110;
+}
+multiclass LdStCop<bit load, bit Dbit, string asm> {
+  def _OFFSET : ACI<(outs), (ins p_imm:$cop, c_imm:$CRd, addrmode5:$addr),
+                    asm, "\t$cop, $CRd, $addr"> {
+    bits<13> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 1; // P = 1
+    let Inst{23} = addr{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 0; // W = 0
-    let Inst{22} = 0; // D = 0
     let Inst{20} = load;
+    let Inst{19-16} = addr{12-9};
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = addr{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def _PRE : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addrmode2:$addr), ops),
-      !strconcat(opc, cond), "\tp$cop, cr$CRd, $addr!", IndexModePre> {
-    let Inst{31-28} = op31_28;
+  def _PRE : ACI<(outs), (ins p_imm:$cop, c_imm:$CRd, addrmode5:$addr),
+                 asm, "\t$cop, $CRd, $addr!", IndexModePre> {
+    bits<13> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 1; // P = 1
+    let Inst{23} = addr{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 1; // W = 1
-    let Inst{22} = 0; // D = 0
     let Inst{20} = load;
+    let Inst{19-16} = addr{12-9};
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = addr{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def _POST : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addrmode2:$addr), ops),
-      !strconcat(opc, cond), "\tp$cop, cr$CRd, $addr", IndexModePost> {
-    let Inst{31-28} = op31_28;
+  def _POST: ACI<(outs), (ins p_imm:$cop, c_imm:$CRd, addr_offset_none:$addr,
+                              postidx_imm8s4:$offset),
+                 asm, "\t$cop, $CRd, $addr, $offset", IndexModePost> {
+    bits<9> offset;
+    bits<4> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 0; // P = 0
+    let Inst{23} = offset{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 1; // W = 1
-    let Inst{22} = 0; // D = 0
     let Inst{20} = load;
+    let Inst{19-16} = addr;
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = offset{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
   def _OPTION : ACI<(outs),
-      !con((ins nohash_imm:$cop,nohash_imm:$CRd,GPR:$base, nohash_imm:$option),
-            ops),
-      !strconcat(opc, cond), "\tp$cop, cr$CRd, [$base], \\{$option\\}"> {
-    let Inst{31-28} = op31_28;
+                    (ins p_imm:$cop, c_imm:$CRd, addr_offset_none:$addr,
+                         coproc_option_imm:$option),
+      asm, "\t$cop, $CRd, $addr, $option"> {
+    bits<8> option;
+    bits<4> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 0; // P = 0
     let Inst{23} = 1; // U = 1
+    let Inst{22} = Dbit;
     let Inst{21} = 0; // W = 0
-    let Inst{22} = 0; // D = 0
     let Inst{20} = load;
+    let Inst{19-16} = addr;
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = option;
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def L_OFFSET : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addrmode2:$addr), ops),
-      !strconcat(!strconcat(opc, "l"), cond), "\tp$cop, cr$CRd, $addr"> {
-    let Inst{31-28} = op31_28;
+}
+multiclass LdSt2Cop<bit load, bit Dbit, string asm> {
+  def _OFFSET : ACInoP<(outs), (ins p_imm:$cop, c_imm:$CRd, addrmode5:$addr),
+                       asm, "\t$cop, $CRd, $addr"> {
+    bits<13> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 1; // P = 1
+    let Inst{23} = addr{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 0; // W = 0
-    let Inst{22} = 1; // D = 1
     let Inst{20} = load;
+    let Inst{19-16} = addr{12-9};
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = addr{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def L_PRE : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addrmode2:$addr), ops),
-      !strconcat(!strconcat(opc, "l"), cond), "\tp$cop, cr$CRd, $addr!",
-      IndexModePre> {
-    let Inst{31-28} = op31_28;
+  def _PRE : ACInoP<(outs), (ins p_imm:$cop, c_imm:$CRd, addrmode5:$addr),
+                    asm, "\t$cop, $CRd, $addr!", IndexModePre> {
+    bits<13> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 1; // P = 1
+    let Inst{23} = addr{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 1; // W = 1
-    let Inst{22} = 1; // D = 1
     let Inst{20} = load;
+    let Inst{19-16} = addr{12-9};
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = addr{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def L_POST : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd, addr_offset_none:$addr,
-            postidx_imm8s4:$offset), ops),
-      !strconcat(!strconcat(opc, "l"), cond), "\tp$cop, cr$CRd, $addr, $offset",
-      IndexModePost> {
-    let Inst{31-28} = op31_28;
+  def _POST: ACInoP<(outs), (ins p_imm:$cop, c_imm:$CRd, addr_offset_none:$addr,
+                                 postidx_imm8s4:$offset),
+                 asm, "\t$cop, $CRd, $addr, $offset", IndexModePost> {
+    bits<9> offset;
+    bits<4> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 0; // P = 0
+    let Inst{23} = offset{8};
+    let Inst{22} = Dbit;
     let Inst{21} = 1; // W = 1
-    let Inst{22} = 1; // D = 1
     let Inst{20} = load;
+    let Inst{19-16} = addr;
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = offset{7-0};
     let DecoderMethod = "DecodeCopMemInstruction";
   }
-
-  def L_OPTION : ACI<(outs),
-      !con((ins nohash_imm:$cop, nohash_imm:$CRd,GPR:$base,nohash_imm:$option),
-            ops),
-      !strconcat(!strconcat(opc, "l"), cond),
-      "\tp$cop, cr$CRd, [$base], \\{$option\\}"> {
-    let Inst{31-28} = op31_28;
+  def _OPTION : ACInoP<(outs),
+                       (ins p_imm:$cop, c_imm:$CRd, addr_offset_none:$addr,
+                            coproc_option_imm:$option),
+      asm, "\t$cop, $CRd, $addr, $option"> {
+    bits<8> option;
+    bits<4> addr;
+    bits<4> cop;
+    bits<4> CRd;
     let Inst{24} = 0; // P = 0
     let Inst{23} = 1; // U = 1
+    let Inst{22} = Dbit;
     let Inst{21} = 0; // W = 0
-    let Inst{22} = 1; // D = 1
     let Inst{20} = load;
+    let Inst{19-16} = addr;
+    let Inst{15-12} = CRd;
+    let Inst{11-8} = cop;
+    let Inst{7-0} = option;
     let DecoderMethod = "DecodeCopMemInstruction";
   }
 }
 
-defm LDC  : LdStCop<{?,?,?,?}, 1, (ins pred:$p), "ldc",  "${p}">;
-defm LDC2 : LdStCop<0b1111,    1, (ins),         "ldc2", "">;
-defm STC  : LdStCop<{?,?,?,?}, 0, (ins pred:$p), "stc",  "${p}">;
-defm STC2 : LdStCop<0b1111,    0, (ins),         "stc2", "">;
+defm LDC   : LdStCop <1, 0, "ldc">;
+defm LDCL  : LdStCop <1, 1, "ldcl">;
+defm STC   : LdStCop <0, 0, "stc">;
+defm STCL  : LdStCop <0, 1, "stcl">;
+defm LDC2  : LdSt2Cop<1, 0, "ldc2">;
+defm LDC2L : LdSt2Cop<1, 1, "ldc2l">;
+defm STC2  : LdSt2Cop<0, 0, "stc2">;
+defm STC2L : LdSt2Cop<0, 1, "stc2l">;
 
 //===----------------------------------------------------------------------===//
 // Move between coprocessor and ARM core register.
@@ -4568,7 +4626,8 @@ let isCall = 1,
 // no encoding information is necessary.
 let Defs =
   [ R0,  R1,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9,  R10, R11, R12, LR, CPSR,
-    QQQQ0, QQQQ1, QQQQ2, QQQQ3 ], hasSideEffects = 1, isBarrier = 1 in {
+    QQQQ0, QQQQ1, QQQQ2, QQQQ3 ], hasSideEffects = 1, isBarrier = 1,
+  usesCustomInserter = 1 in {
   def Int_eh_sjlj_setjmp : PseudoInst<(outs), (ins GPR:$src, GPR:$val),
                                NoItinerary,
                          [(set R0, (ARMeh_sjlj_setjmp GPR:$src, GPR:$val))]>,
@@ -4935,3 +4994,9 @@ def : MnemonicAlias<"usubaddx", "usax">;
 //                (LDRHTi GPR:$Rt, GPR:$Rt, addr_offset_none:$addr, 0, pred:$p)>;
 //def : InstAlias<"ldrsht${p} $Rt, $addr",
 //                (LDRSHTi GPR:$Rt, GPR:$Rt, addr_offset_none:$addr, 0, pred:$p)>;
+
+
+// "mov Rd, so_imm_not" can be handled via "mvn" in assembly, just like
+// for isel.
+def : ARMInstAlias<"mov${s}${p} $Rd, $imm",
+                   (MVNi rGPR:$Rd, so_imm_not:$imm, pred:$p, cc_out:$s)>;

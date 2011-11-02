@@ -51,9 +51,8 @@ def SYSRETQ  :RI<0x07, RawFrm, (outs), (ins), "sysretq", []>, TB,
 
 def SYSENTER : I<0x34, RawFrm, (outs), (ins), "sysenter", []>, TB;
                  
-def SYSEXIT   : I<0x35, RawFrm, (outs), (ins), "sysexit", []>, TB,
-                Requires<[In32BitMode]>;
-def SYSEXIT64 :RI<0x35, RawFrm, (outs), (ins), "sysexit", []>, TB,
+def SYSEXIT   : I<0x35, RawFrm, (outs), (ins), "sysexitl", []>, TB;
+def SYSEXIT64 :RI<0x35, RawFrm, (outs), (ins), "sysexitq", []>, TB,
                 Requires<[In64BitMode]>;
 
 def IRET16 : I<0xcf, RawFrm, (outs), (ins), "iretw", []>, OpSize;
@@ -447,21 +446,38 @@ let Defs = [RAX, RDX, RSI], Uses = [RAX, RSI] in
 
 //===----------------------------------------------------------------------===//
 // FS/GS Base Instructions
-let Predicates = [In64BitMode] in {
+let Predicates = [HasFSGSBase, In64BitMode] in {
   def RDFSBASE : I<0xAE, MRM0r, (outs GR32:$dst), (ins),
-                   "rdfsbase{l}\t$dst", []>, TB, XS;
+                   "rdfsbase{l}\t$dst",
+                   [(set GR32:$dst, (int_x86_rdfsbase_32))]>, TB, XS;
   def RDFSBASE64 : RI<0xAE, MRM0r, (outs GR64:$dst), (ins),
-                     "rdfsbase{q}\t$dst", []>, TB, XS;
+                     "rdfsbase{q}\t$dst",
+                     [(set GR64:$dst, (int_x86_rdfsbase_64))]>, TB, XS;
   def RDGSBASE : I<0xAE, MRM1r, (outs GR32:$dst), (ins),
-                   "rdgsbase{l}\t$dst", []>, TB, XS;
+                   "rdgsbase{l}\t$dst",
+                   [(set GR32:$dst, (int_x86_rdgsbase_32))]>, TB, XS;
   def RDGSBASE64 : RI<0xAE, MRM1r, (outs GR64:$dst), (ins),
-                     "rdgsbase{q}\t$dst", []>, TB, XS;
-  def WRFSBASE : I<0xAE, MRM2r, (outs), (ins GR32:$dst),
-                   "wrfsbase{l}\t$dst", []>, TB, XS;
-  def WRFSBASE64 : RI<0xAE, MRM2r, (outs), (ins GR64:$dst),
-                   "wrfsbase{q}\t$dst", []>, TB, XS;
-  def WRGSBASE : I<0xAE, MRM3r, (outs), (ins GR32:$dst),
-                   "wrgsbase{l}\t$dst", []>, TB, XS;
-  def WRGSBASE64 : RI<0xAE, MRM3r, (outs), (ins GR64:$dst),
-                    "wrgsbase{q}\t$dst", []>, TB, XS;
+                     "rdgsbase{q}\t$dst",
+                     [(set GR64:$dst, (int_x86_rdgsbase_64))]>, TB, XS;
+  def WRFSBASE : I<0xAE, MRM2r, (outs), (ins GR32:$src),
+                   "wrfsbase{l}\t$src",
+                   [(int_x86_wrfsbase_32 GR32:$src)]>, TB, XS;
+  def WRFSBASE64 : RI<0xAE, MRM2r, (outs), (ins GR64:$src),
+                      "wrfsbase{q}\t$src",
+                      [(int_x86_wrfsbase_64 GR64:$src)]>, TB, XS;
+  def WRGSBASE : I<0xAE, MRM3r, (outs), (ins GR32:$src),
+                   "wrgsbase{l}\t$src",
+                   [(int_x86_wrgsbase_32 GR32:$src)]>, TB, XS;
+  def WRGSBASE64 : RI<0xAE, MRM3r, (outs), (ins GR64:$src),
+                      "wrgsbase{q}\t$src",
+                      [(int_x86_wrgsbase_64 GR64:$src)]>, TB, XS;
 }
+
+//===----------------------------------------------------------------------===//
+// INVPCID Instruction
+def INVPCID32 : I<0x82, MRMSrcMem, (outs), (ins GR32:$src1, i128mem:$src2),
+                "invpcid {$src2, $src1|$src1, $src2}", []>, OpSize, T8,
+                Requires<[In32BitMode]>;
+def INVPCID64 : I<0x82, MRMSrcMem, (outs), (ins GR64:$src1, i128mem:$src2),
+                "invpcid {$src2, $src1|$src1, $src2}", []>, OpSize, T8,
+                Requires<[In64BitMode]>;

@@ -64,9 +64,7 @@ Please clean the source directory.")
 endif()
 
 set(LLVM_ALL_TARGETS
-  Alpha
   ARM
-  Blackfin
   CBackend
   CellSPU
   CppBackend
@@ -77,7 +75,6 @@ set(LLVM_ALL_TARGETS
   PowerPC
   PTX
   Sparc
-  SystemZ
   X86
   XCore
   )

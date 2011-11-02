@@ -424,6 +424,13 @@ SPUTargetLowering::SPUTargetLowering(SPUTargetMachine &TM)
     setOperationAction(ISD::UDIV,    VT, Expand);
     setOperationAction(ISD::UREM,    VT, Expand);
 
+    // Expand all trunc stores
+    for (unsigned j = (unsigned)MVT::FIRST_VECTOR_VALUETYPE;
+         j <= (unsigned)MVT::LAST_VECTOR_VALUETYPE; ++j) {
+      MVT::SimpleValueType TargetVT = (MVT::SimpleValueType)j;
+    setTruncStoreAction(VT, TargetVT, Expand);
+    }
+
     // Custom lower build_vector, constant pool spills, insert and
     // extract vector elements:
     setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
@@ -433,6 +440,8 @@ SPUTargetLowering::SPUTargetLowering(SPUTargetMachine &TM)
     setOperationAction(ISD::INSERT_VECTOR_ELT, VT, Custom);
     setOperationAction(ISD::VECTOR_SHUFFLE, VT, Custom);
   }
+
+  setOperationAction(ISD::SHL, MVT::v2i64, Expand);
 
   setOperationAction(ISD::AND, MVT::v16i8, Custom);
   setOperationAction(ISD::OR,  MVT::v16i8, Custom);
@@ -1743,9 +1752,11 @@ SPU::LowerV2I64Splat(EVT OpVT, SelectionDAG& DAG, uint64_t SplatVal,
 
     // Both upper and lower are special, lower to a constant pool load:
     if (lower_special && upper_special) {
-      SDValue SplatValCN = DAG.getConstant(SplatVal, MVT::i64);
-      return DAG.getNode(ISD::BUILD_VECTOR, dl, MVT::v2i64,
-                         SplatValCN, SplatValCN);
+      SDValue UpperVal = DAG.getConstant(upper, MVT::i32);
+      SDValue LowerVal = DAG.getConstant(lower, MVT::i32);
+      SDValue BV = DAG.getNode(ISD::BUILD_VECTOR, dl, MVT::v4i32,
+                         UpperVal, LowerVal, UpperVal, LowerVal);
+      return DAG.getNode(ISD::BITCAST, dl, OpVT, BV);
     }
 
     SDValue LO32;

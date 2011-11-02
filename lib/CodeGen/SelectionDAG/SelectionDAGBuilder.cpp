@@ -788,6 +788,18 @@ void RegsForValue::AddInlineAsmOperands(unsigned Code, bool HasMatching,
   unsigned Flag = InlineAsm::getFlagWord(Code, Regs.size());
   if (HasMatching)
     Flag = InlineAsm::getFlagWordForMatchingOp(Flag, MatchingIdx);
+  else if (!Regs.empty() &&
+           TargetRegisterInfo::isVirtualRegister(Regs.front())) {
+    // Put the register class of the virtual registers in the flag word.  That
+    // way, later passes can recompute register class constraints for inline
+    // assembly as well as normal instructions.
+    // Don't do this for tied operands that can use the regclass information
+    // from the def.
+    const MachineRegisterInfo &MRI = DAG.getMachineFunction().getRegInfo();
+    const TargetRegisterClass *RC = MRI.getRegClass(Regs.front());
+    Flag = InlineAsm::getFlagWordForRegClass(Flag, RC->getID());
+  }
+
   SDValue Res = DAG.getTargetConstant(Flag, MVT::i32);
   Ops.push_back(Res);
 
@@ -805,6 +817,7 @@ void SelectionDAGBuilder::init(GCFunctionInfo *gfi, AliasAnalysis &aa) {
   AA = &aa;
   GFI = gfi;
   TD = DAG.getTarget().getTargetData();
+  LPadToCallSiteMap.clear();
 }
 
 /// clear - Clear out the current SelectionDAG and the associated
@@ -1679,7 +1692,7 @@ void SelectionDAGBuilder::visitBitTestHeader(BitTestBlock &B,
     UsePtrType = true;
   else {
     for (unsigned i = 0, e = B.Cases.size(); i != e; ++i)
-      if ((uint64_t)((int64_t)B.Cases[i].Mask >> VT.getSizeInBits()) + 1 >= 2) {
+      if (!isUIntN(VT.getSizeInBits(), B.Cases[i].Mask)) {
         // Switch table case range are encoded into series of masks.
         // Just use pointer type, it's guaranteed to fit.
         UsePtrType = true;
@@ -2021,14 +2034,17 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec &CR,
     return false;
 
   APInt Range = ComputeRange(First, Last);
-  double Density = TSize.roundToDouble() / Range.roundToDouble();
-  if (Density < 0.4)
+  // The density is TSize / Range. Require at least 40%.
+  // It should not be possible for IntTSize to saturate for sane code, but make
+  // sure we handle Range saturation correctly.
+  uint64_t IntRange = Range.getLimitedValue(UINT64_MAX/10);
+  uint64_t IntTSize = TSize.getLimitedValue(UINT64_MAX/10);
+  if (IntTSize * 10 < IntRange * 4)
     return false;
 
   DEBUG(dbgs() << "Lowering jump table\n"
                << "First entry: " << First << ". Last entry: " << Last << '\n'
-               << "Range: " << Range
-               << ". Size: " << TSize << ". Density: " << Density << "\n\n");
+               << "Range: " << Range << ". Size: " << TSize << ".\n\n");
 
   // Get the MachineFunction which holds the current MBB.  This is used when
   // inserting any additional MBBs necessary to represent the switch.
@@ -2461,7 +2477,7 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
   size_t numCmps = Clusterify(Cases, SI);
   DEBUG(dbgs() << "Clusterify finished. Total clusters: " << Cases.size()
                << ". Total compares: " << numCmps << '\n');
-  numCmps = 0;
+  (void)numCmps;
 
   // Get the Value to be switched on and default basic blocks, which will be
   // inserted into CaseBlock records, representing basic blocks in the binary
@@ -2673,7 +2689,7 @@ void SelectionDAGBuilder::visitFPTrunc(const User &I) {
 }
 
 void SelectionDAGBuilder::visitFPExt(const User &I){
-  // FPTrunc is never a no-op cast, no need to check
+  // FPExt is never a no-op cast, no need to check
   SDValue N = getValue(I.getOperand(0));
   EVT DestVT = TLI.getValueType(I.getType());
   setValue(&I, DAG.getNode(ISD::FP_EXTEND, getCurDebugLoc(), DestVT, N));
@@ -4744,8 +4760,14 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return 0;
   }
   case Intrinsic::eh_sjlj_setjmp: {
-    setValue(&I, DAG.getNode(ISD::EH_SJLJ_SETJMP, dl, MVT::i32, getRoot(),
-                             getValue(I.getArgOperand(0))));
+    SDValue Ops[2];
+    Ops[0] = getRoot();
+    Ops[1] = getValue(I.getArgOperand(0));
+    SDValue Op = DAG.getNode(ISD::EH_SJLJ_SETJMP, dl,
+                             DAG.getVTList(MVT::i32, MVT::Other),
+                             Ops, 2);
+    setValue(&I, Op.getValue(0));
+    DAG.setRoot(Op.getValue(1));
     return 0;
   }
   case Intrinsic::eh_sjlj_longjmp: {

@@ -56,7 +56,6 @@ namespace CodeGenOpt {
 namespace Sched {
   enum Preference {
     None,             // No preference
-    Latency,          // Scheduling for shortest total latency.
     RegPressure,      // Scheduling for lowest register pressure.
     Hybrid,           // Scheduling for both latency and register pressure.
     ILP               // Scheduling for ILP in low register pressure mode.
@@ -101,6 +100,7 @@ protected: // Can only create subclasses.
   unsigned MCSaveTempLabels : 1;
   unsigned MCUseLoc : 1;
   unsigned MCUseCFI : 1;
+  unsigned MCUseDwarfDirectory : 1;
 
 public:
   virtual ~TargetMachine();
@@ -195,6 +195,14 @@ public:
 
   /// setMCUseCFI - Set whether all we should use dwarf's .cfi_* directives.
   void setMCUseCFI(bool Value) { MCUseCFI = Value; }
+
+  /// hasMCUseDwarfDirectory - Check whether we should use .file directives with
+  /// explicit directories.
+  bool hasMCUseDwarfDirectory() const { return MCUseDwarfDirectory; }
+
+  /// setMCUseDwarfDirectory - Set whether all we should use .file directives
+  /// with explicit directories.
+  void setMCUseDwarfDirectory(bool Value) { MCUseDwarfDirectory = Value; }
 
   /// getRelocationModel - Returns the code generation relocation model. The
   /// choices are static, PIC, and dynamic-no-pic, and target default.

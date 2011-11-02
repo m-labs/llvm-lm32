@@ -1058,9 +1058,11 @@ public:
 /// VarInit - 'Opcode' - Represent a reference to an entire variable object.
 ///
 class VarInit : public TypedInit {
-  std::string VarName;
+  Init *VarName;
 
   explicit VarInit(const std::string &VN, RecTy *T)
+      : TypedInit(T), VarName(StringInit::get(VN)) {}
+  explicit VarInit(Init *VN, RecTy *T)
       : TypedInit(T), VarName(VN) {}
 
   VarInit(const VarInit &Other);  // Do not define.
@@ -1074,7 +1076,11 @@ public:
     return Ty->convertValue(const_cast<VarInit *>(this));
   }
 
-  const std::string &getName() const { return VarName; }
+  const std::string &getName() const;
+  Init *getNameInit() const { return VarName; }
+  std::string getNameInitAsString() const {
+    return getNameInit()->getAsUnquotedString();
+  }
 
   virtual Init *resolveBitReference(Record &R, const RecordVal *RV,
                                     unsigned Bit) const;
@@ -1092,7 +1098,7 @@ public:
   ///
   virtual Init *resolveReferences(Record &R, const RecordVal *RV) const;
 
-  virtual std::string getAsString() const { return VarName; }
+  virtual std::string getAsString() const { return getName(); }
 };
 
 
@@ -1345,6 +1351,10 @@ public:
   RecordVal(const std::string &N, RecTy *T, unsigned P);
 
   const std::string &getName() const;
+  const Init *getNameInit() const { return Name; }
+  std::string getNameInitAsString() const {
+    return getNameInit()->getAsUnquotedString();
+  }
 
   unsigned getPrefix() const { return Prefix; }
   RecTy *getType() const { return Ty; }
@@ -1375,7 +1385,7 @@ class Record {
   unsigned ID;
   Init *Name;
   SMLoc Loc;
-  std::vector<std::string> TemplateArgs;
+  std::vector<Init *> TemplateArgs;
   std::vector<RecordVal> Values;
   std::vector<Record*> SuperClasses;
 
@@ -1384,13 +1394,21 @@ class Record {
 
   DefInit *TheInit;
 
+  void init();
   void checkName();
 
 public:
 
   // Constructs a record.
   explicit Record(const std::string &N, SMLoc loc, RecordKeeper &records) :
-    ID(LastID++), Name(StringInit::get(N)), Loc(loc), TrackedRecords(records), TheInit(0) {}
+    ID(LastID++), Name(StringInit::get(N)), Loc(loc), TrackedRecords(records),
+      TheInit(0) {
+    init();
+  }
+  explicit Record(Init *N, SMLoc loc, RecordKeeper &records) :
+    ID(LastID++), Name(N), Loc(loc), TrackedRecords(records), TheInit(0) {
+    init();
+  }
   ~Record() {}
 
 
@@ -1400,6 +1418,13 @@ public:
   unsigned getID() const { return ID; }
 
   const std::string &getName() const;
+  Init *getNameInit() const {
+    return Name;
+  }
+  const std::string getNameInitAsString() const {
+    return getNameInit()->getAsUnquotedString();
+  }
+
   void setName(Init *Name);               // Also updates RecordKeeper.
   void setName(const std::string &Name);  // Also updates RecordKeeper.
 
@@ -1408,16 +1433,19 @@ public:
   /// get the corresponding DefInit.
   DefInit *getDefInit();
 
-  const std::vector<std::string> &getTemplateArgs() const {
+  const std::vector<Init *> &getTemplateArgs() const {
     return TemplateArgs;
   }
   const std::vector<RecordVal> &getValues() const { return Values; }
   const std::vector<Record*>   &getSuperClasses() const { return SuperClasses; }
 
-  bool isTemplateArg(StringRef Name) const {
+  bool isTemplateArg(Init *Name) const {
     for (unsigned i = 0, e = TemplateArgs.size(); i != e; ++i)
       if (TemplateArgs[i] == Name) return true;
     return false;
+  }
+  bool isTemplateArg(StringRef Name) const {
+    return isTemplateArg(StringInit::get(Name.str()));
   }
 
   const RecordVal *getValue(StringRef Name) const {
@@ -1431,23 +1459,40 @@ public:
     return 0;
   }
 
-  void addTemplateArg(StringRef Name) {
+  const RecordVal *getValue(Init *Name) const;
+  RecordVal *getValue(Init *Name);
+
+  void addTemplateArg(Init *Name) {
     assert(!isTemplateArg(Name) && "Template arg already defined!");
     TemplateArgs.push_back(Name);
+  }
+  void addTemplateArg(StringRef Name) {
+    addTemplateArg(StringInit::get(Name.str()));
   }
 
   void addValue(const RecordVal &RV) {
     assert(getValue(RV.getName()) == 0 && "Value already added!");
     Values.push_back(RV);
+    if (Values.size() > 1)
+      // Keep NAME at the end of the list.  It makes record dumps a
+      // bit prettier and allows TableGen tests to be written more
+      // naturally.  Tests can use CHECK-NEXT to look for Record
+      // fields they expect to see after a def.  They can't do that if
+      // NAME is the first Record field.
+      std::swap(Values[Values.size() - 2], Values[Values.size() - 1]);
   }
 
-  void removeValue(StringRef Name) {
+  void removeValue(Init *Name) {
     for (unsigned i = 0, e = Values.size(); i != e; ++i)
-      if (Values[i].getName() == Name) {
+      if (Values[i].getNameInit() == Name) {
         Values.erase(Values.begin()+i);
         return;
       }
     assert(0 && "Cannot remove an entry that does not exist!");
+  }
+
+  void removeValue(StringRef Name) {
+    removeValue(StringInit::get(Name.str()));
   }
 
   bool isSubClassOf(const Record *R) const {
@@ -1459,7 +1504,7 @@ public:
 
   bool isSubClassOf(StringRef Name) const {
     for (unsigned i = 0, e = SuperClasses.size(); i != e; ++i)
-      if (SuperClasses[i]->getName() == Name)
+      if (SuperClasses[i]->getNameInitAsString() == Name)
         return true;
     return false;
   }
@@ -1598,12 +1643,12 @@ public:
     return I == Defs.end() ? 0 : I->second;
   }
   void addClass(Record *R) {
-    assert(getClass(R->getName()) == 0 && "Class already exists!");
-    Classes.insert(std::make_pair(R->getName(), R));
+    assert(getClass(R->getNameInitAsString()) == 0 && "Class already exists!");
+    Classes.insert(std::make_pair(R->getNameInitAsString(), R));
   }
   void addDef(Record *R) {
-    assert(getDef(R->getName()) == 0 && "Def already exists!");
-    Defs.insert(std::make_pair(R->getName(), R));
+    assert(getDef(R->getNameInitAsString()) == 0 && "Def already exists!");
+    Defs.insert(std::make_pair(R->getNameInitAsString(), R));
   }
 
   /// removeClass - Remove, but do not delete, the specified record.
@@ -1649,6 +1694,16 @@ struct LessRecordFieldName {
 };
 
 raw_ostream &operator<<(raw_ostream &OS, const RecordKeeper &RK);
+
+/// QualifyName - Return an Init with a qualifier prefix referring
+/// to CurRec's name.
+Init *QualifyName(Record &CurRec, MultiClass *CurMultiClass,
+                  Init *Name, const std::string &Scoper);
+
+/// QualifyName - Return an Init with a qualifier prefix referring
+/// to CurRec's name.
+Init *QualifyName(Record &CurRec, MultiClass *CurMultiClass,
+                  const std::string &Name, const std::string &Scoper);
 
 } // End llvm namespace
 

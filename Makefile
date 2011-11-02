@@ -28,7 +28,7 @@ ifneq ($(findstring llvmCore, $(RC_ProjectName)),llvmCore)  # Normal build (not 
 
 ifeq ($(BUILD_DIRS_ONLY),1)
   DIRS := lib/Support lib/TableGen utils
-  OPTIONAL_DIRS :=
+  OPTIONAL_DIRS := tools/clang/utils/TableGen
 else
   DIRS := lib/Support lib/TableGen utils lib/VMCore lib tools/llvm-shlib \
           tools/llvm-config tools runtime docs unittests
@@ -118,7 +118,8 @@ cross-compile-build-tools:
 	  unset CFLAGS ; \
 	  unset CXXFLAGS ; \
 	  $(PROJ_SRC_DIR)/configure --build=$(BUILD_TRIPLE) \
-		--host=$(BUILD_TRIPLE) --target=$(BUILD_TRIPLE); \
+		--host=$(BUILD_TRIPLE) --target=$(BUILD_TRIPLE) \
+	        --disable-polly ; \
 	  cd .. ; \
 	fi; \
 	(unset SDKROOT; \
@@ -208,7 +209,7 @@ ifneq ($(ENABLE_OPTIMIZED),1)
 	$(Echo) '*****' configure with --enable-optimized.
 ifeq ($(SHOW_DIAGNOSTICS),1)
 	$(Verb) if test -s $(LLVM_OBJ_ROOT)/$(BuildMode)/diags; then \
-	  $(LLVM_SRC_ROOT)/utils/show-diagnostics \
+	  $(LLVM_SRC_ROOT)/utils/clang-parse-diagnostics-file -a \
 	    $(LLVM_OBJ_ROOT)/$(BuildMode)/diags; \
 	fi
 endif
@@ -242,7 +243,7 @@ SVN-UPDATE-OPTIONS =
 AWK = awk
 SUB-SVN-DIRS = $(AWK) '/\?\ \ \ \ \ \ / {print $$2}'   \
 		| LC_ALL=C xargs $(SVN) info 2>/dev/null \
-		| $(AWK) '/Path:\ / {print $$2}'
+		| $(AWK) '/^Path:\ / {print $$2}'
 
 update:
 	$(SVN) $(SVN-UPDATE-OPTIONS) update $(LLVM_SRC_ROOT)

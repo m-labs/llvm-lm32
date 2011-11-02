@@ -48,6 +48,7 @@ set(LLVM_CXXFLAGS "@LLVM_CXXFLAGS@")
 set(LLVM_LDFLAGS "@LLVM_LDFLAGS@")
 set(LIBS "@LIBS@")
 set(LLVM_BUILDMODE "@LLVM_BUILDMODE@")
+set(LLVM_OBJ_SUFFIX "@LLVM_OBJ_SUFFIX@")
 
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/llvm-config.in.in
@@ -114,6 +115,7 @@ add_custom_command(OUTPUT ${LLVM_CONFIG}
   COMMAND echo s!@LLVM_LDFLAGS@!${CMAKE_SHARED_LINKER_FLAGS}! >> temp.sed
   COMMAND echo s!@LIBS@!${LLVM_SYSTEM_LIBS}! >> temp.sed
   COMMAND echo s!@LLVM_BUILDMODE@!${CMAKE_BUILD_TYPE}! >> temp.sed
+  COMMAND echo s!@LLVM_OBJ_SUFFIX@!! >> temp.sed
   COMMAND sed -f temp.sed < ${LLVM_CONFIG_IN} > ${LLVM_CONFIG}
   COMMAND ${CMAKE_COMMAND} -E remove -f temp.sed
   COMMAND cat ${FINAL_LIBDEPS} >> ${LLVM_CONFIG}
@@ -126,13 +128,9 @@ add_custom_command(OUTPUT ${LLVM_CONFIG}
 add_custom_target(llvm-config.target ALL
   DEPENDS ${LLVM_CONFIG})
 
-add_dependencies( llvm-config.target ${llvm_libs} )
-
-# Make sure that llvm-config builds before the llvm tools, so we have
-# LibDeps.txt and can use it for updating the hard-coded library
-# dependencies on cmake/modules/LLVMLibDeps.cmake when the tools'
-# build fail due to outdated dependencies:
-set(LLVM_COMMON_DEPENDS ${LLVM_COMMON_DEPENDS} llvm-config.target)
+# Ensure we build llvm-config after we build all of the libraries so that we
+# have their full dependencies.
+add_dependencies(llvm-config.target ${llvm_libs})
 
 install(FILES ${LLVM_CONFIG}
   PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE

@@ -290,6 +290,26 @@ class InstThumb<AddrMode am, int sz, IndexMode im,
   let DecoderNamespace = "Thumb";
 }
 
+// Pseudo-instructions for alternate assembly syntax (never used by codegen).
+// These are aliases that require C++ handling to convert to the target
+// instruction, while InstAliases can be handled directly by tblgen.
+class AsmPseudoInst<dag iops>
+  : InstTemplate<AddrModeNone, 0, IndexModeNone, Pseudo, GenericDomain,
+                 "", NoItinerary> {
+  let OutOperandList = (ops);
+  let InOperandList = iops;
+  let Pattern = [];
+  let isCodeGenOnly = 0; // So we get asm matcher for it.
+  let isPseudo = 1;
+}
+
+class ARMAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsARM]>;
+class tAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsThumb]>;
+class t2AsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsThumb2]>;
+class VFP2AsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[HasVFP2]>;
+class NEONAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[HasNEON]>;
+
+// Pseudo instructions for the code generator.
 class PseudoInst<dag oops, dag iops, InstrItinClass itin, list<dag> pattern>
   : InstTemplate<AddrModeNone, 0, IndexModeNone, Pseudo,
                  GenericDomain, "", itin> {
@@ -481,6 +501,8 @@ class AIswp<bit b, dag oops, dag iops, string opc, list<dag> pattern>
   let Inst{15-12} = Rt;
   let Inst{11-4} = 0b00001001;
   let Inst{3-0} = Rt2;
+
+  let DecoderMethod = "DecodeSwap";
 }
 
 // addrmode1 instructions
@@ -1951,7 +1973,6 @@ class NVDupLane<bits<4> op19_16, bit op6, dag oops, dag iops,
 
   bits<5> Vd;
   bits<5> Vm;
-  bits<4> lane;
 
   let Inst{22}     = Vd{4};
   let Inst{15-12} = Vd{3-0};
