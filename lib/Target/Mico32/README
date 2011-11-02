@@ -81,9 +81,11 @@ handled
 MICO32 ABI
 (observed)
 
-This is intended to suplement the LatticeMico32 Processor Reference Manual (March 2010) description.
+This is intended to supplement the LatticeMico32 Processor Reference Manual (March 2010) description.
 
-Arguments passed on the stack are in the conventional C ABI order for a descending stack. A lexically earlier parameter resides at a higher address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
+The default stack alignment is 4 bytes. When parameters are placed on the stack a lexically earlier parameter resides at a lower address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
+
+Callers of variadic functions treat the calls the same as non-variadic functions. Within the prologue of a variadic function stack space is allocated for the argument registers that may contain variadic arguments, stack space is not allocated for the non-variadic arguments in registers.  The variadic argument registers are copied to the stack in the prologue.  The allocated stack space for variadic registers abuts any outgoing arguments stored on the stack. This results in the variadic arguments being stored sequentially on the stack.  The location of the first variadic argument is stored in a pointer. Subsequent variadic arguments are accessed by incrementing the pointer. 
 
 [ FIXME: this only applies if the parameters are earlier @ lower address: convention requires varadic functions to have a prototype in scope, at the point of the call. Conventionally K&R C did not require this, but ANSI C has always required it. We have no requirement to preserve K&R compatibility.]
 
@@ -99,18 +101,16 @@ The stack grows downwards (decreasing addresses) and the calling function is res
 FIXME: this appears to be only small structures made of ints in GCC - 2 chars are passed by reference.  We should probably change this to 8 byte structs in LLVM, especially since the archman specifies r1 and r2 are used for return values and I don't see GCC ever doing this except wih doubles.
 [Small structures (up to 4 bytes) are returned in the integer registers. Larger structures are returned via an artificial parameter that is prepended to the user specified parameters. This parameter points to an area in the caller’s stack frame in which to store the return value. It is the responsibility of the calling function to allocate this space.]
 
-A floating point type is passed and returned as if it were a small structure. 
+FIXME: is this correct? A floating point type is passed and returned as if it were a small structure. 
 FIXME:[How are doubles returned? How are doubles passed that cross the register/stack parameter boundry?]
 
 Parameters passed in registers occupy one or more registers each. FIXME:[If a type’s alignment is greater than 4 bytes, it will also be aligned into a register pair — possibly leaving an unused register between it and the previous parameter. Integral types are sign or zero extended as appropriate to the register size. Structures occupy one or more integer registers and are aligned at the most significant end. If the structure size is not a multiple of 4 bytes, the final register it occupies has unspecified tail padding.] If the data type is not supported in hardware, it shall be passed and returned as if it were an opaque structure of the correct length.
 
-The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. FIXME:is this correct[ A frame pointer is not mandated for each function, however it is necessary for functions that use alloca.] If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 4 byte alignment) and return a pointer max(Outgoing Parameters) words above this.
+The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. A frame pointer is not mandated for each function, however it is necessary for functions that use alloca or for functions that require stack alignment greter then the default 4 bytes. If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 4 byte alignment) and return a pointer max(Outgoing Parameters) words above the SP.
 
-Space allocated via alloca() is 4 byte aligned.  Additional space is allocated by alloca if needed to allow 4 byte alignment.
+Space allocated via alloca() is 4 byte aligned.  Additional space is allocated by alloca if needed to maintain 4 byte alignment.
 
-There is a nospbias option available. The default Mico32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
-
-Implementation note: Outgoing parameters on stack are always accessed via SP. If FP is used local workspace and callee saves are accessed via FP.
+Outgoing parameters on stack are always accessed via the SP. If the FP is used local workspace and callee saves are accessed via the FP (except as noted under stack realignment).
 
        stack grows down
          high address       --------------------------------
@@ -121,15 +121,17 @@ Implementation note: Outgoing parameters on stack are always accessed via SP. If
                             | registers)                   |
                             | allocated by caller          |   ^Caller Allocated
                             --------------------------------   ----------------
-SP in Caller, FP ->         |  Local Workspace             |    Callee Allocated
-(SP pre-prologue in callee, |                              |   
+SP in Caller, FP ->         |  register varargs copied to  |    Callee Allocated
+(SP pre-prologue in callee, |      stack (if needeed)      |   
  FP if used)                --------------------------------
+                            |      Local Workspace         |
+                            --------------------------------
                             |    Callee Save               |
                             |    Registers                 |
                             |(Frame Pointer save if needed)|
                             |(Link Register save if needed)|
                             --------------------------------
-                            |       8 byte aligned         |
+                            |       4 byte aligned         |
                             |          alloca              |
                             --------------------------------
                             |                              |
@@ -142,7 +144,11 @@ SP in Caller, FP ->         |  Local Workspace             |    Callee Allocated
          low address
 TABLE 1
 
+Stack Realignment
+Stack realignment occurs when an object on the stack frame has a higher alignment than the default 4 byte alignment.  Extra space will be allocated in the frame to allow the frame objects to be aligned to the requested alignment.  The function prologue will force the stack pointer to the requested alignment by adding code to mask the low order bits.  The frame pointer is set as usual pointing to the first used word in the frame but it's alignment will not be adjusted.  The offset of the frame pointer to the stack pointer will be unknown at this point. Vararg parameters and incoming parameters will be accessed through the FP, the SP will be used for all other stack frame accesses. The current implementation limits the size of the call frame.  The offset from the SP to the top of the local workspace is limited to a 16 bit signed immediate (-32768). A framepointer is required since the SP is restored from the FP in the function prologue.
 
+Stack Pointer Bias
+There is a nospbias option available. The default Mico32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
 
 GAS Relocatable Expression Modifiers
 http://sourceware.org/binutils/docs/as/LM32_002dModifiers.html#LM32_002dModifiers
