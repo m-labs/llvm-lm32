@@ -615,11 +615,9 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   // turn it into a TargetGlobalAddress node so that legalize doesn't hack it.
   // Likewise ExternalSymbol -> TargetExternalSymbol.
   if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
-    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl, MVT::i32);
-    //Mips: Callee = DAG.getT...Address(G->getGlobal(), getPointerTy());
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl, getPointerTy());
   else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
-    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i32);
-    // Mips: Callee = DAG.getT...lSymbol(E->getSymbol(), getPointerTy());
+    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), getPointerTy());
 
   // Mico32BranchLink = #chain, #target_address, #opt_in_flags...
   //             = Chain, Callee, Reg#1, Reg#2, ...  
