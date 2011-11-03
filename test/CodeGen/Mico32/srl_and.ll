@@ -1,6 +1,7 @@
 ; Make sure this testcase codegens to the zapnot instruction
 ; RUN: llvm-as < %s | llc -march=mico32
-;# RUN: llvm-as < %s | llc -march=alpha | grep zapnot
+; END.
+; RUN: llvm-as < %s | llc -march=alpha | grep zapnot
 
 define i64 @foo(i64 %y) {
 entry:
