@@ -23,8 +23,6 @@
 // it sounds like this should "just work".... we'll see.
 // See also: http://nondot.org/sabre/LLVMNotes/CustomCallingConventions.txt
 
-// TODO:  FIXME: Need VarArg - See MIPS.
-
 
 def CC_Mico32 : CallingConv<[
   // Promote i8/i16 arguments to i32.
