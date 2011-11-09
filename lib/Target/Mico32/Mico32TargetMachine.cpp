@@ -37,7 +37,7 @@ Mico32TargetMachine(const Target &T, StringRef TT,
     Subtarget(TT, CPU, FS),
 //  DataLayout("E-p:32:32:32-i8:8:8-i16:16:16"),
 //    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32"),
-    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-a64:32:32-S32-s64:32:32-n32"),
+    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-a0:32:32-S32-s0:32:32-n32"),
     InstrInfo(*this), 
     FrameLowering(Subtarget),
     TLInfo(*this), TSInfo(*this)
