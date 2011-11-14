@@ -39,7 +39,7 @@ def CC_Mico32 : CallingConv<[
 
 // Structure returns "sret" are done by the compiler and labeled as such 
 // in LLVM IR.  Unsupported types should get handled as structures.  Target
-// dependent codegen should not have to do anything special to hadle sret.
+// dependent codegen should not have to do anything special to handle sret.
 
 // Note the return registers (and caller saves) should 
 // be "Defs" in the call instruction in Mico32InstrInfo.td.
