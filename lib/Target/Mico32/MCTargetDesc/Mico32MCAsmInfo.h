@@ -22,7 +22,7 @@ namespace llvm {
 
   class Mico32MCAsmInfo : public MCAsmInfo {
   public:
-    explicit Mico32MCAsmInfo();
+    explicit Mico32MCAsmInfo(const Target &T, StringRef TT);
   };
 
 

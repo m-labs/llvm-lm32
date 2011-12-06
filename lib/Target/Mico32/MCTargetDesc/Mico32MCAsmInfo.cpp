@@ -14,7 +14,7 @@
 #include "Mico32MCAsmInfo.h"
 using namespace llvm;
 
-Mico32MCAsmInfo::Mico32MCAsmInfo()
+Mico32MCAsmInfo::Mico32MCAsmInfo(const Target &T, StringRef TT)
 {
   IsLittleEndian = false;
 // These are from MBlaze.

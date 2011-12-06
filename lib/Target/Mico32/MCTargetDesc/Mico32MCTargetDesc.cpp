@@ -30,15 +30,6 @@
 
 using namespace llvm;
 
-static MCAsmInfo *createMCAsmInfo(const Target &T, StringRef TT) {
-  Triple TheTriple(TT);
-  switch (TheTriple.getOS()) {
-  default:
-    return new Mico32MCAsmInfo();
-  }
-}
-
-
 static MCInstrInfo *createMico32MCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
   InitMico32MCInstrInfo(X);
@@ -58,6 +49,20 @@ static MCSubtargetInfo *createMico32MCSubtargetInfo(StringRef TT, StringRef CPU,
   return X;
 }
 
+
+static MCAsmInfo *createMico32MCAsmInfo(const Target &T, StringRef TT) {
+  MCAsmInfo *MAI = new Mico32MCAsmInfo(T, TT);
+
+  // Set the initial debugging machine moves that are assumed
+  // on entry to a function.  From XCore.
+  // Initial frame pointer is SP.
+  MachineLocation Dst(MachineLocation::VirtualFP);
+  MachineLocation Src(Mico32::RSP, 0);
+  MAI->addInitialFrameState(0, Dst, Src);
+
+  return MAI;
+}
+
 static MCCodeGenInfo *createMico32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                                CodeModel::Model CM) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
@@ -72,7 +77,7 @@ static MCCodeGenInfo *createMico32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
 extern "C" void LLVMInitializeMico32TargetMC() {
   // Register the MC asm info.
   //RegisterMCAsmInfo<Mico32MCAsmInfo> X(TheMico32Target);
-  RegisterMCAsmInfoFn X(TheMico32Target, createMCAsmInfo);
+  RegisterMCAsmInfoFn X(TheMico32Target, createMico32MCAsmInfo);
 
   // Register the MC codegen info.
   TargetRegistry::RegisterMCCodeGenInfo(TheMico32Target,
