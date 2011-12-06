@@ -206,7 +206,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
     // If the offset is small enough to fit in the immediate field, directly
     // encode it.
     // Replace the FrameIndex with the appropriate frame pointer 
-    // register R1 (SP) or R30 (FP).
+    // register RSP (28) or RFP (27).
     FrameOp.ChangeToRegister(FPRegToUse, false);
     MI.getOperand(i+1).ChangeToImmediate(Offset);
   } else {
