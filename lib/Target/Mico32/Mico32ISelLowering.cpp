@@ -918,11 +918,10 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
 /// getConstraintType - Given a constraint letter, return the type of
 /// constraint it is for this target.
-#if 0
 Mico32TargetLowering::ConstraintType Mico32TargetLowering::
 getConstraintType(const std::string &Constraint) const
 {
-  // Mico32 specific constrainy
+  // Mico32 specific constraint
   //
   // 'd' : An address register. Equivalent to r.
   // 'y' : Equivalent to r; retained for
@@ -940,12 +939,10 @@ getConstraintType(const std::string &Constraint) const
   }
   return TargetLowering::getConstraintType(Constraint);
 }
-#endif
 
 /// Examine constraint type and operand type and determine a weight value.
 /// This object must already have been set up with the operand type
 /// and the current alternative constraint selected.
-#if 0
 TargetLowering::ConstraintWeight
 Mico32TargetLowering::getSingleConstraintMatchWeight(
     AsmOperandInfo &info, const char *constraint) const {
@@ -955,7 +952,7 @@ Mico32TargetLowering::getSingleConstraintMatchWeight(
     // but allow it at the lowest weight.
   if (CallOperandVal == NULL)
     return CW_Default;
-  const Type *type = CallOperandVal->getType();
+  Type *type = CallOperandVal->getType();
   // Look at the constraint type.
   switch (*constraint) {
   default:
@@ -973,18 +970,28 @@ Mico32TargetLowering::getSingleConstraintMatchWeight(
   }
   return weight;
 }
-#endif
 
-/// getRegClassForInlineAsmConstraint - Given a constraint letter (e.g. "r"),
-/// return a list of registers that can be used to satisfy the constraint.
-/// This should only be used for C_RegisterClass constraints.
-#if 0
+/// getRegForInlineAsmConstraint - Given a physical register constraint (e.g.
+/// {edx}), return the register number and the register class for the
+/// register. (not implemented)
+///
+/// Given a register class constraint, like 'r', if this corresponds directly
+/// to an LLVM register class, return a register of 0 and the register class
+/// pointer.
+///
+/// This should only be used for C_Register constraints.  On error,
+/// this returns a register number of 0 and a null register class pointer..
 std::pair<unsigned, const TargetRegisterClass*> Mico32TargetLowering::
 getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
       return std::make_pair(0U, Mico32::GPRRegisterClass);
+      // FIXME:  This was copied directly from MBLAZE:
+      // TODO: These can't possibly be right, but match what was in
+      // getRegClassForInlineAsmConstraint.
+    case 'd':
+    case 'y':
     case 'f':
       if (VT == MVT::f32)
         return std::make_pair(0U, Mico32::GPRRegisterClass);
@@ -992,35 +999,6 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
   }
   return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);
 }
-#endif
-
-/// Given a register class constraint, like 'r', if this corresponds directly
-/// to an LLVM register class, return a register of 0 and the register class
-/// pointer.
-#if 0
-std::vector<unsigned> Mico32TargetLowering::
-getRegClassForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
-  if (Constraint.size() != 1)
-    return std::vector<unsigned>();
-
-  switch (Constraint[0]) {
-    default : break;
-    case 'r':
-    // GCC Mico32 Constraint Letters
-    case 'd':
-    case 'y':
-    case 'f':
-      return make_vector<unsigned>(
-        Mico32::R3,  Mico32::R4,  Mico32::R5,  Mico32::R6,
-        Mico32::R7,  Mico32::R9,  Mico32::R10, Mico32::R11,
-        Mico32::R12, Mico32::R19, Mico32::R20, Mico32::R21,
-        Mico32::R22, Mico32::R23, Mico32::R24, Mico32::R25,
-        Mico32::R26, Mico32::RFP, Mico32::RSP, Mico32::RRA,
-        Mico32::REA, Mico32::RBA, 0);
-  }
-  return std::vector<unsigned>();
-}
-#endif
 
 bool Mico32TargetLowering::
 isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {

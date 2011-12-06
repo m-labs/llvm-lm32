@@ -166,7 +166,6 @@ namespace llvm {
       EmitInstrWithCustomInserter(MachineInstr *MI,
                                   MachineBasicBlock *MBB) const;
 
-#if 0
     // Inline asm support
     ConstraintType getConstraintType(const std::string &Constraint) const;
 
@@ -179,11 +178,6 @@ namespace llvm {
               getRegForInlineAsmConstraint(const std::string &Constraint,
               EVT VT) const;
 
-    std::vector<unsigned>
-    getRegClassForInlineAsmConstraint(const std::string &Constraint,
-              EVT VT) const;
-
-#endif
     /// isOffsetFoldingLegal - Return true if folding a constant offset
     /// with the given GlobalAddress is legal.  It is frequently not legal in
     /// PIC relocation models. This will merge a global address with an
