@@ -135,8 +135,9 @@ emitPrologue(MachineFunction &MF) const {
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),
               Mico32::RSP).addReg(Mico32::RSP).addImm(-FrameSize);
     } else {
+	MBB.getParent()->getFunction()->getName();
       // We could use multiple instructions to generate the offset.
-      report_fatal_error("Unhandled frame size: " + Twine(FrameSize));
+      report_fatal_error("Unhandled frame size in function: " + MBB.getParent()->getFunction()->getName() + " size: " + Twine(FrameSize));
     }
 
     // Add the "machine moves" for the instructions we generated above, but in
