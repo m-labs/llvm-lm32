@@ -41,17 +41,6 @@ Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &subtarget)
 }
 
 
-/// getInitialFrameState - Returns a list of machine moves that are assumed
-/// on entry to a function.  From XCore.
-void Mico32FrameLowering::
-getInitialFrameState(std::vector<MachineMove> &Moves) const {
-  // Initial state of the frame pointer is RSP (SP).
-  MachineLocation Dst(MachineLocation::VirtualFP);
-  MachineLocation Src(Mico32::RSP, 0);
-  Moves.push_back(MachineMove(0, Dst, Src));
-}
-
-
 /// determineFrameLayout - Align the frame and maximum call frame and
 /// updated the sizes. Copied from SPU.
 void Mico32FrameLowering::
@@ -153,21 +142,6 @@ emitPrologue(MachineFunction &MF) const {
     // Add the "machine moves" for the instructions we generated above, but in
     // reverse order.
     // Mapping for machine moves (see MCDwarf.cpp):
-    //
-    //   DST: VirtualFP 
-    //        SRC: VirtualFP              => DW_CFA_def_cfa_offset
-    //        SRC: others                 => DW_CFA_def_cfa
-    //
-    //   ELSE  (DST != VirtualFP)
-    //   SRC: VirtualFP
-    //        DST: Register               => DW_CFA_def_cfa_register
-    //        DST: other                  => Error
-    //
-    //   ELSE 
-    //        OFFSET < 0                  => DW_CFA_offset_extended_sf
-    //        REG < 64                    => DW_CFA_offset + Reg
-    //        ELSE                        => DW_CFA_offset_extended
-    //
     if (emitFrameMoves) {
       std::vector<MachineMove> &Moves = MMI->getFrameMoves();
 
@@ -227,6 +201,7 @@ emitPrologue(MachineFunction &MF) const {
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),FramePtr)
         .addReg(Mico32::RSP).addImm(FrameSize);
       if (emitFrameMoves) {
+        DEBUG(dbgs() << "FRAMEMOVE: FPreg: is now FP \n");
         // Show FP is now valid.
         MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
         BuildMI(MBB, MBBI, dl,TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
@@ -238,6 +213,7 @@ emitPrologue(MachineFunction &MF) const {
   } 
   
 #if 0
+  // from XCore (I believe):
   if (emitFrameMoves) {
     // Frame moves for callee saved.
     std::vector<MachineMove> &Moves = MMI->getFrameMoves();
@@ -268,9 +244,19 @@ emitPrologue(MachineFunction &MF) const {
     // Add callee saved registers to move list.
     const std::vector<CalleeSavedInfo> &CSI = MFrmInf->getCalleeSavedInfo();
     for (unsigned I = 0, E = CSI.size(); I != E; ++I) {
+      int FrameIndex = CSI[I].getFrameIdx(); 
       int Offset = MFrmInf->getObjectOffset(CSI[I].getFrameIdx());
-      Offset += bias;
       unsigned Reg = CSI[I].getReg();
+     DEBUG(dbgs() << "\nFunction         : "
+               << MF.getFunction()->getName() << " FRAME MOVES\n");
+  DEBUG(dbgs() << "<--------->\n");
+  DEBUG(dbgs() << "FPreg              : "
+               << ((FP) ? "FP" : "SP") << "\n");
+  DEBUG(dbgs() << "Moving reg         : " << Reg << "\n");
+  DEBUG(dbgs() << "FrameIndex         : " << FrameIndex << "\n");
+  DEBUG(dbgs() << "FrameOffset        : " << Offset << "\n");
+  DEBUG(dbgs() << "bias               : " << bias << "\n");
+      Offset += bias;
       //if (Reg == PPC::LR || Reg == PPC::LR8 || Reg == PPC::RM) continue;
       MachineLocation CSDst(MachineLocation::VirtualFP, Offset);
       MachineLocation CSSrc(Reg);
