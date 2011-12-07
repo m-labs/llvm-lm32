@@ -420,7 +420,8 @@ namespace llvm {
 
     /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.
-    void EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace = 0);
+    void EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace = 0,
+                             unsigned Padding = 0);
 
     /// EmitSLEB128Value - Special case of EmitSLEB128Value that avoids the
     /// client having to pass in a MCExpr for constant integers.
@@ -640,8 +641,8 @@ namespace llvm {
   /// createELFStreamer - Create a machine code streamer which will generate
   /// ELF format object files.
   MCStreamer *createELFStreamer(MCContext &Ctx, MCAsmBackend &TAB,
-				raw_ostream &OS, MCCodeEmitter *CE,
-				bool RelaxAll, bool NoExecStack);
+                                raw_ostream &OS, MCCodeEmitter *CE,
+                                bool RelaxAll, bool NoExecStack);
 
   /// createLoggingStreamer - Create a machine code streamer which just logs the
   /// API calls and then dispatches to another streamer.

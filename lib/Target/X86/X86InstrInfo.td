@@ -473,6 +473,7 @@ def HasSSE4A     : Predicate<"Subtarget->hasSSE4A()">;
 
 def HasAVX       : Predicate<"Subtarget->hasAVX()">;
 def HasAVX2      : Predicate<"Subtarget->hasAVX2()">;
+def HasXMM       : Predicate<"Subtarget->hasXMM()">;
 def HasXMMInt    : Predicate<"Subtarget->hasXMMInt()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
@@ -1523,10 +1524,11 @@ def : MnemonicAlias<"call", "calll">, Requires<[In32BitMode]>;
 def : MnemonicAlias<"call", "callq">, Requires<[In64BitMode]>;
 
 def : MnemonicAlias<"cbw",  "cbtw">;
+def : MnemonicAlias<"cwde", "cwtl">;
 def : MnemonicAlias<"cwd",  "cwtd">;
 def : MnemonicAlias<"cdq", "cltd">;
-def : MnemonicAlias<"cwde", "cwtl">;
 def : MnemonicAlias<"cdqe", "cltq">;
+def : MnemonicAlias<"cqo", "cqto">;
 
 // lret maps to lretl, it is not ambiguous with lretq.
 def : MnemonicAlias<"lret", "lretl">;

@@ -60,7 +60,7 @@ public:
 // ARMFixupKinds.h.
 //
 // Name                      Offset (bits) Size (bits)     Flags
-{ "fixup_arm_ldst_pcrel_12", 1,            24,  MCFixupKindInfo::FKF_IsPCRel },
+{ "fixup_arm_ldst_pcrel_12", 0,            32,  MCFixupKindInfo::FKF_IsPCRel },
 { "fixup_t2_ldst_pcrel_12",  0,            32,  MCFixupKindInfo::FKF_IsPCRel |
                                    MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
 { "fixup_arm_pcrel_10",      0,            32,  MCFixupKindInfo::FKF_IsPCRel },
@@ -68,7 +68,7 @@ public:
                                    MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
 { "fixup_thumb_adr_pcrel_10",0,            8,   MCFixupKindInfo::FKF_IsPCRel |
                                    MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
-{ "fixup_arm_adr_pcrel_12",  1,            24,  MCFixupKindInfo::FKF_IsPCRel },
+{ "fixup_arm_adr_pcrel_12",  0,            32,  MCFixupKindInfo::FKF_IsPCRel },
 { "fixup_t2_adr_pcrel_12",   0,            32,  MCFixupKindInfo::FKF_IsPCRel |
                                    MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
 { "fixup_arm_condbranch",    0,            24,  MCFixupKindInfo::FKF_IsPCRel },
@@ -102,6 +102,11 @@ public:
 
   bool MayNeedRelaxation(const MCInst &Inst) const;
 
+  bool fixupNeedsRelaxation(const MCFixup &Fixup,
+                            uint64_t Value,
+                            const MCInstFragment *DF,
+                            const MCAsmLayout &Layout) const;
+
   void RelaxInstruction(const MCInst &Inst, MCInst &Res) const;
 
   bool WriteNopData(uint64_t Count, MCObjectWriter *OW) const;
@@ -124,21 +129,56 @@ public:
 };
 } // end anonymous namespace
 
+static unsigned getRelaxedOpcode(unsigned Op) {
+  switch (Op) {
+  default: return Op;
+  case ARM::tBcc: return ARM::t2Bcc;
+  }
+}
+
 bool ARMAsmBackend::MayNeedRelaxation(const MCInst &Inst) const {
-  // FIXME: Thumb targets, different move constant targets..
+  if (getRelaxedOpcode(Inst.getOpcode()) != Inst.getOpcode())
+    return true;
   return false;
 }
 
+bool ARMAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
+                                         uint64_t Value,
+                                         const MCInstFragment *DF,
+                                         const MCAsmLayout &Layout) const {
+  // Relaxing tBcc to t2Bcc. tBcc has a signed 9-bit displacement with the
+  // low bit being an implied zero. There's an implied +4 offset for the
+  // branch, so we adjust the other way here to determine what's
+  // encodable.
+  //
+  // Relax if the value is too big for a (signed) i8.
+  int64_t Offset = int64_t(Value) - 4;
+  return Offset > 254 || Offset < -256;
+}
+
 void ARMAsmBackend::RelaxInstruction(const MCInst &Inst, MCInst &Res) const {
-  assert(0 && "ARMAsmBackend::RelaxInstruction() unimplemented");
-  return;
+  unsigned RelaxedOp = getRelaxedOpcode(Inst.getOpcode());
+
+  // Sanity check w/ diagnostic if we get here w/ a bogus instruction.
+  if (RelaxedOp == Inst.getOpcode()) {
+    SmallString<256> Tmp;
+    raw_svector_ostream OS(Tmp);
+    Inst.dump_pretty(OS);
+    OS << "\n";
+    report_fatal_error("unexpected instruction to relax: " + OS.str());
+  }
+
+  // The instructions we're relaxing have (so far) the same operands.
+  // We just need to update to the proper opcode.
+  Res = Inst;
+  Res.setOpcode(RelaxedOp);
 }
 
 bool ARMAsmBackend::WriteNopData(uint64_t Count, MCObjectWriter *OW) const {
   const uint16_t Thumb1_16bitNopEncoding = 0x46c0; // using MOV r8,r8
   const uint16_t Thumb2_16bitNopEncoding = 0xbf00; // NOP
   const uint32_t ARMv4_NopEncoding = 0xe1a0000; // using MOV r0,r0
-  const uint32_t ARMv6T2_NopEncoding = 0xe3207800; // NOP
+  const uint32_t ARMv6T2_NopEncoding = 0xe320f000; // NOP
   if (isThumb()) {
     const uint16_t nopEncoding = hasNOP() ? Thumb2_16bitNopEncoding
                                           : Thumb1_16bitNopEncoding;

@@ -248,8 +248,8 @@ bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
       static int bbcnt = 0;
       if (bbcnt++ % DebugDiv != DebugMod)
         continue;
-      dbgs() << "*** DEBUG scheduling " << Fn.getFunction()->getNameStr() <<
-        ":BB#" << MBB->getNumber() << " ***\n";
+      dbgs() << "*** DEBUG scheduling " << Fn.getFunction()->getName()
+             << ":BB#" << MBB->getNumber() << " ***\n";
     }
 #endif
 
@@ -364,7 +364,7 @@ void SchedulePostRATDList::StartBlockForKills(MachineBasicBlock *BB) {
     KillIndices[i] = ~0u;
 
   // Determine the live-out physregs for this block.
-  if (!BB->empty() && BB->back().getDesc().isReturn()) {
+  if (!BB->empty() && BB->back().isReturn()) {
     // In a return block, examine the function live-out regs.
     for (MachineRegisterInfo::liveout_iterator I = MRI.liveout_begin(),
            E = MRI.liveout_end(); I != E; ++I) {

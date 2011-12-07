@@ -385,7 +385,7 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
     bool symbolTableWorked = false;
 
     // Parse relocations.
-    std::vector<std::pair<uint64_t, uint32_t> > Relocs;
+    std::vector<std::pair<uint64_t, SymbolRef> > Relocs;
     error_code ec;
     for (relocation_iterator RI = Sections[SectIdx].begin_relocations(),
          RE = Sections[SectIdx].end_relocations(); RI != RE; RI.increment(ec)) {
@@ -394,10 +394,10 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
       Sections[SectIdx].getAddress(SectionAddress);
       RelocOffset -= SectionAddress;
 
-      uint64_t RelocInfo;
-      RI->getType(RelocInfo);
+      SymbolRef RelocSym;
+      RI->getSymbol(RelocSym);
 
-      Relocs.push_back(std::make_pair(RelocOffset, RelocInfo));
+      Relocs.push_back(std::make_pair(RelocOffset, RelocSym));
     }
     array_pod_sort(Relocs.begin(), Relocs.end());
 
@@ -419,7 +419,7 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
 
       // Start at the address of the symbol relative to the section's address.
       uint64_t Start = 0;
-      Symbols[SymIdx].getOffset(Start);
+      Symbols[SymIdx].getAddress(Start);
 
       // Stop disassembling either at the beginning of the next symbol or at
       // the end of the section.
@@ -432,7 +432,7 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
         if (NextSymType == SymbolRef::ST_Function) {
           Sections[SectIdx].containsSymbol(Symbols[NextSymIdx],
                                            containsNextSym);
-          Symbols[NextSymIdx].getOffset(NextSym);
+          Symbols[NextSymIdx].getAddress(NextSym);
           break;
         }
         ++NextSymIdx;
@@ -459,7 +459,7 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
                                      DebugOut, nulls())) {
             uint64_t SectAddress = 0;
             Sections[SectIdx].getAddress(SectAddress);
-            outs() << format("%8llx:\t", SectAddress + Index);
+            outs() << format("%8" PRIx64 ":\t", SectAddress + Index);
 
             DumpBytes(StringRef(Bytes.data() + Index, Size));
             IP->printInst(&Inst, outs(), "");
@@ -579,7 +579,7 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
               outs() << FunctionMap[SectAddress + Inst.Address]-> getName()
                      << ":\n";
 
-            outs() << format("%8llx:\t", SectAddress + Inst.Address);
+            outs() << format("%8" PRIx64 ":\t", SectAddress + Inst.Address);
             DumpBytes(StringRef(Bytes.data() + Inst.Address, Inst.Size));
 
             if (fi->second.contains(fi->first)) // Indent simple loops.
@@ -594,8 +594,8 @@ void llvm::DisassembleInputMachO(StringRef Filename) {
                   Relocs[j].first < SectAddress + Inst.Address + Inst.Size) {
                 StringRef SymName;
                 uint64_t Addr;
-                UnsortedSymbols[Relocs[j].second].getName(SymName);
-                UnsortedSymbols[Relocs[j].second].getAddress(Addr);
+                Relocs[j].second.getAddress(Addr);
+                Relocs[j].second.getName(SymName);
 
                 outs() << "\t# " << SymName << ' ';
                 DumpAddress(Addr, Sections, MachOObj, outs());

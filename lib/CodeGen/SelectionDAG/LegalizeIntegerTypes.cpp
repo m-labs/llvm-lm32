@@ -20,7 +20,6 @@
 
 #include "LegalizeTypes.h"
 #include "llvm/DerivedTypes.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
@@ -1778,6 +1777,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
   unsigned Alignment = N->getAlignment();
   bool isVolatile = N->isVolatile();
   bool isNonTemporal = N->isNonTemporal();
+  bool isInvariant = N->isInvariant();
   DebugLoc dl = N->getDebugLoc();
 
   assert(NVT.isByteSized() && "Expanded type not byte sized!");
@@ -1808,7 +1808,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
   } else if (TLI.isLittleEndian()) {
     // Little-endian - low bits are at low addresses.
     Lo = DAG.getLoad(NVT, dl, Ch, Ptr, N->getPointerInfo(),
-                     isVolatile, isNonTemporal, Alignment);
+                     isVolatile, isNonTemporal, isInvariant, Alignment);
 
     unsigned ExcessBits =
       N->getMemoryVT().getSizeInBits() - NVT.getSizeInBits();
@@ -2310,7 +2310,7 @@ void DAGTypeLegalizer::ExpandIntRes_XMULO(SDNode *N,
 
   SplitInteger(CallInfo.first, Lo, Hi);
   SDValue Temp2 = DAG.getLoad(PtrVT, dl, CallInfo.second, Temp,
-			      MachinePointerInfo(), false, false, 0);
+			      MachinePointerInfo(), false, false, false, 0);
   SDValue Ofl = DAG.getSetCC(dl, N->getValueType(1), Temp2,
                              DAG.getConstant(0, PtrVT),
                              ISD::SETNE);
@@ -2926,38 +2926,28 @@ SDValue DAGTypeLegalizer::PromoteIntRes_SCALAR_TO_VECTOR(SDNode *N) {
 SDValue DAGTypeLegalizer::PromoteIntRes_CONCAT_VECTORS(SDNode *N) {
   DebugLoc dl = N->getDebugLoc();
 
-  SDValue Op0 = N->getOperand(0);
-  SDValue Op1 = N->getOperand(1);
-  assert(Op0.getValueType() == Op1.getValueType() &&
-         "Invalid input vector types");
-
   EVT OutVT = N->getValueType(0);
   EVT NOutVT = TLI.getTypeToTransformTo(*DAG.getContext(), OutVT);
   assert(NOutVT.isVector() && "This type must be promoted to a vector type");
 
+  EVT InElemTy = OutVT.getVectorElementType();
   EVT OutElemTy = NOutVT.getVectorElementType();
 
-  unsigned NumElem0 = Op0.getValueType().getVectorNumElements();
-  unsigned NumElem1 = Op1.getValueType().getVectorNumElements();
+  unsigned NumElem = N->getOperand(0).getValueType().getVectorNumElements();
   unsigned NumOutElem = NOutVT.getVectorNumElements();
-  assert(NumElem0 + NumElem1 == NumOutElem &&
-         "Invalid number of incoming elements");
+  unsigned NumOperands = N->getNumOperands();
+  assert(NumElem * NumOperands == NumOutElem &&
+         "Unexpected number of elements");
 
   // Take the elements from the first vector.
   SmallVector<SDValue, 8> Ops(NumOutElem);
-  for (unsigned i = 0; i < NumElem0; ++i) {
-    SDValue Ext = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
-                              Op0.getValueType().getScalarType(), Op0,
-                              DAG.getIntPtrConstant(i));
-    Ops[i] = DAG.getNode(ISD::ANY_EXTEND, dl, OutElemTy, Ext);
-  }
-
-  // Take the elements from the second vector
-  for (unsigned i = 0; i < NumElem1; ++i) {
-    SDValue Ext = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
-                              Op1.getValueType().getScalarType(), Op1,
-                              DAG.getIntPtrConstant(i));
-    Ops[i + NumElem0] = DAG.getNode(ISD::ANY_EXTEND, dl, OutElemTy, Ext);
+  for (unsigned i = 0; i < NumOperands; ++i) {
+    SDValue Op = N->getOperand(i);
+    for (unsigned j = 0; j < NumElem; ++j) {
+      SDValue Ext = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
+                                InElemTy, Op, DAG.getIntPtrConstant(j));
+      Ops[i * NumElem + j] = DAG.getNode(ISD::ANY_EXTEND, dl, OutElemTy, Ext);
+    }
   }
 
   return DAG.getNode(ISD::BUILD_VECTOR, dl, NOutVT, &Ops[0], Ops.size());

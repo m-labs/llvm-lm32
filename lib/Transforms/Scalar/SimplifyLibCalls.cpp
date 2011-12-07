@@ -963,8 +963,7 @@ struct UnaryDoubleFPOpt : public LibCallOptimization {
 
     // floor((double)floatval) -> (double)floorf(floatval)
     Value *V = Cast->getOperand(0);
-    V = EmitUnaryFloatFnCall(V, Callee->getName().data(), B,
-                             Callee->getAttributes());
+    V = EmitUnaryFloatFnCall(V, Callee->getName(), B, Callee->getAttributes());
     return B.CreateFPExt(V, B.getDoubleTy());
   }
 };
@@ -1324,7 +1323,7 @@ struct FPutsOpt : public LibCallOptimization {
     if (!Len) return 0;
     EmitFWrite(CI->getArgOperand(0),
                ConstantInt::get(TD->getIntPtrType(*Context), Len-1),
-               CI->getArgOperand(1), B, TD);
+               CI->getArgOperand(1), B, TD, TLI);
     return CI;  // Known to have no uses (see above).
   }
 };
@@ -1352,7 +1351,7 @@ struct FPrintFOpt : public LibCallOptimization {
       EmitFWrite(CI->getArgOperand(1),
                  ConstantInt::get(TD->getIntPtrType(*Context),
                                   FormatStr.size()),
-                 CI->getArgOperand(0), B, TD);
+                 CI->getArgOperand(0), B, TD, TLI);
       return ConstantInt::get(CI->getType(), FormatStr.size());
     }
 
@@ -1374,7 +1373,7 @@ struct FPrintFOpt : public LibCallOptimization {
       // fprintf(F, "%s", str) --> fputs(str, F)
       if (!CI->getArgOperand(2)->getType()->isPointerTy() || !CI->use_empty())
         return 0;
-      EmitFPutS(CI->getArgOperand(2), CI->getArgOperand(0), B, TD);
+      EmitFPutS(CI->getArgOperand(2), CI->getArgOperand(0), B, TD, TLI);
       return CI;
     }
     return 0;
@@ -1470,6 +1469,7 @@ namespace {
     SimplifyLibCalls() : FunctionPass(ID), StrCpy(false), StrCpyChk(true) {
       initializeSimplifyLibCallsPass(*PassRegistry::getPassRegistry());
     }
+    void AddOpt(LibFunc::Func F, LibCallOptimization* Opt);
     void InitOptimizations();
     bool runOnFunction(Function &F);
 
@@ -1500,6 +1500,11 @@ FunctionPass *llvm::createSimplifyLibCallsPass() {
   return new SimplifyLibCalls();
 }
 
+void SimplifyLibCalls::AddOpt(LibFunc::Func F, LibCallOptimization* Opt) {
+  if (TLI->has(F))
+    Optimizations[TLI->getName(F)] = Opt;
+}
+
 /// Optimizations - Populate the Optimizations map with all the optimizations
 /// we know.
 void SimplifyLibCalls::InitOptimizations() {
@@ -1525,9 +1530,9 @@ void SimplifyLibCalls::InitOptimizations() {
   Optimizations["strcspn"] = &StrCSpn;
   Optimizations["strstr"] = &StrStr;
   Optimizations["memcmp"] = &MemCmp;
-  if (TLI->has(LibFunc::memcpy)) Optimizations["memcpy"] = &MemCpy;
+  AddOpt(LibFunc::memcpy, &MemCpy);
   Optimizations["memmove"] = &MemMove;
-  if (TLI->has(LibFunc::memset)) Optimizations["memset"] = &MemSet;
+  AddOpt(LibFunc::memset, &MemSet);
 
   // _chk variants of String and Memory LibCall Optimizations.
   Optimizations["__strcpy_chk"] = &StrCpyChk;
@@ -1580,8 +1585,8 @@ void SimplifyLibCalls::InitOptimizations() {
   // Formatting and IO Optimizations
   Optimizations["sprintf"] = &SPrintF;
   Optimizations["printf"] = &PrintF;
-  Optimizations["fwrite"] = &FWrite;
-  Optimizations["fputs"] = &FPuts;
+  AddOpt(LibFunc::fwrite, &FWrite);
+  AddOpt(LibFunc::fputs, &FPuts);
   Optimizations["fprintf"] = &FPrintF;
   Optimizations["puts"] = &Puts;
 }

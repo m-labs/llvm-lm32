@@ -97,6 +97,14 @@
       <li><a href="#regAlloc_builtIn">Built in register allocators</a></li>
       </ul></li>
     <li><a href="#codeemit">Code Emission</a></li>
+    <li><a href="#vliw_packetizer">VLIW Packetizer</a>
+      <ul>
+      <li><a href="#vliw_mapping">Mapping from instructions to functional
+                 units</a></li>
+      <li><a href="#vliw_repr">How the packetization tables are
+                             generated and used</a></li>
+      </ul>
+    </li>
     </ul>
   </li>
   <li><a href="#nativeassembler">Implementing a Native Assembler</a></li>
@@ -2001,6 +2009,73 @@ to implement an assembler for your target.</p>
 
 </div>
 
+<!-- ======================================================================= -->
+<h3>
+  <a name="vliw_packetizer">VLIW Packetizer</a>
+</h3>
+
+<div>
+
+<p>In a Very Long Instruction Word (VLIW) architecture, the compiler is
+   responsible for mapping instructions to functional-units available on
+   the architecture. To that end, the compiler creates groups of instructions
+   called <i>packets</i> or <i>bundles</i>. The VLIW packetizer in LLVM is
+   a target-independent mechanism to enable the packetization of machine
+   instructions.</p>
+
+<!-- _______________________________________________________________________ -->
+
+<h4>
+  <a name="vliw_mapping">Mapping from instructions to functional units</a>
+</h4>
+
+<div>
+
+<p>Instructions in a VLIW target can typically be mapped to multiple functional
+units. During the process of packetizing, the compiler must be able to reason
+about whether an instruction can be added to a packet. This decision can be
+complex since the compiler has to examine all possible mappings of instructions
+to functional units. Therefore to alleviate compilation-time complexity, the
+VLIW packetizer parses the instruction classes of a target and generates tables
+at compiler build time. These tables can then be queried by the provided
+machine-independent API to determine if an instruction can be accommodated in a
+packet.</p>
+</div>
+
+<!-- ======================================================================= -->
+<h4>
+  <a name="vliw_repr">
+    How the packetization tables are generated and used
+  </a>
+</h4>
+
+<div>
+
+<p>The packetizer reads instruction classes from a target's itineraries and
+creates a deterministic finite automaton (DFA) to represent the state of a
+packet. A DFA consists of three major elements: inputs, states, and
+transitions. The set of inputs for the generated DFA represents the instruction
+being added to a packet. The states represent the possible consumption
+of functional units by instructions in a packet. In the DFA, transitions from
+one state to another occur on the addition of an instruction to an existing
+packet. If there is a legal mapping of functional units to instructions, then
+the DFA contains a corresponding transition. The absence of a transition
+indicates that a legal mapping does not exist and that the instruction cannot
+be added to the packet.</p>
+
+<p>To generate tables for a VLIW target, add <i>Target</i>GenDFAPacketizer.inc
+as a target to the Makefile in the target directory. The exported API provides
+three functions: <tt>DFAPacketizer::clearResources()</tt>,
+<tt>DFAPacketizer::reserveResources(MachineInstr *MI)</tt>, and
+<tt>DFAPacketizer::canReserveResources(MachineInstr *MI)</tt>. These functions
+allow a target packetizer to add an instruction to an existing packet and to
+check whether an instruction can be added to a packet. See
+<tt>llvm/CodeGen/DFAPacketizer.h</tt> for more information.</p>
+
+</div>
+
+</div>
+
 </div>
 
 <!-- *********************************************************************** -->
@@ -2321,6 +2396,20 @@ is the key:</p>
   <td class="unknown"></td> <!-- XCore -->
 </tr>
 
+<tr>
+  <td><a href="#feat_segstacks">segmented stacks</a></td>
+  <td class="no"></td> <!-- ARM -->
+  <td class="no"></td> <!-- CellSPU -->
+  <td class="no"></td> <!-- MBlaze -->
+  <td class="no"></td> <!-- MSP430 -->
+  <td class="no"></td> <!-- Mips -->
+  <td class="no"></td> <!-- PTX -->
+  <td class="no"></td> <!-- PowerPC -->
+  <td class="no"></td> <!-- Sparc -->
+  <td class="partial"><a href="#feat_segstacks_x86">*</a></td> <!-- X86 -->
+  <td class="no"></td> <!-- XCore -->
+</tr>
+
 
 </table>
 
@@ -2401,6 +2490,22 @@ file to a .o file (as is the case for many C compilers).</p>
 are calls marked "<a href="LangRef.html#i_call">tail</a>" and use the fastcc
 calling convention.  Please see the <a href="#tailcallopt">tail call section
 more more details</a>.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4 id="feat_segstacks">Segmented Stacks</h4>
+
+<div>
+
+<p>This box indicates whether the target supports segmented stacks. This
+replaces the traditional large C stack with many linked segments. It
+is compatible with the <a href="http://gcc.gnu.org/wiki/SplitStacks">gcc
+implementation</a> used by the Go front end.</p>
+
+<p id="feat_segstacks_x86">Basic support exists on the X86 backend. Currently
+vararg doesn't work and the object files are not marked the way the gold
+linker expects, but simple Go programs can be built by dragonegg.</p>
 
 </div>
 

@@ -91,6 +91,8 @@ def FeatureFMA3    : SubtargetFeature<"fma3", "HasFMA3", "true",
                                      "Enable three-operand fused multiple-add">;
 def FeatureFMA4    : SubtargetFeature<"fma4", "HasFMA4", "true",
                                       "Enable four-operand fused multiple-add">;
+def FeatureXOP    : SubtargetFeature<"xop", "HasXOP", "true",
+                                      "Enable XOP instructions">;
 def FeatureVectorUAMem : SubtargetFeature<"vector-unaligned-mem",
                                           "HasVectorUAMem", "true",
                  "Allow unaligned memory operands on vector/SIMD instructions">;
@@ -194,14 +196,16 @@ def : Proc<"opteron-sse3",    [FeatureSSE3,   Feature3DNowA, FeatureCMPXCHG16B,
 def : Proc<"athlon64-sse3",   [FeatureSSE3,   Feature3DNowA, FeatureCMPXCHG16B,
                                FeatureSlowBTMem]>;
 def : Proc<"amdfam10",        [FeatureSSE3,   FeatureSSE4A,
-                               Feature3DNowA, FeatureCMPXCHG16B,
+                               Feature3DNowA, FeatureCMPXCHG16B, FeatureLZCNT,
                                FeatureSlowBTMem]>;
-def : Proc<"barcelona",       [FeatureSSE3,   FeatureSSE4A,
-                               Feature3DNowA, FeatureCMPXCHG16B,
-                               FeatureSlowBTMem]>;
-def : Proc<"istanbul",        [Feature3DNowA, FeatureCMPXCHG16B,
-                               FeatureSSE4A]>;
-def : Proc<"shanghai",        [Feature3DNowA, FeatureCMPXCHG16B, FeatureSSE4A]>;
+// FIXME: Disabling AVX for now since it's not ready.
+def : Proc<"bdver1",          [FeatureSSE42, FeatureSSE4A, FeatureCMPXCHG16B,
+                               FeatureAES, FeatureCLMUL, FeatureFMA4,
+                               FeatureXOP, FeatureLZCNT]>;
+def : Proc<"bdver2",          [FeatureSSE42, FeatureSSE4A, FeatureCMPXCHG16B,
+                               FeatureAES, FeatureCLMUL, FeatureFMA4,
+                                FeatureXOP, FeatureF16C, FeatureLZCNT,
+                                 FeatureBMI]>;
 
 def : Proc<"winchip-c6",      [FeatureMMX]>;
 def : Proc<"winchip2",        [Feature3DNow]>;

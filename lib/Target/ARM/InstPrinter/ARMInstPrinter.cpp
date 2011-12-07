@@ -18,7 +18,6 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -967,7 +966,8 @@ void ARMInstPrinter::printNEONModImmOperand(const MCInst *MI, unsigned OpNum,
   unsigned EncodedImm = MI->getOperand(OpNum).getImm();
   unsigned EltBits;
   uint64_t Val = ARM_AM::decodeNEONModImm(EncodedImm, EltBits);
-  O << "#0x" << utohexstr(Val);
+  O << "#0x";
+  O.write_hex(Val);
 }
 
 void ARMInstPrinter::printImmPlusOneOperand(const MCInst *MI, unsigned OpNum,
@@ -1028,4 +1028,20 @@ void ARMInstPrinter::printVectorListFour(const MCInst *MI, unsigned OpNum,
     << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << ", "
     << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << ", "
     << getRegisterName(MI->getOperand(OpNum).getReg() + 3) << "}";
+}
+
+void ARMInstPrinter::printVectorListOneAllLanes(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListTwoAllLanes(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "[]}";
 }

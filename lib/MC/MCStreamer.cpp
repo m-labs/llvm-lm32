@@ -16,7 +16,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include <cstdlib>
 using namespace llvm;
@@ -94,10 +93,11 @@ void MCStreamer::EmitIntValue(uint64_t Value, unsigned Size,
 
 /// EmitULEB128Value - Special case of EmitULEB128Value that avoids the
 /// client having to pass in a MCExpr for constant integers.
-void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace) {
+void MCStreamer::EmitULEB128IntValue(uint64_t Value, unsigned AddrSpace,
+                                     unsigned Padding) {
   SmallString<32> Tmp;
   raw_svector_ostream OSE(Tmp);
-  MCObjectWriter::EncodeULEB128(Value, OSE);
+  MCObjectWriter::EncodeULEB128(Value, OSE, Padding);
   EmitBytes(OSE.str(), AddrSpace);
 }
 
@@ -187,9 +187,8 @@ void MCStreamer::EmitDataRegion() {
   if (!MAI.getSupportsDataRegions()) return;
 
   // Generate a unique symbol name.
-  MCSymbol *NewSym = Context.GetOrCreateSymbol(
-      Twine(MAI.getDataBeginLabelName()) +
-        utostr(UniqueDataBeginSuffix++));
+  MCSymbol *NewSym = Context.GetOrCreateSymbol(MAI.getDataBeginLabelName() +
+                                               Twine(UniqueDataBeginSuffix++));
   EmitLabel(NewSym);
 
   RegionIndicator = Data;
@@ -203,9 +202,8 @@ void MCStreamer::EmitCodeRegion() {
   if (!MAI.getSupportsDataRegions()) return;
 
   // Generate a unique symbol name.
-  MCSymbol *NewSym = Context.GetOrCreateSymbol(
-      Twine(MAI.getCodeBeginLabelName()) +
-        utostr(UniqueCodeBeginSuffix++));
+  MCSymbol *NewSym = Context.GetOrCreateSymbol(MAI.getCodeBeginLabelName() +
+                                               Twine(UniqueCodeBeginSuffix++));
   EmitLabel(NewSym);
 
   RegionIndicator = Code;
@@ -219,9 +217,9 @@ void MCStreamer::EmitJumpTable8Region() {
   if (!MAI.getSupportsDataRegions()) return;
 
   // Generate a unique symbol name.
-  MCSymbol *NewSym = Context.GetOrCreateSymbol(
-      Twine(MAI.getJumpTable8BeginLabelName()) +
-        utostr(UniqueDataBeginSuffix++));
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable8BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
   EmitLabel(NewSym);
 
   RegionIndicator = JumpTable8;
@@ -235,9 +233,9 @@ void MCStreamer::EmitJumpTable16Region() {
   if (!MAI.getSupportsDataRegions()) return;
 
   // Generate a unique symbol name.
-  MCSymbol *NewSym = Context.GetOrCreateSymbol(
-      Twine(MAI.getJumpTable16BeginLabelName()) +
-        utostr(UniqueDataBeginSuffix++));
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable16BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
   EmitLabel(NewSym);
 
   RegionIndicator = JumpTable16;
@@ -252,9 +250,9 @@ void MCStreamer::EmitJumpTable32Region() {
   if (!MAI.getSupportsDataRegions()) return;
 
   // Generate a unique symbol name.
-  MCSymbol *NewSym = Context.GetOrCreateSymbol(
-      Twine(MAI.getJumpTable32BeginLabelName()) +
-        utostr(UniqueDataBeginSuffix++));
+  MCSymbol *NewSym =
+    Context.GetOrCreateSymbol(MAI.getJumpTable32BeginLabelName() +
+                              Twine(UniqueDataBeginSuffix++));
   EmitLabel(NewSym);
 
   RegionIndicator = JumpTable32;

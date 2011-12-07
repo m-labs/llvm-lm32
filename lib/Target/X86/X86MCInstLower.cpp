@@ -368,14 +368,11 @@ ReSimplify:
   case X86::SETB_C64r:    LowerUnaryToTwoAddr(OutMI, X86::SBB64rr); break;
   case X86::MOV8r0:       LowerUnaryToTwoAddr(OutMI, X86::XOR8rr); break;
   case X86::MOV32r0:      LowerUnaryToTwoAddr(OutMI, X86::XOR32rr); break;
-  case X86::FsFLD0SS:      LowerUnaryToTwoAddr(OutMI, X86::PXORrr); break;
-  case X86::FsFLD0SD:      LowerUnaryToTwoAddr(OutMI, X86::PXORrr); break;
-  case X86::VFsFLD0SS:     LowerUnaryToTwoAddr(OutMI, X86::VPXORrr); break;
-  case X86::VFsFLD0SD:     LowerUnaryToTwoAddr(OutMI, X86::VPXORrr); break;
   case X86::V_SETALLONES:  LowerUnaryToTwoAddr(OutMI, X86::PCMPEQDrr); break;
   case X86::AVX_SET0PSY:   LowerUnaryToTwoAddr(OutMI, X86::VXORPSYrr); break;
   case X86::AVX_SET0PDY:   LowerUnaryToTwoAddr(OutMI, X86::VXORPDYrr); break;
   case X86::AVX_SETALLONES:  LowerUnaryToTwoAddr(OutMI, X86::VPCMPEQDrr); break;
+  case X86::AVX2_SETALLONES: LowerUnaryToTwoAddr(OutMI, X86::VPCMPEQDYrr);break;
 
   case X86::MOV16r0:
     LowerSubReg32_Op0(OutMI, X86::MOV32r0);   // MOV16r0 -> MOV32r0

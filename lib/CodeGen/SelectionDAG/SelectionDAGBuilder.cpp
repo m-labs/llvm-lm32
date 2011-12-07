@@ -41,7 +41,6 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Analysis/DebugInfo.h"
 #include "llvm/Target/TargetData.h"
@@ -1336,6 +1335,8 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
         Condition = getICmpCondCode(IC->getPredicate());
       } else if (const FCmpInst *FC = dyn_cast<FCmpInst>(Cond)) {
         Condition = getFCmpCondCode(FC->getPredicate());
+        if (TM.Options.NoNaNsFPMath)
+          Condition = getFCmpCodeWithoutNaN(Condition);
       } else {
         Condition = ISD::SETEQ; // silence warning.
         llvm_unreachable("Unknown compare instruction");
@@ -1811,8 +1812,8 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
   CopyToExportRegsIfNeeded(&I);
 
   // Update successor info
-  InvokeMBB->addSuccessor(Return);
-  InvokeMBB->addSuccessor(LandingPad);
+  addSuccessorWithWeight(InvokeMBB, Return);
+  addSuccessorWithWeight(InvokeMBB, LandingPad);
 
   // Drop into normal successor.
   DAG.setRoot(DAG.getNode(ISD::BR, getCurDebugLoc(),
@@ -2003,7 +2004,7 @@ bool SelectionDAGBuilder::handleSmallSwitchRange(CaseRec& CR,
 }
 
 static inline bool areJTsAllowed(const TargetLowering &TLI) {
-  return !DisableJumpTables &&
+  return !TLI.getTargetMachine().Options.DisableJumpTables &&
           (TLI.isOperationLegalOrCustom(ISD::BR_JT, MVT::Other) ||
            TLI.isOperationLegalOrCustom(ISD::BRIND, MVT::Other));
 }
@@ -2626,6 +2627,8 @@ void SelectionDAGBuilder::visitFCmp(const User &I) {
   SDValue Op1 = getValue(I.getOperand(0));
   SDValue Op2 = getValue(I.getOperand(1));
   ISD::CondCode Condition = getFCmpCondCode(predicate);
+  if (TM.Options.NoNaNsFPMath)
+    Condition = getFCmpCodeWithoutNaN(Condition);
   EVT DestVT = TLI.getValueType(I.getType());
   setValue(&I, DAG.getSetCC(getCurDebugLoc(), DestVT, Op1, Op2, Condition));
 }
@@ -3096,7 +3099,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
           unsigned Amt = ElementSize.logBase2();
           IdxN = DAG.getNode(ISD::SHL, getCurDebugLoc(),
                              N.getValueType(), IdxN,
-                             DAG.getConstant(Amt, TLI.getPointerTy()));
+                             DAG.getConstant(Amt, IdxN.getValueType()));
         } else {
           SDValue Scale = DAG.getConstant(ElementSize, TLI.getPointerTy());
           IdxN = DAG.getNode(ISD::MUL, getCurDebugLoc(),
@@ -3175,6 +3178,7 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
 
   bool isVolatile = I.isVolatile();
   bool isNonTemporal = I.getMetadata("nontemporal") != 0;
+  bool isInvariant = I.getMetadata("invariant.load") != 0;
   unsigned Alignment = I.getAlignment();
   const MDNode *TBAAInfo = I.getMetadata(LLVMContext::MD_tbaa);
 
@@ -3224,7 +3228,7 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
                             DAG.getConstant(Offsets[i], PtrVT));
     SDValue L = DAG.getLoad(ValueVTs[i], getCurDebugLoc(), Root,
                             A, MachinePointerInfo(SV, Offsets[i]), isVolatile,
-                            isNonTemporal, Alignment, TBAAInfo);
+                            isNonTemporal, isInvariant, Alignment, TBAAInfo);
 
     Values[i] = L;
     Chains[ChainI] = L.getValue(1);
@@ -4775,11 +4779,6 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
                             getRoot(), getValue(I.getArgOperand(0))));
     return 0;
   }
-  case Intrinsic::eh_sjlj_dispatch_setup: {
-    DAG.setRoot(DAG.getNode(ISD::EH_SJLJ_DISPATCHSETUP, dl, MVT::Other,
-                            getRoot(), getValue(I.getArgOperand(0))));
-    return 0;
-  }
 
   case Intrinsic::x86_mmx_pslli_w:
   case Intrinsic::x86_mmx_pslli_d:
@@ -5064,7 +5063,7 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
   }
 
   case Intrinsic::trap: {
-    StringRef TrapFuncName = getTrapFunctionName();
+    StringRef TrapFuncName = TM.Options.getTrapFunctionName();
     if (TrapFuncName.empty()) {
       DAG.setRoot(DAG.getNode(ISD::TRAP, dl,MVT::Other, getRoot()));
       return 0;
@@ -5226,7 +5225,7 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
 
   // If there's a possibility that fast-isel has already selected some amount
   // of the current basic block, don't emit a tail call.
-  if (isTailCall && EnableFastISel)
+  if (isTailCall && TM.Options.EnableFastISel)
     isTailCall = false;
 
   std::pair<SDValue,SDValue> Result =
@@ -5264,7 +5263,7 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
       SDValue L = DAG.getLoad(Outs[i].VT, getCurDebugLoc(), Result.second,
                               Add,
                   MachinePointerInfo::getFixedStack(DemoteStackIdx, Offsets[i]),
-                              false, false, 1);
+                              false, false, false, 1);
       Values[i] = L;
       Chains[i] = L.getValue(1);
     }
@@ -5375,7 +5374,8 @@ static SDValue getMemCmpLoad(const Value *PtrVal, MVT LoadVT,
   SDValue LoadVal = Builder.DAG.getLoad(LoadVT, Builder.getCurDebugLoc(), Root,
                                         Ptr, MachinePointerInfo(PtrVal),
                                         false /*volatile*/,
-                                        false /*nontemporal*/, 1 /* align=1 */);
+                                        false /*nontemporal*/, 
+                                        false /*isinvariant*/, 1 /* align=1 */);
 
   if (!ConstantMemory)
     Builder.PendingLoads.push_back(LoadVal.getValue(1));
@@ -6515,10 +6515,10 @@ SelectionDAGBuilder::CopyValueToVirtualRegister(const Value *V, unsigned Reg) {
 /// isOnlyUsedInEntryBlock - If the specified argument is only used in the
 /// entry block, return true.  This includes arguments used by switches, since
 /// the switch may expand into multiple basic blocks.
-static bool isOnlyUsedInEntryBlock(const Argument *A) {
+static bool isOnlyUsedInEntryBlock(const Argument *A, bool FastISel) {
   // With FastISel active, we may be splitting blocks, so force creation
   // of virtual registers for all non-dead arguments.
-  if (EnableFastISel)
+  if (FastISel)
     return A->use_empty();
 
   const BasicBlock *Entry = A->getParent()->begin();
@@ -6708,7 +6708,7 @@ void SelectionDAGISel::LowerArguments(const BasicBlock *LLVMBB) {
                                      SDB->getCurDebugLoc());
 
     SDB->setValue(I, Res);
-    if (!EnableFastISel && Res.getOpcode() == ISD::BUILD_PAIR) {
+    if (!TM.Options.EnableFastISel && Res.getOpcode() == ISD::BUILD_PAIR) {
       if (LoadSDNode *LNode = 
           dyn_cast<LoadSDNode>(Res.getOperand(0).getNode()))
         if (FrameIndexSDNode *FI =
@@ -6718,7 +6718,7 @@ void SelectionDAGISel::LowerArguments(const BasicBlock *LLVMBB) {
 
     // If this argument is live outside of the entry block, insert a copy from
     // wherever we got it to the vreg that other BB's will reference it as.
-    if (!EnableFastISel && Res.getOpcode() == ISD::CopyFromReg) {
+    if (!TM.Options.EnableFastISel && Res.getOpcode() == ISD::CopyFromReg) {
       // If we can, though, try to skip creating an unnecessary vreg.
       // FIXME: This isn't very clean... it would be nice to make this more
       // general.  It's also subtly incompatible with the hacks FastISel
@@ -6729,7 +6729,7 @@ void SelectionDAGISel::LowerArguments(const BasicBlock *LLVMBB) {
         continue;
       }
     }
-    if (!isOnlyUsedInEntryBlock(I)) {
+    if (!isOnlyUsedInEntryBlock(I, TM.Options.EnableFastISel)) {
       FuncInfo->InitializeRegForValue(I);
       SDB->CopyToExportRegsIfNeeded(I);
     }

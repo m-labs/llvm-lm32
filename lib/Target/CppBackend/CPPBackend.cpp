@@ -1492,7 +1492,7 @@ void CppWriter::printInstruction(const Instruction *I,
     StringRef CrossThread = ConvertAtomicSynchScope(fi->getSynchScope());
     Out << "FenceInst* " << iName
         << " = new FenceInst(mod->getContext(), "
-        << Ordering << ", " << CrossThread
+        << Ordering << ", " << CrossThread << ", " << bbname
         << ");";
     break;
   }
@@ -1503,7 +1503,7 @@ void CppWriter::printInstruction(const Instruction *I,
     Out << "AtomicCmpXchgInst* " << iName
         << " = new AtomicCmpXchgInst("
         << opNames[0] << ", " << opNames[1] << ", " << opNames[2] << ", "
-        << Ordering << ", " << CrossThread
+        << Ordering << ", " << CrossThread << ", " << bbname
         << ");";
     nl(Out) << iName << "->setName(\"";
     printEscapedString(cxi->getName());
@@ -1533,7 +1533,7 @@ void CppWriter::printInstruction(const Instruction *I,
         << " = new AtomicRMWInst("
         << Operation << ", "
         << opNames[0] << ", " << opNames[1] << ", "
-        << Ordering << ", " << CrossThread
+        << Ordering << ", " << CrossThread << ", " << bbname
         << ");";
     nl(Out) << iName << "->setName(\"";
     printEscapedString(rmwi->getName());
@@ -2065,7 +2065,6 @@ char CppWriter::ID = 0;
 bool CPPTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                            formatted_raw_ostream &o,
                                            CodeGenFileType FileType,
-                                           CodeGenOpt::Level OptLevel,
                                            bool DisableVerify) {
   if (FileType != TargetMachine::CGFT_AssemblyFile) return true;
   PM.add(new CppWriter(o));

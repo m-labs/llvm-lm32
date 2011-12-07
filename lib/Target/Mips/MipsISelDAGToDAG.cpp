@@ -86,10 +86,9 @@ private:
   // Complex Pattern.
   bool SelectAddr(SDValue N, SDValue &Base, SDValue &Offset);
 
-  // getI32Imm - Return a target constant with the specified
-  // value, of type i32.
-  inline SDValue getI32Imm(unsigned Imm) {
-    return CurDAG->getTargetConstant(Imm, MVT::i32);
+  // getImm - Return a target constant with the specified value.
+  inline SDValue getImm(const SDNode *Node, unsigned Imm) {
+    return CurDAG->getTargetConstant(Imm, Node->getValueType(0));
   }
 
   virtual bool SelectInlineAsmMemoryOperand(const SDValue &Op,

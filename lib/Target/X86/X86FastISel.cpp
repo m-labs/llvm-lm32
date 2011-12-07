@@ -728,7 +728,7 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
 
   // fastcc with -tailcallopt is intended to provide a guaranteed
   // tail call optimization. Fastisel doesn't know how to do that.
-  if (CC == CallingConv::Fast && GuaranteedTailCallOpt)
+  if (CC == CallingConv::Fast && TM.Options.GuaranteedTailCallOpt)
     return false;
 
   // Let SDISel handle vararg functions.
@@ -1529,7 +1529,7 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
 
   // fastcc with -tailcallopt is intended to provide a guaranteed
   // tail call optimization. Fastisel doesn't know how to do that.
-  if (CC == CallingConv::Fast && GuaranteedTailCallOpt)
+  if (CC == CallingConv::Fast && TM.Options.GuaranteedTailCallOpt)
     return false;
 
   PointerType *PT = cast<PointerType>(CS.getCalledValue()->getType());
@@ -1543,7 +1543,7 @@ bool X86FastISel::DoSelectCall(const Instruction *I, const char *MemIntName) {
 
   // Fast-isel doesn't know about callee-pop yet.
   if (X86::isCalleePop(CC, Subtarget->is64Bit(), isVarArg,
-                       GuaranteedTailCallOpt))
+                       TM.Options.GuaranteedTailCallOpt))
     return false;
 
   // Check whether the function can return without sret-demotion.
@@ -2121,7 +2121,7 @@ unsigned X86FastISel::TargetMaterializeFloatZero(const ConstantFP *CF) {
     default: return false;
     case MVT::f32:
       if (X86ScalarSSEf32) {
-        Opc = Subtarget->hasAVX() ? X86::VFsFLD0SS : X86::FsFLD0SS;
+        Opc = X86::FsFLD0SS;
         RC  = X86::FR32RegisterClass;
       } else {
         Opc = X86::LD_Fp032;
@@ -2130,7 +2130,7 @@ unsigned X86FastISel::TargetMaterializeFloatZero(const ConstantFP *CF) {
       break;
     case MVT::f64:
       if (X86ScalarSSEf64) {
-        Opc = Subtarget->hasAVX() ? X86::VFsFLD0SD : X86::FsFLD0SD;
+        Opc = X86::FsFLD0SD;
         RC  = X86::FR64RegisterClass;
       } else {
         Opc = X86::LD_Fp064;

@@ -183,6 +183,14 @@ def MTC1  : FFRGPR<0x04, (outs FGR32:$fs), (ins CPURegs:$rt),
                   "mtc1\t$rt, $fs",
                   [(set FGR32:$fs, (bitconvert CPURegs:$rt))]>;
 
+def DMFC1 : FFRGPR<0x01, (outs CPU64Regs:$rt), (ins FGR64:$fs),
+                  "dmfc1\t$rt, $fs",
+                  [(set CPU64Regs:$rt, (bitconvert FGR64:$fs))]>;
+
+def DMTC1 : FFRGPR<0x05, (outs FGR64:$fs), (ins CPU64Regs:$rt),
+                  "dmtc1\t$rt, $fs",
+                  [(set FGR64:$fs, (bitconvert CPU64Regs:$rt))]>;
+
 def FMOV_S   : FFR1<0x6, 16, "mov", "s", FGR32, FGR32>;
 def FMOV_D32 : FFR1<0x6, 17, "mov", "d", AFGR64, AFGR64>,
                Requires<[NotFP64bit]>;
@@ -259,16 +267,16 @@ def MIPS_FCOND_NGE  : PatLeaf<(i32 13)>;
 def MIPS_FCOND_LE   : PatLeaf<(i32 14)>;
 def MIPS_FCOND_NGT  : PatLeaf<(i32 15)>;
 
+class FCMP<bits<5> fmt, RegisterClass RC, string typestr> :
+  FCC<fmt, (outs), (ins RC:$fs, RC:$ft, condcode:$cc),
+      !strconcat("c.$cc.", typestr, "\t$fs, $ft"),
+      [(MipsFPCmp RC:$fs, RC:$ft, imm:$cc)]>;
+
 /// Floating Point Compare
 let Defs=[FCR31] in {
-  def FCMP_S32 : FCC<0x10, (outs), (ins FGR32:$fs, FGR32:$ft, condcode:$cc),
-                     "c.$cc.s\t$fs, $ft",
-                     [(MipsFPCmp FGR32:$fs, FGR32:$ft, imm:$cc)]>;
-
-  def FCMP_D32 : FCC<0x11, (outs), (ins AFGR64:$fs, AFGR64:$ft, condcode:$cc),
-                     "c.$cc.d\t$fs, $ft",
-                     [(MipsFPCmp AFGR64:$fs, AFGR64:$ft, imm:$cc)]>,
-                     Requires<[NotFP64bit]>;
+  def FCMP_S32 : FCMP<0x10, FGR32, "s">;
+  def FCMP_D32 : FCMP<0x11, AFGR64, "d">, Requires<[NotFP64bit]>;
+  def FCMP_D64 : FCMP<0x11, FGR64, "d">, Requires<[IsFP64bit]>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -309,13 +317,28 @@ def : Pat<(f32 fpimm0), (MTC1 ZERO)>;
 def : Pat<(f32 fpimm0neg), (FNEG_S (MTC1 ZERO))>;
 
 def : Pat<(f32 (sint_to_fp CPURegs:$src)), (CVT_S_W (MTC1 CPURegs:$src))>;
-def : Pat<(f64 (sint_to_fp CPURegs:$src)), (CVT_D32_W (MTC1 CPURegs:$src))>;
-
 def : Pat<(i32 (fp_to_sint FGR32:$src)), (MFC1 (TRUNC_W_S FGR32:$src))>;
-def : Pat<(i32 (fp_to_sint AFGR64:$src)), (MFC1 (TRUNC_W_D32 AFGR64:$src))>;
 
 let Predicates = [NotFP64bit] in {
+  def : Pat<(f64 (sint_to_fp CPURegs:$src)), (CVT_D32_W (MTC1 CPURegs:$src))>;
+  def : Pat<(i32 (fp_to_sint AFGR64:$src)), (MFC1 (TRUNC_W_D32 AFGR64:$src))>;
   def : Pat<(f32 (fround AFGR64:$src)), (CVT_S_D32 AFGR64:$src)>;
   def : Pat<(f64 (fextend FGR32:$src)), (CVT_D32_S FGR32:$src)>;
 }
 
+let Predicates = [IsFP64bit] in {
+  def : Pat<(f64 fpimm0), (DMTC1 ZERO_64)>;
+  def : Pat<(f64 fpimm0neg), (FNEG_D64 (DMTC1 ZERO_64))>;
+
+  def : Pat<(f64 (sint_to_fp CPURegs:$src)), (CVT_D64_W (MTC1 CPURegs:$src))>;
+  def : Pat<(f32 (sint_to_fp CPU64Regs:$src)),
+            (CVT_S_L (DMTC1 CPU64Regs:$src))>;
+  def : Pat<(f64 (sint_to_fp CPU64Regs:$src)),
+            (CVT_D64_L (DMTC1 CPU64Regs:$src))>;
+
+  def : Pat<(i32 (fp_to_sint FGR64:$src)), (MFC1 (TRUNC_W_D64 FGR64:$src))>;
+  def : Pat<(i64 (fp_to_sint FGR64:$src)), (DMFC1 (TRUNC_L_D64 FGR64:$src))>;
+
+  def : Pat<(f32 (fround FGR64:$src)), (CVT_S_D64 FGR64:$src)>;
+  def : Pat<(f64 (fextend FGR32:$src)), (CVT_D64_S FGR32:$src)>;
+}

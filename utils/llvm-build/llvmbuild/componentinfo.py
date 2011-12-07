@@ -138,6 +138,23 @@ class LibraryComponentInfo(ComponentInfo):
     def get_library_name(self):
         return self.library_name or self.name
 
+    def get_prefixed_library_name(self):
+        """
+        get_prefixed_library_name() -> str
+
+        Return the library name prefixed by the project name. This is generally
+        what the library name will be on disk.
+        """
+
+        basename = self.get_library_name()
+
+        # FIXME: We need to get the prefix information from an explicit project
+        # object, or something.
+        if basename in ('gtest', 'gtest_main'):
+            return basename
+
+        return 'LLVM%s' % basename
+
     def get_llvmconfig_component_name(self):
         return self.get_library_name().lower()
 
@@ -183,6 +200,82 @@ class LibraryGroupComponentInfo(ComponentInfo):
         if self.add_to_library_groups:
             print >>result, 'add_to_library_groups = %s' % ' '.join(
                 self.add_to_library_groups)
+        return result.getvalue()
+
+    def get_llvmconfig_component_name(self):
+        return self.name.lower()
+
+class TargetGroupComponentInfo(ComponentInfo):
+    type_name = 'TargetGroup'
+
+    @staticmethod
+    def parse(subpath, items):
+        kwargs = ComponentInfo.parse_items(items, has_dependencies = False)
+        kwargs['required_libraries'] = items.get_list('required_libraries')
+        kwargs['add_to_library_groups'] = items.get_list(
+            'add_to_library_groups')
+        kwargs['has_jit'] = items.get_optional_bool('has_jit', False)
+        kwargs['has_asmprinter'] = items.get_optional_bool('has_asmprinter',
+                                                           False)
+        kwargs['has_asmparser'] = items.get_optional_bool('has_asmparser',
+                                                          False)
+        kwargs['has_disassembler'] = items.get_optional_bool('has_disassembler',
+                                                             False)
+        return TargetGroupComponentInfo(subpath, **kwargs)
+
+    def __init__(self, subpath, name, parent, required_libraries = [],
+                 add_to_library_groups = [], has_jit = False,
+                 has_asmprinter = False, has_asmparser = False,
+                 has_disassembler = False):
+        ComponentInfo.__init__(self, subpath, name, [], parent)
+
+        # The names of the library components which are required when linking
+        # with this component.
+        self.required_libraries = list(required_libraries)
+
+        # The names of the library group components this component should be
+        # considered part of.
+        self.add_to_library_groups = list(add_to_library_groups)
+
+        # Whether or not this target supports the JIT.
+        self.has_jit = bool(has_jit)
+
+        # Whether or not this target defines an assembly printer.
+        self.has_asmprinter = bool(has_asmprinter)
+
+        # Whether or not this target defines an assembly parser.
+        self.has_asmparser = bool(has_asmparser)
+
+        # Whether or not this target defines an disassembler.
+        self.has_disassembler = bool(has_disassembler)
+
+        # Whether or not this target is enabled. This is set in response to
+        # configuration parameters.
+        self.enabled = False
+
+    def get_component_references(self):
+        for r in ComponentInfo.get_component_references(self):
+            yield r
+        for r in self.required_libraries:
+            yield ('required library', r)
+        for r in self.add_to_library_groups:
+            yield ('library group', r)
+
+    def get_llvmbuild_fragment(self):
+        result = StringIO.StringIO()
+        print >>result, 'type = %s' % self.type_name
+        print >>result, 'name = %s' % self.name
+        print >>result, 'parent = %s' % self.parent
+        if self.required_libraries:
+            print >>result, 'required_libraries = %s' % ' '.join(
+                self.required_libraries)
+        if self.add_to_library_groups:
+            print >>result, 'add_to_library_groups = %s' % ' '.join(
+                self.add_to_library_groups)
+        for bool_key in ('has_asmparser', 'has_asmprinter', 'has_disassembler',
+                         'has_jit'):
+            if getattr(self, bool_key):
+                print >>result, '%s = 1' % (bool_key,)
         return result.getvalue()
 
     def get_llvmconfig_component_name(self):
@@ -255,11 +348,27 @@ class IniFormatParser(dict):
             raise ParseError("missing value for required string: %r" % key)
         return value
 
+    def get_optional_bool(self, key, default = None):
+        value = self.get_optional_string(key)
+        if not value:
+            return default
+        if value not in ('0', '1'):
+            raise ParseError("invalid value(%r) for boolean property: %r" % (
+                    value, key))
+        return bool(int(value))
+
+    def get_bool(self, key):
+        value = self.get_optional_bool(key)
+        if value is None:
+            raise ParseError("missing value for required boolean: %r" % key)
+        return value
+
 _component_type_map = dict(
     (t.type_name, t)
     for t in (GroupComponentInfo,
               LibraryComponentInfo, LibraryGroupComponentInfo,
-              ToolComponentInfo, BuildToolComponentInfo))
+              ToolComponentInfo, BuildToolComponentInfo,
+              TargetGroupComponentInfo))
 def load_from_path(path, subpath):
     # Load the LLVMBuild.txt file as an .ini format file.
     parser = ConfigParser.RawConfigParser()

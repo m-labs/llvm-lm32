@@ -284,7 +284,7 @@ FoldCmpLoadFromIndexedGlobal(GetElementPtrInst *GEP, GlobalVariable *GV,
 
     // Find out if the comparison would be true or false for the i'th element.
     Constant *C = ConstantFoldCompareInstOperands(ICI.getPredicate(), Elt,
-                                                  CompareRHS, TD);
+                                                  CompareRHS, TD, TLI);
     // If the result is undef for this element, ignore it.
     if (isa<UndefValue>(C)) {
       // Extend range state machines to cover this element in case there is an
@@ -1657,6 +1657,14 @@ static Instruction *ProcessUGT_ADDCST_ADD(ICmpInst &I, Value *A, Value *B,
       CI1->getValue() != APInt::getLowBitsSet(CI1->getBitWidth(), NewWidth))
     return 0;
 
+  // This is only really a signed overflow check if the inputs have been
+  // sign-extended; check for that condition. For example, if CI2 is 2^31 and
+  // the operands of the add are 64 bits wide, we need at least 33 sign bits.
+  unsigned NeededSignBits = CI1->getBitWidth() - NewWidth + 1;
+  if (IC.ComputeNumSignBits(A) < NeededSignBits ||
+      IC.ComputeNumSignBits(B) < NeededSignBits)
+    return 0;
+
   // In order to replace the original add with a narrower
   // llvm.sadd.with.overflow, the only uses allowed are the add-with-constant
   // and truncates that discard the high bits of the add.  Verify that this is
@@ -1786,6 +1794,24 @@ Instruction *InstCombiner::visitICmpInst(ICmpInst &I) {
 
   if (Value *V = SimplifyICmpInst(I.getPredicate(), Op0, Op1, TD))
     return ReplaceInstUsesWith(I, V);
+
+  // comparing -val or val with non-zero is the same as just comparing val
+  // ie, abs(val) != 0 -> val != 0
+  if (I.getPredicate() == ICmpInst::ICMP_NE && match(Op1, m_Zero()))
+  {
+    Value *Cond, *SelectTrue, *SelectFalse;
+    if (match(Op0, m_Select(m_Value(Cond), m_Value(SelectTrue),
+                            m_Value(SelectFalse)))) {
+      if (Value *V = dyn_castNegVal(SelectTrue)) {
+        if (V == SelectFalse)
+          return CmpInst::Create(Instruction::ICmp, I.getPredicate(), V, Op1);
+      }
+      else if (Value *V = dyn_castNegVal(SelectFalse)) {
+        if (V == SelectTrue)
+          return CmpInst::Create(Instruction::ICmp, I.getPredicate(), V, Op1);
+      }
+    }
+  }
 
   Type *Ty = Op0->getType();
 

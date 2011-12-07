@@ -41,6 +41,8 @@ def X86fsrl    : SDNode<"X86ISD::FSRL",      SDTX86FPShiftOp>;
 def X86fgetsign: SDNode<"X86ISD::FGETSIGNx86",SDTFPToIntOp>;
 def X86fhadd   : SDNode<"X86ISD::FHADD",     SDTFPBinOp>;
 def X86fhsub   : SDNode<"X86ISD::FHSUB",     SDTFPBinOp>;
+def X86hadd    : SDNode<"X86ISD::HADD",      SDTIntBinOp>;
+def X86hsub    : SDNode<"X86ISD::HSUB",      SDTIntBinOp>;
 def X86comi    : SDNode<"X86ISD::COMI",      SDTX86CmpTest>;
 def X86ucomi   : SDNode<"X86ISD::UCOMI",     SDTX86CmpTest>;
 def X86cmpss   : SDNode<"X86ISD::FSETCCss",    SDTX86Cmpss>;
@@ -51,14 +53,8 @@ def X86pshufb  : SDNode<"X86ISD::PSHUFB",
 def X86andnp   : SDNode<"X86ISD::ANDNP",
                  SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                       SDTCisSameAs<0,2>]>>;
-def X86psignb  : SDNode<"X86ISD::PSIGNB",
-                 SDTypeProfile<1, 2, [SDTCisVT<0, v16i8>, SDTCisSameAs<0,1>,
-                                      SDTCisSameAs<0,2>]>>;
-def X86psignw  : SDNode<"X86ISD::PSIGNW",
-                 SDTypeProfile<1, 2, [SDTCisVT<0, v8i16>, SDTCisSameAs<0,1>,
-                                      SDTCisSameAs<0,2>]>>;
-def X86psignd  : SDNode<"X86ISD::PSIGND",
-                 SDTypeProfile<1, 2, [SDTCisVT<0, v4i32>, SDTCisSameAs<0,1>,
+def X86psign   : SDNode<"X86ISD::PSIGN",
+                 SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                       SDTCisSameAs<0,2>]>>;
 def X86pextrb  : SDNode<"X86ISD::PEXTRB",
                  SDTypeProfile<1, 2, [SDTCisVT<0, i32>, SDTCisPtrTy<2>]>>;
@@ -134,32 +130,12 @@ def X86Movhlpd : SDNode<"X86ISD::MOVHLPD", SDTShuff2Op>;
 def X86Movlps : SDNode<"X86ISD::MOVLPS", SDTShuff2Op>;
 def X86Movlpd : SDNode<"X86ISD::MOVLPD", SDTShuff2Op>;
 
-def X86Unpcklps  : SDNode<"X86ISD::UNPCKLPS", SDTShuff2Op>;
-def X86Unpcklpd  : SDNode<"X86ISD::UNPCKLPD", SDTShuff2Op>;
-def X86Unpcklpsy : SDNode<"X86ISD::VUNPCKLPSY", SDTShuff2Op>;
-def X86Unpcklpdy : SDNode<"X86ISD::VUNPCKLPDY", SDTShuff2Op>;
+def X86Unpckl : SDNode<"X86ISD::UNPCKL", SDTShuff2Op>;
+def X86Unpckh : SDNode<"X86ISD::UNPCKH", SDTShuff2Op>;
 
-def X86Unpckhps  : SDNode<"X86ISD::UNPCKHPS", SDTShuff2Op>;
-def X86Unpckhpd  : SDNode<"X86ISD::UNPCKHPD", SDTShuff2Op>;
-def X86Unpckhpsy : SDNode<"X86ISD::VUNPCKHPSY", SDTShuff2Op>;
-def X86Unpckhpdy : SDNode<"X86ISD::VUNPCKHPDY", SDTShuff2Op>;
+def X86VPermilp  : SDNode<"X86ISD::VPERMILP", SDTShuff2OpI>;
 
-def X86Punpcklbw  : SDNode<"X86ISD::PUNPCKLBW", SDTShuff2Op>;
-def X86Punpcklwd  : SDNode<"X86ISD::PUNPCKLWD", SDTShuff2Op>;
-def X86Punpckldq  : SDNode<"X86ISD::PUNPCKLDQ", SDTShuff2Op>;
-def X86Punpcklqdq : SDNode<"X86ISD::PUNPCKLQDQ", SDTShuff2Op>;
-
-def X86Punpckhbw  : SDNode<"X86ISD::PUNPCKHBW", SDTShuff2Op>;
-def X86Punpckhwd  : SDNode<"X86ISD::PUNPCKHWD", SDTShuff2Op>;
-def X86Punpckhdq  : SDNode<"X86ISD::PUNPCKHDQ", SDTShuff2Op>;
-def X86Punpckhqdq : SDNode<"X86ISD::PUNPCKHQDQ", SDTShuff2Op>;
-
-def X86VPermilps  : SDNode<"X86ISD::VPERMILPS", SDTShuff2OpI>;
-def X86VPermilpsy : SDNode<"X86ISD::VPERMILPSY", SDTShuff2OpI>;
-def X86VPermilpd  : SDNode<"X86ISD::VPERMILPD", SDTShuff2OpI>;
-def X86VPermilpdy : SDNode<"X86ISD::VPERMILPDY", SDTShuff2OpI>;
-
-def X86VPerm2f128 : SDNode<"X86ISD::VPERM2F128", SDTShuff3OpI>;
+def X86VPerm2x128 : SDNode<"X86ISD::VPERM2X128", SDTShuff3OpI>;
 
 def X86VBroadcast : SDNode<"X86ISD::VBROADCAST", SDTVBroadcast>;
 
@@ -427,12 +403,12 @@ def movl : PatFrag<(ops node:$lhs, node:$rhs),
 
 def unpckl : PatFrag<(ops node:$lhs, node:$rhs),
                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isUNPCKLMask(cast<ShuffleVectorSDNode>(N));
+  return X86::isUNPCKLMask(cast<ShuffleVectorSDNode>(N), Subtarget->hasAVX2());
 }]>;
 
 def unpckh : PatFrag<(ops node:$lhs, node:$rhs),
                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isUNPCKHMask(cast<ShuffleVectorSDNode>(N));
+  return X86::isUNPCKHMask(cast<ShuffleVectorSDNode>(N), Subtarget->hasAVX2());
 }]>;
 
 def pshufd : PatFrag<(ops node:$lhs, node:$rhs),

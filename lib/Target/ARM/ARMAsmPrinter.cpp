@@ -47,7 +47,6 @@
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -86,12 +85,12 @@ namespace {
     void EmitTextAttribute(unsigned Attribute, StringRef String) {
       switch (Attribute) {
       case ARMBuildAttrs::CPU_name:
-        Streamer.EmitRawText(StringRef("\t.cpu ") + LowercaseString(String));
+        Streamer.EmitRawText(StringRef("\t.cpu ") + String.lower());
         break;
       /* GAS requires .fpu to be emitted regardless of EABI attribute */
       case ARMBuildAttrs::Advanced_SIMD_arch:
       case ARMBuildAttrs::VFP_arch:
-        Streamer.EmitRawText(StringRef("\t.fpu ") + LowercaseString(String));
+        Streamer.EmitRawText(StringRef("\t.fpu ") + String.lower());
         break;
       default: assert(0 && "Unsupported Text attribute in ASM Mode"); break;
       }
@@ -201,7 +200,7 @@ namespace {
           Streamer.EmitULEB128IntValue(item.IntValue, 0);
           break;
         case AttributeItemType::TextAttribute:
-          Streamer.EmitBytes(UppercaseString(item.StringValue), 0);
+          Streamer.EmitBytes(item.StringValue.upper(), 0);
           Streamer.EmitIntValue(0, 1); // '\0'
           break;
         default:
@@ -740,14 +739,14 @@ void ARMAsmPrinter::emitAttributes() {
   }
 
   // Signal various FP modes.
-  if (!UnsafeFPMath) {
+  if (!TM.Options.UnsafeFPMath) {
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_FP_denormal,
                                ARMBuildAttrs::Allowed);
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_FP_exceptions,
                                ARMBuildAttrs::Allowed);
   }
 
-  if (NoInfsFPMath && NoNaNsFPMath)
+  if (TM.Options.NoInfsFPMath && TM.Options.NoNaNsFPMath)
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_FP_number_model,
                                ARMBuildAttrs::Allowed);
   else
@@ -760,7 +759,7 @@ void ARMAsmPrinter::emitAttributes() {
   AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_align8_preserved, 1);
 
   // Hard float.  Use both S and D registers and conform to AAPCS-VFP.
-  if (Subtarget->isAAPCS_ABI() && FloatABIType == FloatABI::Hard) {
+  if (Subtarget->isAAPCS_ABI() && TM.Options.FloatABIType == FloatABI::Hard) {
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_HardFP_use, 3);
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ABI_VFP_args, 1);
   }
@@ -1070,7 +1069,7 @@ void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
   }
 
   // Try to figure out the unwinding opcode out of src / dst regs.
-  if (MI->getDesc().mayStore()) {
+  if (MI->mayStore()) {
     // Register saves.
     assert(DstReg == ARM::SP &&
            "Only stack pointer as a destination reg is supported");
@@ -1482,10 +1481,9 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     /// in the function.  The first operand is the ID# for this instruction, the
     /// second is the index into the MachineConstantPool that this is, the third
     /// is the size in bytes of this constant pool entry.
+    /// The required alignment is specified on the basic block holding this MI.
     unsigned LabelId = (unsigned)MI->getOperand(0).getImm();
     unsigned CPIdx   = (unsigned)MI->getOperand(1).getIndex();
-
-    EmitAlignment(2);
 
     // Mark the constant pool entry as data if we're not already in a data
     // region.
@@ -1935,4 +1933,3 @@ extern "C" void LLVMInitializeARMAsmPrinter() {
   RegisterAsmPrinter<ARMAsmPrinter> X(TheARMTarget);
   RegisterAsmPrinter<ARMAsmPrinter> Y(TheThumbTarget);
 }
-

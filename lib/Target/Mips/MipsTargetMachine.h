@@ -38,8 +38,9 @@ namespace llvm {
 
   public:
     MipsTargetMachine(const Target &T, StringRef TT,
-                      StringRef CPU, StringRef FS,
+                      StringRef CPU, StringRef FS, const TargetOptions &Options,
                       Reloc::Model RM, CodeModel::Model CM,
+                      CodeGenOpt::Level OL,
                       bool isLittle);
 
     virtual const MipsInstrInfo   *getInstrInfo()     const
@@ -67,15 +68,11 @@ namespace llvm {
     }
 
     // Pass Pipeline Configuration
-    virtual bool addInstSelector(PassManagerBase &PM,
-                                 CodeGenOpt::Level OptLevel);
-    virtual bool addPreEmitPass(PassManagerBase &PM,
-                                CodeGenOpt::Level OptLevel);
-    virtual bool addPreRegAlloc(PassManagerBase &PM,
-                                CodeGenOpt::Level OptLevel);
-    virtual bool addPostRegAlloc(PassManagerBase &, CodeGenOpt::Level);
+    virtual bool addInstSelector(PassManagerBase &PM);
+    virtual bool addPreEmitPass(PassManagerBase &PM);
+    virtual bool addPreRegAlloc(PassManagerBase &PM);
+    virtual bool addPostRegAlloc(PassManagerBase &);
     virtual bool addCodeEmitter(PassManagerBase &PM,
-				 CodeGenOpt::Level OptLevel,
 				 JITCodeEmitter &JCE);
 
   };
@@ -85,8 +82,9 @@ namespace llvm {
 class MipsebTargetMachine : public MipsTargetMachine {
 public:
   MipsebTargetMachine(const Target &T, StringRef TT,
-                      StringRef CPU, StringRef FS,
-                      Reloc::Model RM, CodeModel::Model CM);
+                      StringRef CPU, StringRef FS, const TargetOptions &Options,
+                      Reloc::Model RM, CodeModel::Model CM,
+                      CodeGenOpt::Level OL);
 };
 
 /// MipselTargetMachine - Mips32 little endian target machine.
@@ -94,8 +92,9 @@ public:
 class MipselTargetMachine : public MipsTargetMachine {
 public:
   MipselTargetMachine(const Target &T, StringRef TT,
-                      StringRef CPU, StringRef FS,
-                      Reloc::Model RM, CodeModel::Model CM);
+                      StringRef CPU, StringRef FS, const TargetOptions &Options,
+                      Reloc::Model RM, CodeModel::Model CM,
+                      CodeGenOpt::Level OL);
 };
 
 /// Mips64ebTargetMachine - Mips64 big endian target machine.
@@ -104,7 +103,9 @@ class Mips64ebTargetMachine : public MipsTargetMachine {
 public:
   Mips64ebTargetMachine(const Target &T, StringRef TT,
                         StringRef CPU, StringRef FS,
-                        Reloc::Model RM, CodeModel::Model CM);
+                        const TargetOptions &Options,
+                        Reloc::Model RM, CodeModel::Model CM,
+                        CodeGenOpt::Level OL);
 };
 
 /// Mips64elTargetMachine - Mips64 little endian target machine.
@@ -113,7 +114,9 @@ class Mips64elTargetMachine : public MipsTargetMachine {
 public:
   Mips64elTargetMachine(const Target &T, StringRef TT,
                         StringRef CPU, StringRef FS,
-                        Reloc::Model RM, CodeModel::Model CM);
+                        const TargetOptions &Options,
+                        Reloc::Model RM, CodeModel::Model CM,
+                        CodeGenOpt::Level OL);
 };
 } // End llvm namespace
 

@@ -766,3 +766,293 @@ define <8 x float> @test_x86_avx2_vbroadcast_ss_ps_256(<4 x float> %a0) {
   ret <8 x float> %res
 }
 declare <8 x float> @llvm.x86.avx2.vbroadcast.ss.ps.256(<4 x float>) nounwind readonly
+
+
+define <4 x i32> @test_x86_avx2_pblendd_128(<4 x i32> %a0, <4 x i32> %a1) {
+  ; CHECK: vpblendd
+  %res = call <4 x i32> @llvm.x86.avx2.pblendd.128(<4 x i32> %a0, <4 x i32> %a1, i32 7) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.pblendd.128(<4 x i32>, <4 x i32>, i32) nounwind readnone
+
+
+define <8 x i32> @test_x86_avx2_pblendd_256(<8 x i32> %a0, <8 x i32> %a1) {
+  ; CHECK: vpblendd
+  %res = call <8 x i32> @llvm.x86.avx2.pblendd.256(<8 x i32> %a0, <8 x i32> %a1, i32 7) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.pblendd.256(<8 x i32>, <8 x i32>, i32) nounwind readnone
+
+
+define <16 x i8> @test_x86_avx2_pbroadcastb_128(<16 x i8> %a0) {
+  ; CHECK: vpbroadcastb
+  %res = call <16 x i8> @llvm.x86.avx2.pbroadcastb.128(<16 x i8> %a0) ; <<16 x i8>> [#uses=1]
+  ret <16 x i8> %res
+}
+declare <16 x i8> @llvm.x86.avx2.pbroadcastb.128(<16 x i8>) nounwind readonly
+
+
+define <32 x i8> @test_x86_avx2_pbroadcastb_256(<16 x i8> %a0) {
+  ; CHECK: vpbroadcastb
+  %res = call <32 x i8> @llvm.x86.avx2.pbroadcastb.256(<16 x i8> %a0) ; <<32 x i8>> [#uses=1]
+  ret <32 x i8> %res
+}
+declare <32 x i8> @llvm.x86.avx2.pbroadcastb.256(<16 x i8>) nounwind readonly
+
+
+define <8 x i16> @test_x86_avx2_pbroadcastw_128(<8 x i16> %a0) {
+  ; CHECK: vpbroadcastw
+  %res = call <8 x i16> @llvm.x86.avx2.pbroadcastw.128(<8 x i16> %a0) ; <<8 x i16>> [#uses=1]
+  ret <8 x i16> %res
+}
+declare <8 x i16> @llvm.x86.avx2.pbroadcastw.128(<8 x i16>) nounwind readonly
+
+
+define <16 x i16> @test_x86_avx2_pbroadcastw_256(<8 x i16> %a0) {
+  ; CHECK: vpbroadcastw
+  %res = call <16 x i16> @llvm.x86.avx2.pbroadcastw.256(<8 x i16> %a0) ; <<16 x i16>> [#uses=1]
+  ret <16 x i16> %res
+}
+declare <16 x i16> @llvm.x86.avx2.pbroadcastw.256(<8 x i16>) nounwind readonly
+
+
+define <4 x i32> @test_x86_avx2_pbroadcastd_128(<4 x i32> %a0) {
+  ; CHECK: vpbroadcastd
+  %res = call <4 x i32> @llvm.x86.avx2.pbroadcastd.128(<4 x i32> %a0) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.pbroadcastd.128(<4 x i32>) nounwind readonly
+
+
+define <8 x i32> @test_x86_avx2_pbroadcastd_256(<4 x i32> %a0) {
+  ; CHECK: vpbroadcastd
+  %res = call <8 x i32> @llvm.x86.avx2.pbroadcastd.256(<4 x i32> %a0) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.pbroadcastd.256(<4 x i32>) nounwind readonly
+
+
+define <2 x i64> @test_x86_avx2_pbroadcastq_128(<2 x i64> %a0) {
+  ; CHECK: vpbroadcastq
+  %res = call <2 x i64> @llvm.x86.avx2.pbroadcastq.128(<2 x i64> %a0) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx2.pbroadcastq.128(<2 x i64>) nounwind readonly
+
+
+define <4 x i64> @test_x86_avx2_pbroadcastq_256(<2 x i64> %a0) {
+  ; CHECK: vpbroadcastq
+  %res = call <4 x i64> @llvm.x86.avx2.pbroadcastq.256(<2 x i64> %a0) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.pbroadcastq.256(<2 x i64>) nounwind readonly
+
+
+define <8 x i32> @test_x86_avx2_permd(<8 x i32> %a0, <8 x i32> %a1) {
+  ; CHECK: vpermd
+  %res = call <8 x i32> @llvm.x86.avx2.permd(<8 x i32> %a0, <8 x i32> %a1) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.permd(<8 x i32>, <8 x i32>) nounwind readonly
+
+
+define <8 x float> @test_x86_avx2_permps(<8 x float> %a0, <8 x float> %a1) {
+  ; CHECK: vpermps
+  %res = call <8 x float> @llvm.x86.avx2.permps(<8 x float> %a0, <8 x float> %a1) ; <<8 x float>> [#uses=1]
+  ret <8 x float> %res
+}
+declare <8 x float> @llvm.x86.avx2.permps(<8 x float>, <8 x float>) nounwind readonly
+
+
+define <4 x i64> @test_x86_avx2_permq(<4 x i64> %a0) {
+  ; CHECK: vpermq
+  %res = call <4 x i64> @llvm.x86.avx2.permq(<4 x i64> %a0, i8 7) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.permq(<4 x i64>, i8) nounwind readonly
+
+
+define <4 x double> @test_x86_avx2_permpd(<4 x double> %a0) {
+  ; CHECK: vpermpd
+  %res = call <4 x double> @llvm.x86.avx2.permpd(<4 x double> %a0, i8 7) ; <<4 x double>> [#uses=1]
+  ret <4 x double> %res
+}
+declare <4 x double> @llvm.x86.avx2.permpd(<4 x double>, i8) nounwind readonly
+
+
+define <4 x i64> @test_x86_avx2_vperm2i128(<4 x i64> %a0, <4 x i64> %a1) {
+  ; CHECK: vperm2i128
+  %res = call <4 x i64> @llvm.x86.avx2.vperm2i128(<4 x i64> %a0, <4 x i64> %a1, i8 1) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.vperm2i128(<4 x i64>, <4 x i64>, i8) nounwind readonly
+
+
+define <2 x i64> @test_x86_avx2_vextracti128(<4 x i64> %a0) {
+  ; CHECK: vextracti128
+  %res = call <2 x i64> @llvm.x86.avx2.vextracti128(<4 x i64> %a0, i8 7) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx2.vextracti128(<4 x i64>, i8) nounwind readnone
+
+
+define <4 x i64> @test_x86_avx2_vinserti128(<4 x i64> %a0, <2 x i64> %a1) {
+  ; CHECK: vinserti128
+  %res = call <4 x i64> @llvm.x86.avx2.vinserti128(<4 x i64> %a0, <2 x i64> %a1, i8 7) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.vinserti128(<4 x i64>, <2 x i64>, i8) nounwind readnone
+
+
+define <2 x i64> @test_x86_avx2_maskload_q(i8* %a0, <2 x i64> %a1) {
+  ; CHECK: vpmaskmovq
+  %res = call <2 x i64> @llvm.x86.avx2.maskload.q(i8* %a0, <2 x i64> %a1) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx2.maskload.q(i8*, <2 x i64>) nounwind readonly
+
+
+define <4 x i64> @test_x86_avx2_maskload_q_256(i8* %a0, <4 x i64> %a1) {
+  ; CHECK: vpmaskmovq
+  %res = call <4 x i64> @llvm.x86.avx2.maskload.q.256(i8* %a0, <4 x i64> %a1) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.maskload.q.256(i8*, <4 x i64>) nounwind readonly
+
+
+define <4 x i32> @test_x86_avx2_maskload_d(i8* %a0, <4 x i32> %a1) {
+  ; CHECK: vpmaskmovd
+  %res = call <4 x i32> @llvm.x86.avx2.maskload.d(i8* %a0, <4 x i32> %a1) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.maskload.d(i8*, <4 x i32>) nounwind readonly
+
+
+define <8 x i32> @test_x86_avx2_maskload_d_256(i8* %a0, <8 x i32> %a1) {
+  ; CHECK: vpmaskmovd
+  %res = call <8 x i32> @llvm.x86.avx2.maskload.d.256(i8* %a0, <8 x i32> %a1) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.maskload.d.256(i8*, <8 x i32>) nounwind readonly
+
+
+define void @test_x86_avx2_maskstore_q(i8* %a0, <2 x i64> %a1, <2 x i64> %a2) {
+  ; CHECK: vpmaskmovq
+  call void @llvm.x86.avx2.maskstore.q(i8* %a0, <2 x i64> %a1, <2 x i64> %a2)
+  ret void
+}
+declare void @llvm.x86.avx2.maskstore.q(i8*, <2 x i64>, <2 x i64>) nounwind
+
+
+define void @test_x86_avx2_maskstore_q_256(i8* %a0, <4 x i64> %a1, <4 x i64> %a2) {
+  ; CHECK: vpmaskmovq
+  call void @llvm.x86.avx2.maskstore.q.256(i8* %a0, <4 x i64> %a1, <4 x i64> %a2)
+  ret void
+}
+declare void @llvm.x86.avx2.maskstore.q.256(i8*, <4 x i64>, <4 x i64>) nounwind
+
+
+define void @test_x86_avx2_maskstore_d(i8* %a0, <4 x i32> %a1, <4 x i32> %a2) {
+  ; CHECK: vpmaskmovd
+  call void @llvm.x86.avx2.maskstore.d(i8* %a0, <4 x i32> %a1, <4 x i32> %a2)
+  ret void
+}
+declare void @llvm.x86.avx2.maskstore.d(i8*, <4 x i32>, <4 x i32>) nounwind
+
+
+define void @test_x86_avx2_maskstore_d_256(i8* %a0, <8 x i32> %a1, <8 x i32> %a2) {
+  ; CHECK: vpmaskmovd
+  call void @llvm.x86.avx2.maskstore.d.256(i8* %a0, <8 x i32> %a1, <8 x i32> %a2)
+  ret void
+}
+declare void @llvm.x86.avx2.maskstore.d.256(i8*, <8 x i32>, <8 x i32>) nounwind
+
+
+define <4 x i32> @test_x86_avx2_psllv_d(<4 x i32> %a0, <4 x i32> %a1) {
+  ; CHECK: vpsllvd
+  %res = call <4 x i32> @llvm.x86.avx2.psllv.d(<4 x i32> %a0, <4 x i32> %a1) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.psllv.d(<4 x i32>, <4 x i32>) nounwind readnone
+
+
+define <8 x i32> @test_x86_avx2_psllv_d_256(<8 x i32> %a0, <8 x i32> %a1) {
+  ; CHECK: vpsllvd
+  %res = call <8 x i32> @llvm.x86.avx2.psllv.d.256(<8 x i32> %a0, <8 x i32> %a1) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.psllv.d.256(<8 x i32>, <8 x i32>) nounwind readnone
+
+
+define <2 x i64> @test_x86_avx2_psllv_q(<2 x i64> %a0, <2 x i64> %a1) {
+  ; CHECK: vpsllvq
+  %res = call <2 x i64> @llvm.x86.avx2.psllv.q(<2 x i64> %a0, <2 x i64> %a1) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx2.psllv.q(<2 x i64>, <2 x i64>) nounwind readnone
+
+
+define <4 x i64> @test_x86_avx2_psllv_q_256(<4 x i64> %a0, <4 x i64> %a1) {
+  ; CHECK: vpsllvq
+  %res = call <4 x i64> @llvm.x86.avx2.psllv.q.256(<4 x i64> %a0, <4 x i64> %a1) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.psllv.q.256(<4 x i64>, <4 x i64>) nounwind readnone
+
+
+define <4 x i32> @test_x86_avx2_psrlv_d(<4 x i32> %a0, <4 x i32> %a1) {
+  ; CHECK: vpsrlvd
+  %res = call <4 x i32> @llvm.x86.avx2.psrlv.d(<4 x i32> %a0, <4 x i32> %a1) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.psrlv.d(<4 x i32>, <4 x i32>) nounwind readnone
+
+
+define <8 x i32> @test_x86_avx2_psrlv_d_256(<8 x i32> %a0, <8 x i32> %a1) {
+  ; CHECK: vpsrlvd
+  %res = call <8 x i32> @llvm.x86.avx2.psrlv.d.256(<8 x i32> %a0, <8 x i32> %a1) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.psrlv.d.256(<8 x i32>, <8 x i32>) nounwind readnone
+
+
+define <2 x i64> @test_x86_avx2_psrlv_q(<2 x i64> %a0, <2 x i64> %a1) {
+  ; CHECK: vpsrlvq
+  %res = call <2 x i64> @llvm.x86.avx2.psrlv.q(<2 x i64> %a0, <2 x i64> %a1) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx2.psrlv.q(<2 x i64>, <2 x i64>) nounwind readnone
+
+
+define <4 x i64> @test_x86_avx2_psrlv_q_256(<4 x i64> %a0, <4 x i64> %a1) {
+  ; CHECK: vpsrlvq
+  %res = call <4 x i64> @llvm.x86.avx2.psrlv.q.256(<4 x i64> %a0, <4 x i64> %a1) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx2.psrlv.q.256(<4 x i64>, <4 x i64>) nounwind readnone
+
+
+define <4 x i32> @test_x86_avx2_psrav_d(<4 x i32> %a0, <4 x i32> %a1) {
+  ; CHECK: vpsravd
+  %res = call <4 x i32> @llvm.x86.avx2.psrav.d(<4 x i32> %a0, <4 x i32> %a1) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx2.psrav.d(<4 x i32>, <4 x i32>) nounwind readnone
+
+
+define <8 x i32> @test_x86_avx2_psrav_d_256(<8 x i32> %a0, <8 x i32> %a1) {
+  ; CHECK: vpsravd
+  %res = call <8 x i32> @llvm.x86.avx2.psrav.d.256(<8 x i32> %a0, <8 x i32> %a1) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx2.psrav.d.256(<8 x i32>, <8 x i32>) nounwind readnone
+
+; This is checked here because the execution dependency fix pass makes it hard to test in AVX mode since we don't have 256-bit integer instructions
+define void @test_x86_avx_storeu_dq_256(i8* %a0, <32 x i8> %a1) {
+  ; CHECK: vmovdqu
+  ; add operation forces the execution domain.
+  %a2 = add <32 x i8> %a1, <i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1>
+  call void @llvm.x86.avx.storeu.dq.256(i8* %a0, <32 x i8> %a2)
+  ret void
+}
+declare void @llvm.x86.avx.storeu.dq.256(i8*, <32 x i8>) nounwind

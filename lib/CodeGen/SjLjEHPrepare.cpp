@@ -30,6 +30,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/IRBuilder.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -48,10 +49,10 @@ namespace {
     Constant *BuiltinSetjmpFn;
     Constant *FrameAddrFn;
     Constant *StackAddrFn;
+    Constant *StackRestoreFn;
     Constant *LSDAAddrFn;
     Value *PersonalityFn;
     Constant *CallSiteFn;
-    Constant *DispatchSetupFn;
     Constant *FuncCtxFn;
     Value *CallSite;
   public:
@@ -107,11 +108,10 @@ bool SjLjEHPass::doInitialization(Module &M) {
                           (Type *)0);
   FrameAddrFn = Intrinsic::getDeclaration(&M, Intrinsic::frameaddress);
   StackAddrFn = Intrinsic::getDeclaration(&M, Intrinsic::stacksave);
+  StackRestoreFn = Intrinsic::getDeclaration(&M, Intrinsic::stackrestore);
   BuiltinSetjmpFn = Intrinsic::getDeclaration(&M, Intrinsic::eh_sjlj_setjmp);
   LSDAAddrFn = Intrinsic::getDeclaration(&M, Intrinsic::eh_sjlj_lsda);
   CallSiteFn = Intrinsic::getDeclaration(&M, Intrinsic::eh_sjlj_callsite);
-  DispatchSetupFn
-    = Intrinsic::getDeclaration(&M, Intrinsic::eh_sjlj_dispatch_setup);
   FuncCtxFn = Intrinsic::getDeclaration(&M, Intrinsic::eh_sjlj_functioncontext);
   PersonalityFn = 0;
 
@@ -365,13 +365,13 @@ void SjLjEHPass::lowerAcrossUnwindEdges(Function &F,
 bool SjLjEHPass::setupEntryBlockAndCallSites(Function &F) {
   SmallVector<ReturnInst*,     16> Returns;
   SmallVector<InvokeInst*,     16> Invokes;
-  SmallVector<LandingPadInst*, 16> LPads;
+  SmallSetVector<LandingPadInst*, 16> LPads;
 
   // Look through the terminators of the basic blocks to find invokes.
   for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
     if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
       Invokes.push_back(II);
-      LPads.push_back(II->getUnwindDest()->getLandingPadInst());
+      LPads.insert(II->getUnwindDest()->getLandingPadInst());
     } else if (ReturnInst *RI = dyn_cast<ReturnInst>(BB->getTerminator())) {
       Returns.push_back(RI);
     }
@@ -383,7 +383,8 @@ bool SjLjEHPass::setupEntryBlockAndCallSites(Function &F) {
   lowerIncomingArguments(F);
   lowerAcrossUnwindEdges(F, Invokes);
 
-  Value *FuncCtx = setupFunctionContext(F, LPads);
+  Value *FuncCtx =
+    setupFunctionContext(F, makeArrayRef(LPads.begin(), LPads.end()));
   BasicBlock *EntryBB = F.begin();
   Type *Int32Ty = Type::getInt32Ty(F.getContext());
 
@@ -459,6 +460,25 @@ bool SjLjEHPass::setupEntryBlockAndCallSites(Function &F) {
   CallInst *Register = CallInst::Create(RegisterFn, FuncCtx, "",
                                         EntryBB->getTerminator());
   Register->setDoesNotThrow();
+
+  // Following any allocas not in the entry block, update the saved SP in the
+  // jmpbuf to the new value.
+  for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    if (BB == F.begin())
+      continue;
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+      if (CallInst *CI = dyn_cast<CallInst>(I)) {
+        if (CI->getCalledFunction() != StackRestoreFn)
+          continue;
+      } else if (!isa<AllocaInst>(I)) {
+        continue;
+      }
+      Instruction *StackAddr = CallInst::Create(StackAddrFn, "sp");
+      StackAddr->insertAfter(I);
+      Instruction *StoreStackAddr = new StoreInst(StackAddr, StackPtr, true);
+      StoreStackAddr->insertAfter(StackAddr);
+    }
+  }
 
   // Finally, for any returns from this function, if this function contains an
   // invoke, add a call to unregister the function context.

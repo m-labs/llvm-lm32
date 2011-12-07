@@ -28,7 +28,6 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/Support/BranchProbability.h"
@@ -47,7 +46,7 @@ EnableARM3Addr("enable-arm-3-addr-conv", cl::Hidden,
                cl::desc("Enable ARM 2-addr to 3-addr conv"));
 
 static cl::opt<bool>
-WidenVMOVS("widen-vmovs", cl::Hidden,
+WidenVMOVS("widen-vmovs", cl::Hidden, cl::init(true),
            cl::desc("Widen ARM vmovs to vmovd when possible"));
 
 /// ARM_MLxEntry - Record information about MLA / MLS instructions.
@@ -147,7 +146,7 @@ ARMBaseInstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
   unsigned AddrMode = (TSFlags & ARMII::AddrModeMask);
   const MCInstrDesc &MCID = MI->getDesc();
   unsigned NumOps = MCID.getNumOperands();
-  bool isLoad = !MCID.mayStore();
+  bool isLoad = !MI->mayStore();
   const MachineOperand &WB = isLoad ? MI->getOperand(1) : MI->getOperand(0);
   const MachineOperand &Base = MI->getOperand(2);
   const MachineOperand &Offset = MI->getOperand(NumOps-3);
@@ -492,7 +491,7 @@ bool ARMBaseInstrInfo::DefinesPredicate(MachineInstr *MI,
                                     std::vector<MachineOperand> &Pred) const {
   // FIXME: This confuses implicit_def with optional CPSR def.
   const MCInstrDesc &MCID = MI->getDesc();
-  if (!MCID.getImplicitDefs() && !MCID.hasOptionalDef())
+  if (!MCID.getImplicitDefs() && !MI->hasOptionalDef())
     return false;
 
   bool Found = false;
@@ -511,11 +510,10 @@ bool ARMBaseInstrInfo::DefinesPredicate(MachineInstr *MI,
 /// By default, this returns true for every instruction with a
 /// PredicateOperand.
 bool ARMBaseInstrInfo::isPredicable(MachineInstr *MI) const {
-  const MCInstrDesc &MCID = MI->getDesc();
-  if (!MCID.isPredicable())
+  if (!MI->isPredicable())
     return false;
 
-  if ((MCID.TSFlags & ARMII::DomainMask) == ARMII::DomainNEON) {
+  if ((MI->getDesc().TSFlags & ARMII::DomainMask) == ARMII::DomainNEON) {
     ARMFunctionInfo *AFI =
       MI->getParent()->getParent()->getInfo<ARMFunctionInfo>();
     return AFI->isThumb2Function();
@@ -594,7 +592,7 @@ unsigned ARMBaseInstrInfo::GetInstSizeInBytes(const MachineInstr *MI) const {
         ? 1 : ((Opc == ARM::t2TBH_JT) ? 2 : 4);
       unsigned NumOps = MCID.getNumOperands();
       MachineOperand JTOP =
-        MI->getOperand(NumOps - (MCID.isPredicable() ? 3 : 2));
+        MI->getOperand(NumOps - (MI->isPredicable() ? 3 : 2));
       unsigned JTI = JTOP.getIndex();
       const MachineJumpTableInfo *MJTI = MF->getJumpTableInfo();
       assert(MJTI != 0);
@@ -710,8 +708,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   unsigned Align = MFI.getObjectAlignment(FI);
 
   MachineMemOperand *MMO =
-    MF.getMachineMemOperand(MachinePointerInfo(
-                                         PseudoSourceValue::getFixedStack(FI)),
+    MF.getMachineMemOperand(MachinePointerInfo::getFixedStack(FI),
                             MachineMemOperand::MOStore,
                             MFI.getObjectSize(FI),
                             Align);
@@ -847,7 +844,7 @@ ARMBaseInstrInfo::isStoreToStackSlot(const MachineInstr *MI,
 unsigned ARMBaseInstrInfo::isStoreToStackSlotPostFE(const MachineInstr *MI,
                                                     int &FrameIndex) const {
   const MachineMemOperand *Dummy;
-  return MI->getDesc().mayStore() && hasStoreToStackSlot(MI, Dummy, FrameIndex);
+  return MI->mayStore() && hasStoreToStackSlot(MI, Dummy, FrameIndex);
 }
 
 void ARMBaseInstrInfo::
@@ -862,7 +859,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   unsigned Align = MFI.getObjectAlignment(FI);
   MachineMemOperand *MMO =
     MF.getMachineMemOperand(
-                    MachinePointerInfo(PseudoSourceValue::getFixedStack(FI)),
+                    MachinePointerInfo::getFixedStack(FI),
                             MachineMemOperand::MOLoad,
                             MFI.getObjectSize(FI),
                             Align);
@@ -993,7 +990,7 @@ ARMBaseInstrInfo::isLoadFromStackSlot(const MachineInstr *MI,
 unsigned ARMBaseInstrInfo::isLoadFromStackSlotPostFE(const MachineInstr *MI,
                                              int &FrameIndex) const {
   const MachineMemOperand *Dummy;
-  return MI->getDesc().mayLoad() && hasLoadFromStackSlot(MI, Dummy, FrameIndex);
+  return MI->mayLoad() && hasLoadFromStackSlot(MI, Dummy, FrameIndex);
 }
 
 bool ARMBaseInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const{
@@ -1359,7 +1356,7 @@ bool ARMBaseInstrInfo::isSchedulingBoundary(const MachineInstr *MI,
     return false;
 
   // Terminators and labels can't be scheduled around.
-  if (MI->getDesc().isTerminator() || MI->isLabel())
+  if (MI->isTerminator() || MI->isLabel())
     return true;
 
   // Treat the start of the IT block as a scheduling boundary, but schedule
@@ -1764,8 +1761,7 @@ OptimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg, int CmpMask,
 
   // Check that CPSR isn't set between the comparison instruction and the one we
   // want to change.
-  MachineBasicBlock::const_iterator I = CmpInstr, E = MI,
-    B = MI->getParent()->begin();
+  MachineBasicBlock::iterator I = CmpInstr,E = MI, B = MI->getParent()->begin();
 
   // Early exit if CmpInstr is at the beginning of the BB.
   if (I == B) return false;
@@ -2342,10 +2338,10 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
       DefMI->isRegSequence() || DefMI->isImplicitDef())
     return 1;
 
-  const MCInstrDesc &DefMCID = DefMI->getDesc();
   if (!ItinData || ItinData->isEmpty())
-    return DefMCID.mayLoad() ? 3 : 1;
+    return DefMI->mayLoad() ? 3 : 1;
 
+  const MCInstrDesc &DefMCID = DefMI->getDesc();
   const MCInstrDesc &UseMCID = UseMI->getDesc();
   const MachineOperand &DefMO = DefMI->getOperand(DefIdx);
   if (DefMO.getReg() == ARM::CPSR) {
@@ -2355,7 +2351,7 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     }
 
     // CPSR set and branch can be paired in the same cycle.
-    if (UseMCID.isBranch())
+    if (UseMI->isBranch())
       return 0;
   }
 
@@ -2448,9 +2444,12 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD1DUPq8:
     case ARM::VLD1DUPq16:
     case ARM::VLD1DUPq32:
-    case ARM::VLD1DUPq8_UPD:
-    case ARM::VLD1DUPq16_UPD:
-    case ARM::VLD1DUPq32_UPD:
+    case ARM::VLD1DUPq8wb_fixed:
+    case ARM::VLD1DUPq16wb_fixed:
+    case ARM::VLD1DUPq32wb_fixed:
+    case ARM::VLD1DUPq8wb_register:
+    case ARM::VLD1DUPq16wb_register:
+    case ARM::VLD1DUPq32wb_register:
     case ARM::VLD2DUPd8:
     case ARM::VLD2DUPd16:
     case ARM::VLD2DUPd32:
@@ -2623,9 +2622,12 @@ ARMBaseInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
     case ARM::VLD1DUPq8Pseudo:
     case ARM::VLD1DUPq16Pseudo:
     case ARM::VLD1DUPq32Pseudo:
-    case ARM::VLD1DUPq8Pseudo_UPD:
-    case ARM::VLD1DUPq16Pseudo_UPD:
-    case ARM::VLD1DUPq32Pseudo_UPD:
+    case ARM::VLD1DUPq8PseudoWB_fixed:
+    case ARM::VLD1DUPq16PseudoWB_fixed:
+    case ARM::VLD1DUPq32PseudoWB_fixed:
+    case ARM::VLD1DUPq8PseudoWB_register:
+    case ARM::VLD1DUPq16PseudoWB_register:
+    case ARM::VLD1DUPq32PseudoWB_register:
     case ARM::VLD2DUPd8Pseudo:
     case ARM::VLD2DUPd16Pseudo:
     case ARM::VLD2DUPd32Pseudo:

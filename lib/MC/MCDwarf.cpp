@@ -21,7 +21,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 using namespace llvm;
 
@@ -372,10 +371,7 @@ void MCDwarfLineAddr::Encode(int64_t LineDelta, uint64_t AddrDelta,
   // it with DW_LNS_advance_line.
   if (Temp >= DWARF2_LINE_RANGE) {
     OS << char(dwarf::DW_LNS_advance_line);
-    SmallString<32> Tmp;
-    raw_svector_ostream OSE(Tmp);
-    MCObjectWriter::EncodeSLEB128(LineDelta, OSE);
-    OS << OSE.str();
+    MCObjectWriter::EncodeSLEB128(LineDelta, OS);
 
     LineDelta = 0;
     Temp = 0 - DWARF2_LINE_BASE;
@@ -411,10 +407,7 @@ void MCDwarfLineAddr::Encode(int64_t LineDelta, uint64_t AddrDelta,
 
   // Otherwise use DW_LNS_advance_pc.
   OS << char(dwarf::DW_LNS_advance_pc);
-  SmallString<32> Tmp;
-  raw_svector_ostream OSE(Tmp);
-  MCObjectWriter::EncodeULEB128(AddrDelta, OSE);
-  OS << OSE.str();
+  MCObjectWriter::EncodeULEB128(AddrDelta, OS);
 
   if (NeedCopy)
     OS << char(dwarf::DW_LNS_copy);
@@ -738,8 +731,8 @@ bool FrameEmitterImpl::EmitCompactUnwind(MCStreamer &Streamer,
 
   // Compact Encoding
   Size = getSizeForEncoding(Streamer, dwarf::DW_EH_PE_udata4);
-  if (VerboseAsm) Streamer.AddComment(Twine("Compact Unwind Encoding: 0x") +
-                                      Twine(llvm::utohexstr(Encoding)));
+  if (VerboseAsm) Streamer.AddComment("Compact Unwind Encoding: 0x" +
+                                      Twine::utohexstr(Encoding));
   Streamer.EmitIntValue(Encoding, Size);
 
 
@@ -1016,12 +1009,10 @@ void MCDwarfFrameEmitter::Emit(MCStreamer &Streamer,
   ArrayRef<MCDwarfFrameInfo> FrameArray = Streamer.getFrameInfos();
 
   // Emit the compact unwind info if available.
-  // FIXME: This emits both the compact unwind and the old CIE/FDE
-  //        information. Only one of those is needed.
   if (IsEH && MOFI->getCompactUnwindSection())
     for (unsigned i = 0, n = Streamer.getNumFrameInfos(); i < n; ++i) {
       const MCDwarfFrameInfo &Frame = Streamer.getFrameInfo(i);
-      if (!Frame.CompactUnwindEncoding)
+      if (Frame.CompactUnwindEncoding)
         Emitter.EmitCompactUnwind(Streamer, Frame);
     }
 

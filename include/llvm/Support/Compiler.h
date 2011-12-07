@@ -61,11 +61,18 @@
 #define LLVM_ATTRIBUTE_READONLY
 #endif
 
+#if (__GNUC__ >= 4) && !defined(__MINGW32__) && !defined(__CYGWIN__)
+#define LLVM_ATTRIBUTE_WEAK __attribute__((__weak__))
+#else
+#define LLVM_ATTRIBUTE_WEAK
+#endif
+
 #if (__GNUC__ >= 4)
 #define BUILTIN_EXPECT(EXPR, VALUE) __builtin_expect((EXPR), (VALUE))
 #else
 #define BUILTIN_EXPECT(EXPR, VALUE) (EXPR)
 #endif
+
 
 // C++ doesn't support 'extern template' of template specializations.  GCC does,
 // but requires __extension__ before it.  In the header, use this:

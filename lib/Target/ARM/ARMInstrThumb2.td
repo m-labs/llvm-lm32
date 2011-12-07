@@ -65,7 +65,7 @@ def t2_so_imm_neg_XFORM : SDNodeXForm<imm, [{
 // t2_so_imm - Match a 32-bit immediate operand, which is an
 // 8-bit immediate rotated by an arbitrary number of bits, or an 8-bit
 // immediate splatted into multiple bytes of the word.
-def t2_so_imm_asmoperand : AsmOperandClass { let Name = "T2SOImm"; }
+def t2_so_imm_asmoperand : ImmAsmOperand { let Name = "T2SOImm"; }
 def t2_so_imm : Operand<i32>, ImmLeaf<i32, [{
     return ARM_AM::getT2SOImmVal(Imm) != -1;
   }]> {
@@ -3971,6 +3971,24 @@ def : t2InstAlias<"push${p} $regs", (t2STMDB_UPD SP, pred:$p, reglist:$regs)>;
 def : t2InstAlias<"pop${p}.w $regs", (t2LDMIA_UPD SP, pred:$p, reglist:$regs)>;
 def : t2InstAlias<"pop${p} $regs", (t2LDMIA_UPD SP, pred:$p, reglist:$regs)>;
 
+// STMIA/STMIA_UPD aliases w/o the optional .w suffix
+def : t2InstAlias<"stm${p} $Rn, $regs",
+                  (t2STMIA GPR:$Rn, pred:$p, reglist:$regs)>;
+def : t2InstAlias<"stm${p} $Rn!, $regs",
+                  (t2STMIA_UPD GPR:$Rn, pred:$p, reglist:$regs)>;
+
+// LDMIA/LDMIA_UPD aliases w/o the optional .w suffix
+def : t2InstAlias<"ldm${p} $Rn, $regs",
+                  (t2LDMIA GPR:$Rn, pred:$p, reglist:$regs)>;
+def : t2InstAlias<"ldm${p} $Rn!, $regs",
+                  (t2LDMIA_UPD GPR:$Rn, pred:$p, reglist:$regs)>;
+
+// STMDB/STMDB_UPD aliases w/ the optional .w suffix
+def : t2InstAlias<"stmdb${p}.w $Rn, $regs",
+                  (t2STMDB GPR:$Rn, pred:$p, reglist:$regs)>;
+def : t2InstAlias<"stmdb${p}.w $Rn!, $regs",
+                  (t2STMDB_UPD GPR:$Rn, pred:$p, reglist:$regs)>;
+
 // LDMDB/LDMDB_UPD aliases w/ the optional .w suffix
 def : t2InstAlias<"ldmdb${p}.w $Rn, $regs",
                   (t2LDMDB GPR:$Rn, pred:$p, reglist:$regs)>;
@@ -4078,3 +4096,8 @@ def : t2InstAlias<"sxth${p} $Rd, $Rm$rot",
 // for isel.
 def : t2InstAlias<"mov${p} $Rd, $imm",
                   (t2MVNi rGPR:$Rd, t2_so_imm_not:$imm, pred:$p, zero_reg)>;
+
+
+// Wide 'mul' encoding can be specified with only two operands.
+def : t2InstAlias<"mul${p} $Rn, $Rm",
+                  (t2MUL rGPR:$Rn, rGPR:$Rm, rGPR:$Rn, pred:$p)>;

@@ -34,7 +34,7 @@ PARALLEL_DIRS := opt llvm-as llvm-dis \
                  bugpoint llvm-bcanalyzer llvm-stub \
                  llvm-diff macho-dump llvm-objdump \
 	         llvm-rtdyld llvm-dwarfdump llvm-cov \
-	         llvm-size llvm-config-2
+	         llvm-size
 
 # Let users override the set of tools to build from the command line.
 ifdef ONLY_TOOLS
@@ -56,14 +56,6 @@ ifeq ($(ENABLE_PIC),1)
   endif
 
   PARALLEL_DIRS += bugpoint-passes
-
-  # The edis library is only supported if ARM and/or X86 are enabled, and if
-  # LLVM is being built PIC on platforms that support dylibs.
-  ifneq ($(DISABLE_EDIS),1)
-    ifneq ($(filter $(TARGETS_TO_BUILD), X86 ARM),)
-      PARALLEL_DIRS += edis
-    endif
-  endif
 endif
 
 ifdef LLVM_HAS_POLLY

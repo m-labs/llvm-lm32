@@ -273,6 +273,8 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
       if (IsAMD && ((ECX >> 16) & 0x1)) {
         HasFMA4 = true;
         ToggleFeature(X86::FeatureFMA4);
+        HasXOP = true;
+        ToggleFeature(X86::FeatureXOP);
       }
     }
   }
@@ -317,6 +319,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , HasCLMUL(false)
   , HasFMA3(false)
   , HasFMA4(false)
+  , HasXOP(false)
   , HasMOVBE(false)
   , HasRDRAND(false)
   , HasF16C(false)
@@ -386,9 +389,6 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
                << ", 64bit " << HasX86_64 << "\n");
   assert((!In64BitMode || HasX86_64) &&
          "64-bit code requested on a subtarget that doesn't support it!");
-
-  if(EnableSegmentedStacks && !isTargetELF())
-    report_fatal_error("Segmented stacks are only implemented on ELF.");
 
   // Stack alignment is 16 bytes on Darwin, FreeBSD, Linux and Solaris (both
   // 32 and 64 bit) and for all 64-bit targets.

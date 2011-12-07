@@ -90,10 +90,6 @@ LTOCodeGenerator::~LTOCodeGenerator()
 
 bool LTOCodeGenerator::addModule(LTOModule* mod, std::string& errMsg)
 {
-
-  if(mod->getLLVVMModule()->MaterializeAllPermanently(&errMsg))
-    return true;
-
   bool ret = _linker.LinkInModule(mod->getLLVVMModule(), &errMsg);
 
   const std::vector<const char*> &undefs = mod->getAsmUndefinedRefs();
@@ -269,7 +265,8 @@ bool LTOCodeGenerator::determineTarget(std::string& errMsg)
         SubtargetFeatures Features;
         Features.getDefaultSubtargetFeatures(llvm::Triple(Triple));
         std::string FeatureStr = Features.getString();
-        _target = march->createTargetMachine(Triple, _mCpu, FeatureStr,
+        TargetOptions Options;
+        _target = march->createTargetMachine(Triple, _mCpu, FeatureStr, Options,
                                              RelocModel);
     }
     return false;

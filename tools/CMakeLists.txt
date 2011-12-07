@@ -11,15 +11,11 @@ if( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/polly/CMakeLists.txt )
 endif( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/polly/CMakeLists.txt )
 
 if( NOT WIN32 OR MSYS OR CYGWIN )
-  # It is useful to build llvm-config before the other tools, so we
-  # have a fresh LibDeps.txt for regenerating the hard-coded library
-  # dependencies. llvm-config/CMakeLists.txt takes care of this but we
-  # must keep llvm-config as the first entry on the list of tools to
-  # be built.
+  # We currently require 'sed' to build llvm-config, so don't try to build it
+  # on pure Win32.
   add_subdirectory(llvm-config)
 endif()
 
-add_subdirectory(llvm-config-2)
 add_subdirectory(opt)
 add_subdirectory(llvm-as)
 add_subdirectory(llvm-dis)
@@ -32,6 +28,7 @@ add_subdirectory(llvm-nm)
 add_subdirectory(llvm-size)
 
 add_subdirectory(llvm-ld)
+add_subdirectory(llvm-cov)
 add_subdirectory(llvm-prof)
 add_subdirectory(llvm-link)
 add_subdirectory(lli)
@@ -47,7 +44,6 @@ add_subdirectory(bugpoint)
 add_subdirectory(bugpoint-passes)
 add_subdirectory(llvm-bcanalyzer)
 add_subdirectory(llvm-stub)
-add_subdirectory(edis)
 
 if( NOT WIN32 )
   add_subdirectory(lto)

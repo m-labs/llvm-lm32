@@ -452,7 +452,7 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
 bool X86RegisterInfo::canRealignStack(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
-  return (RealignStack &&
+  return (MF.getTarget().Options.RealignStack &&
           !MFI->hasVarSizedObjects());
 }
 
@@ -583,7 +583,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // sure we restore the stack pointer immediately after the call, there may
     // be spill code inserted between the CALL and ADJCALLSTACKUP instructions.
     MachineBasicBlock::iterator B = MBB.begin();
-    while (I != B && !llvm::prior(I)->getDesc().isCall())
+    while (I != B && !llvm::prior(I)->isCall())
       --I;
     MBB.insert(I, New);
   }
@@ -665,7 +665,7 @@ unsigned getX86SubSuperRegister(unsigned Reg, EVT VT, bool High) {
   case MVT::i8:
     if (High) {
       switch (Reg) {
-      default: return 0;
+      default: return getX86SubSuperRegister(Reg, MVT::i64, High);
       case X86::AH: case X86::AL: case X86::AX: case X86::EAX: case X86::RAX:
         return X86::AH;
       case X86::DH: case X86::DL: case X86::DX: case X86::EDX: case X86::RDX:
@@ -785,6 +785,22 @@ unsigned getX86SubSuperRegister(unsigned Reg, EVT VT, bool High) {
       return X86::R15D;
     }
   case MVT::i64:
+    // For 64-bit mode if we've requested a "high" register and the
+    // Q or r constraints we want one of these high registers or
+    // just the register name otherwise.
+    if (High) {
+      switch (Reg) {
+      case X86::SIL: case X86::SI: case X86::ESI: case X86::RSI:
+        return X86::SI;
+      case X86::DIL: case X86::DI: case X86::EDI: case X86::RDI:
+        return X86::DI;
+      case X86::BPL: case X86::BP: case X86::EBP: case X86::RBP:
+        return X86::BP;
+      case X86::SPL: case X86::SP: case X86::ESP: case X86::RSP:
+        return X86::SP;
+      // Fallthrough.
+      }
+    }
     switch (Reg) {
     default: return Reg;
     case X86::AH: case X86::AL: case X86::AX: case X86::EAX: case X86::RAX:

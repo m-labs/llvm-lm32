@@ -453,6 +453,8 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset) {
 
       // Compute the offset that this GEP adds to the pointer.
       SmallVector<Value*, 8> Indices(GEP->op_begin()+1, GEP->op_end());
+      if (!GEP->getPointerOperandType()->isPointerTy())
+        return false;
       uint64_t GEPOffset = TD.getIndexedOffset(GEP->getPointerOperandType(),
                                                Indices);
       // See if all uses can be converted.
@@ -1875,8 +1877,14 @@ void SROA::RewriteBitCast(BitCastInst *BC, AllocaInst *AI, uint64_t Offset,
     return;
 
   // The bitcast references the original alloca.  Replace its uses with
-  // references to the first new element alloca.
-  Instruction *Val = NewElts[0];
+  // references to the alloca containing offset zero (which is normally at
+  // index zero, but might not be in cases involving structs with elements
+  // of size zero).
+  Type *T = AI->getAllocatedType();
+  uint64_t EltOffset = 0;
+  Type *IdxTy;
+  uint64_t Idx = FindElementAndOffset(T, EltOffset, IdxTy);
+  Instruction *Val = NewElts[Idx];
   if (Val->getType() != BC->getDestTy()) {
     Val = new BitCastInst(Val, BC->getDestTy(), "", BC);
     Val->takeName(BC);
@@ -2160,6 +2168,8 @@ void SROA::RewriteMemIntrinUserOfAlloca(MemIntrinsic *MI, Instruction *Inst,
     }
 
     unsigned EltSize = TD->getTypeAllocSize(EltTy);
+    if (!EltSize)
+      continue;
 
     IRBuilder<> Builder(MI);
 
@@ -2526,13 +2536,12 @@ isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
       // ignore it if we know that the value isn't captured.
       unsigned ArgNo = CS.getArgumentNo(UI);
       if (CS.onlyReadsMemory() &&
-          (CS.getInstruction()->use_empty() ||
-           CS.paramHasAttr(ArgNo+1, Attribute::NoCapture)))
+          (CS.getInstruction()->use_empty() || CS.doesNotCapture(ArgNo)))
         continue;
 
       // If this is being passed as a byval argument, the caller is making a
       // copy, so it is only a read of the alloca.
-      if (CS.paramHasAttr(ArgNo+1, Attribute::ByVal))
+      if (CS.isByValArgument(ArgNo))
         continue;
     }
 

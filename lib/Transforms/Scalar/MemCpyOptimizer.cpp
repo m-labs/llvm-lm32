@@ -147,8 +147,8 @@ struct MemsetRange {
 } // end anon namespace
 
 bool MemsetRange::isProfitableToUseMemset(const TargetData &TD) const {
-  // If we found more than 8 stores to merge or 64 bytes, use memset.
-  if (TheStores.size() >= 8 || End-Start >= 64) return true;
+  // If we found more than 4 stores to merge or 16 bytes, use memset.
+  if (TheStores.size() >= 4 || End-Start >= 16) return true;
 
   // If there is nothing to merge, don't do anything.
   if (TheStores.size() < 2) return false;
@@ -950,7 +950,7 @@ bool MemCpyOpt::iterateOnFunction(Function &F) {
         RepeatInstruction = processMemMove(M);
       else if (CallSite CS = (Value*)I) {
         for (unsigned i = 0, e = CS.arg_size(); i != e; ++i)
-          if (CS.paramHasAttr(i+1, Attribute::ByVal))
+          if (CS.isByValArgument(i))
             MadeChange |= processByValArgument(CS, i);
       }
 

@@ -57,6 +57,67 @@ VPATH=$(PROJ_SRC_DIR)
 
 $(UserTargets)::
 
+#------------------------------------------------------------------------
+# LLVMBuild Integration
+#------------------------------------------------------------------------
+#
+# We use llvm-build to generate all the data required by the Makefile based
+# build system in one swoop:
+#
+#  - We generate a file (a Makefile fragment) in the object root which contains
+#    all the definitions that are required by Makefiles across the entire
+#    project.
+#
+#  - We generate the library table used by llvm-config.
+#
+#  - We generate the dependencies for the Makefile fragment, so that we will
+#    automatically reconfigure outselves.
+
+# The path to the llvm-build tool itself.
+LLVMBuildTool	:= $(PROJ_SRC_ROOT)/utils/llvm-build/llvm-build
+
+# The files we are going to generate using llvm-build.
+LLVMBuildMakeFrag := $(PROJ_OBJ_ROOT)/Makefile.llvmbuild
+LLVMConfigLibraryDependenciesInc := \
+	$(PROJ_OBJ_ROOT)/tools/llvm-config/LibraryDependencies.inc
+
+# This is for temporary backwards compatibility.
+ifndef TARGET_NATIVE_ARCH
+TARGET_NATIVE_ARCH := $(ARCH)
+endif
+
+# The rule to create the LLVMBuild Makefile fragment as well as the llvm-config
+# library table.
+#
+# Note that this target gets its real dependencies generated for us by
+# llvm-build.
+#
+# We include a dependency on this Makefile to ensure that changes to the
+# generation command get picked up.
+$(LLVMBuildMakeFrag): $(PROJ_SRC_ROOT)/Makefile.rules
+	$(Echo) Constructing LLVMBuild project information.
+	$(Verb) $(LLVMBuildTool) \
+	  --native-target "$(TARGET_NATIVE_ARCH)" \
+	  --enable-targets "$(TARGETS_TO_BUILD)" \
+	  --write-library-table $(LLVMConfigLibraryDependenciesInc) \
+	  --write-make-fragment $(LLVMBuildMakeFrag)
+
+# For completeness, let Make know how the extra files are generated.
+$(LLVMConfigLibraryDependenciesInc): $(LLVMBuildMakeFrag)
+
+# Include the generated Makefile fragment.
+#
+# We currently only include the dependencies for the fragment itself if we are
+# at the top-level. Otherwise, recursive invocations would ends up doing
+# substantially more redundant stat'ing.
+#
+# This means that we won't properly regenerate things for developers used to
+# building from a subdirectory, but that is always somewhat unreliable.
+ifeq ($(LEVEL),.)
+LLVMBUILD_INCLUDE_DEPENDENCIES := 1
+endif
+-include $(LLVMBuildMakeFrag)
+
 ################################################################################
 # PRECONDITIONS: that which must be built/checked first
 ################################################################################
@@ -243,6 +304,11 @@ else
     LD.Flags  += -g
     KEEP_SYMBOLS := 1
   endif
+endif
+
+ifeq ($(ENABLE_LIBCPP),1)
+  CXX.Flags +=  -stdlib=libc++
+  LD.Flags +=  -stdlib=libc++
 endif
 
 ifeq ($(ENABLE_PROFILING),1)
@@ -445,8 +511,12 @@ endif
 #--------------------------------------------------------------------
 # Full Paths To Compiled Tools and Utilities
 #--------------------------------------------------------------------
-EchoCmd  = $(ECHO) llvm[$(MAKELEVEL)]:
-Echo     = @$(EchoCmd)
+EchoCmd  := $(ECHO) llvm[$(MAKELEVEL)]:
+ifdef BUILD_DIRS_ONLY
+EchoCmd  := $(EchoCmd) "(build tools)":
+endif
+
+Echo     := @$(EchoCmd)
 ifndef LLVMAS
 LLVMAS   := $(LLVMToolDir)/llvm-as$(EXEEXT)
 endif
@@ -457,7 +527,11 @@ ifndef LLVM_TBLGEN
     LLVM_TBLGEN   := $(LLVMToolDir)/llvm-tblgen$(EXEEXT)
   endif
 endif
-LLVM_CONFIG := $(LLVMToolDir)/llvm-config
+ifeq ($(LLVM_CROSS_COMPILING),1)
+  LLVM_CONFIG := $(BuildLLVMToolDir)/llvm-config$(BUILD_EXEEXT)
+else
+  LLVM_CONFIG := $(LLVMToolDir)/llvm-config$(EXEEXT)
+endif
 ifndef LLVMLD
 LLVMLD    := $(LLVMToolDir)/llvm-ld$(EXEEXT)
 endif
@@ -631,6 +705,10 @@ CPP.Flags     += $(sort -I$(PROJ_OBJ_DIR) -I$(PROJ_SRC_DIR) \
 	         $(LLVM_OBJ_ROOT) $(LLVM_SRC_ROOT))) \
 	         $(CPP.BaseFlags)
 
+ifeq ($(INCLUDE_BUILD_DIR),1)
+  CPP.Flags   += -I$(ObjDir)
+endif
+
 # SHOW_DIAGNOSTICS support.
 ifeq ($(SHOW_DIAGNOSTICS),1)
   Compile.Wrapper := env CC_LOG_DIAGNOSTICS=1 \
@@ -639,35 +717,18 @@ else
   Compile.Wrapper :=
 endif
 
-ifeq ($(BUILD_COMPONENT), 1)
-  Compile.C     = $(Compile.Wrapper) \
-	          $(BUILD_CC) $(CPP.Flags) $(C.Flags) $(CFLAGS) $(CPPFLAGS) \
-                  $(TargetCommonOpts) $(CompileCommonOpts) -c
-  Compile.CXX   = $(Compile.Wrapper) \
-	          $(BUILD_CXX) $(CPP.Flags) $(CXX.Flags) $(CXXFLAGS) \
-		  $(CPPFLAGS) \
-                  $(TargetCommonOpts) $(CompileCommonOpts) -c
-  Preprocess.CXX= $(Compile.Wrapper) \
-	          $(BUILD_CXX) $(CPP.Flags) $(CPPFLAGS) $(TargetCommonOpts) \
-                  $(CompileCommonOpts) $(CXX.Flags) -E
-  Link          = $(Compile.Wrapper) \
-	          $(BUILD_CXX) $(CPP.Flags) $(CXX.Flags) $(CXXFLAGS) \
-		  $(LD.Flags) $(LDFLAGS) \
-                  $(TargetCommonOpts) $(CompileCommonOpts) $(Strip)
-else
-  Compile.C     = $(Compile.Wrapper) \
+Compile.C     = $(Compile.Wrapper) \
 	          $(CC) $(CPP.Flags) $(C.Flags) $(CFLAGS) $(CPPFLAGS) \
-                  $(TargetCommonOpts) $(CompileCommonOpts) -c
-  Compile.CXX   = $(Compile.Wrapper) \
+                $(TargetCommonOpts) $(CompileCommonOpts) -c
+Compile.CXX   = $(Compile.Wrapper) \
 	          $(CXX) $(CPP.Flags) $(CXX.Flags) $(CXXFLAGS) $(CPPFLAGS) \
-                  $(TargetCommonOpts) $(CompileCommonOpts) -c
-  Preprocess.CXX= $(Compile.Wrapper) \
+                $(TargetCommonOpts) $(CompileCommonOpts) -c
+Preprocess.CXX= $(Compile.Wrapper) \
 	          $(CXX) $(CPP.Flags) $(TargetCommonOpts) $(CPPFLAGS) \
-                  $(CompileCommonOpts) $(CXX.Flags) -E
-  Link          = $(Compile.Wrapper) \
+                $(CompileCommonOpts) $(CXX.Flags) -E
+Link          = $(Compile.Wrapper) \
 	          $(CXX) $(CPP.Flags) $(CXX.Flags) $(CXXFLAGS) $(LD.Flags) \
-                  $(LDFLAGS) $(TargetCommonOpts)  $(CompileCommonOpts) $(Strip)
-endif
+                $(LDFLAGS) $(TargetCommonOpts)  $(CompileCommonOpts) $(Strip)
 
 BCCompile.C   = $(LLVMCC) $(CPP.Flags) $(C.Flags) $(CFLAGS) $(CPPFLAGS) \
                 $(TargetCommonOpts) $(CompileCommonOpts)
@@ -1442,12 +1503,19 @@ install-local::
 uninstall-local::
 	$(Echo) Uninstall circumvented with NO_INSTALL
 else
-DestTool = $(DESTDIR)$(PROJ_bindir)/$(TOOLEXENAME)
+
+ifdef INTERNAL_TOOL
+ToolBinDir = $(DESTDIR)$(PROJ_internal_prefix)/bin
+else
+ToolBinDir = $(DESTDIR)$(PROJ_bindir)
+endif
+DestTool = $(ToolBinDir)/$(TOOLEXENAME)
 
 install-local:: $(DestTool)
 
-$(DestTool): $(ToolBuildPath) $(DESTDIR)$(PROJ_bindir)
+$(DestTool): $(ToolBuildPath)
 	$(Echo) Installing $(BuildMode) $(DestTool)
+	$(Verb) $(MKDIR) $(ToolBinDir)
 	$(Verb) $(ProgInstall) $(ToolBuildPath) $(DestTool)
 
 uninstall-local::
@@ -1456,7 +1524,7 @@ uninstall-local::
 
 # TOOLALIAS install.
 ifdef TOOLALIAS
-DestToolAlias = $(DESTDIR)$(PROJ_bindir)/$(TOOLALIAS)$(EXEEXT)
+DestToolAlias = $(ToolBinDir)/$(TOOLALIAS)$(EXEEXT)
 
 install-local:: $(DestToolAlias)
 
@@ -1790,6 +1858,9 @@ $(ObjDir)/ARMGenDecoderTables.inc.tmp : ARM.td $(ObjDir)/.dir $(LLVM_TBLGEN)
 	$(Echo) "Building $(<F) decoder tables with tblgen"
 	$(Verb) $(LLVMTableGen) -gen-arm-decoder -o $(call SYSPATH, $@) $<
 
+$(ObjDir)/%GenDFAPacketizer.inc.tmp : %.td $(ObjDir)/.dir $(LLVM_TBLGEN)
+	$(Echo) "Building $(<F) DFA packetizer tables with tblgen"
+	$(Verb) $(LLVMTableGen) -gen-dfa-packetizer -o $(call SYSPATH, $@) $<
 
 clean-local::
 	-$(Verb) $(RM) -f $(INCFiles)
@@ -1822,7 +1893,6 @@ clean-local::
 ifneq ($(strip $(ObjRootDir)),)
 	-$(Verb) $(RM) -rf $(ObjRootDir)
 endif
-	-$(Verb) $(RM) -f core core.[0-9][0-9]* *.o *.d *~ *.flc
 ifneq ($(strip $(SHLIBEXT)),) # Extra paranoia - make real sure SHLIBEXT is set
 	-$(Verb) $(RM) -f *$(SHLIBEXT)
 endif
@@ -2216,6 +2286,7 @@ printvars::
 	$(Echo) "LLVM_SRC_ROOT: " '$(LLVM_SRC_ROOT)'
 	$(Echo) "LLVM_OBJ_ROOT: " '$(LLVM_OBJ_ROOT)'
 	$(Echo) "PROJ_prefix  : " '$(PROJ_prefix)'
+	$(Echo) "PROJ_internal_prefix  : " '$(PROJ_internal_prefix)'
 	$(Echo) "PROJ_bindir  : " '$(PROJ_bindir)'
 	$(Echo) "PROJ_libdir  : " '$(PROJ_libdir)'
 	$(Echo) "PROJ_etcdir  : " '$(PROJ_etcdir)'

@@ -58,18 +58,16 @@ STATISTIC(NumLFTR        , "Number of loop exit tests replaced");
 STATISTIC(NumElimExt     , "Number of IV sign/zero extends eliminated");
 STATISTIC(NumElimIV      , "Number of congruent IVs eliminated");
 
-namespace llvm {
-  cl::opt<bool> EnableIVRewrite(
-    "enable-iv-rewrite", cl::Hidden,
-    cl::desc("Enable canonical induction variable rewriting"));
+static cl::opt<bool> EnableIVRewrite(
+  "enable-iv-rewrite", cl::Hidden,
+  cl::desc("Enable canonical induction variable rewriting"));
 
-  // Trip count verification can be enabled by default under NDEBUG if we
-  // implement a strong expression equivalence checker in SCEV. Until then, we
-  // use the verify-indvars flag, which may assert in some cases.
-  cl::opt<bool> VerifyIndvars(
-    "verify-indvars", cl::Hidden,
-    cl::desc("Verify the ScalarEvolution result after running indvars"));
-}
+// Trip count verification can be enabled by default under NDEBUG if we
+// implement a strong expression equivalence checker in SCEV. Until then, we
+// use the verify-indvars flag, which may assert in some cases.
+static cl::opt<bool> VerifyIndvars(
+  "verify-indvars", cl::Hidden,
+  cl::desc("Verify the ScalarEvolution result after running indvars"));
 
 namespace {
   class IndVarSimplify : public LoopPass {
@@ -180,6 +178,11 @@ bool IndVarSimplify::isValidRewrite(Value *FromVal, Value *ToVal) {
     // base of a recurrence. This handles the case in which SCEV expansion
     // converts a pointer type recurrence into a nonrecurrent pointer base
     // indexed by an integer recurrence.
+
+    // If the GEP base pointer is a vector of pointers, abort.
+    if (!FromPtr->getType()->isPointerTy() || !ToPtr->getType()->isPointerTy())
+      return false;
+
     const SCEV *FromBase = SE->getPointerBase(SE->getSCEV(FromPtr));
     const SCEV *ToBase = SE->getPointerBase(SE->getSCEV(ToPtr));
     if (FromBase == ToBase)
@@ -946,9 +949,13 @@ const SCEVAddRecExpr* WidenIV::GetExtendedOperandRecurrence(NarrowIVDefUse DU) {
   else
     return 0;
 
+  // When creating this AddExpr, don't apply the current operations NSW or NUW
+  // flags. This instruction may be guarded by control flow that the no-wrap
+  // behavior depends on. Non-control-equivalent instructions can be mapped to
+  // the same SCEV expression, and it would be incorrect to transfer NSW/NUW
+  // semantics to those operations.
   const SCEVAddRecExpr *AddRec = dyn_cast<SCEVAddRecExpr>(
-    SE->getAddExpr(SE->getSCEV(DU.WideDef), ExtendOperExpr,
-                   IsSigned ? SCEV::FlagNSW : SCEV::FlagNUW));
+    SE->getAddExpr(SE->getSCEV(DU.WideDef), ExtendOperExpr));
 
   if (!AddRec || AddRec->getLoop() != L)
     return 0;

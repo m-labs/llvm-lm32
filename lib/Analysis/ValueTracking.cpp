@@ -63,13 +63,14 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
   assert(V && "No Value?");
   assert(Depth <= MaxDepth && "Limit Search Depth");
   unsigned BitWidth = Mask.getBitWidth();
-  assert((V->getType()->isIntOrIntVectorTy() || V->getType()->isPointerTy())
-         && "Not integer or pointer type!");
+  assert((V->getType()->isIntOrIntVectorTy() ||
+          V->getType()->getScalarType()->isPointerTy()) &&
+         "Not integer or pointer type!");
   assert((!TD ||
           TD->getTypeSizeInBits(V->getType()->getScalarType()) == BitWidth) &&
          (!V->getType()->isIntOrIntVectorTy() ||
           V->getType()->getScalarSizeInBits() == BitWidth) &&
-         KnownZero.getBitWidth() == BitWidth && 
+         KnownZero.getBitWidth() == BitWidth &&
          KnownOne.getBitWidth() == BitWidth &&
          "V, Mask, KnownOne and KnownZero should have same BitWidth");
 
@@ -103,14 +104,16 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
   if (GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
     unsigned Align = GV->getAlignment();
     if (Align == 0 && TD && GV->getType()->getElementType()->isSized()) {
-      Type *ObjectType = GV->getType()->getElementType();
-      // If the object is defined in the current Module, we'll be giving
-      // it the preferred alignment. Otherwise, we have to assume that it
-      // may only have the minimum ABI alignment.
-      if (!GV->isDeclaration() && !GV->mayBeOverridden())
-        Align = TD->getPrefTypeAlignment(ObjectType);
-      else
-        Align = TD->getABITypeAlignment(ObjectType);
+      if (GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV)) {
+        Type *ObjectType = GVar->getType()->getElementType();
+        // If the object is defined in the current Module, we'll be giving
+        // it the preferred alignment. Otherwise, we have to assume that it
+        // may only have the minimum ABI alignment.
+        if (!GVar->isDeclaration() && !GVar->isWeakForLinker())
+          Align = TD->getPreferredAlignment(GVar);
+        else
+          Align = TD->getABITypeAlignment(ObjectType);
+      }
     }
     if (Align > 0)
       KnownZero = Mask & APInt::getLowBitsSet(BitWidth,
@@ -248,9 +251,14 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
                 APInt::getHighBitsSet(BitWidth, LeadZ);
     KnownZero &= Mask;
 
-    if (isKnownNonNegative)
+    // Only make use of no-wrap flags if we failed to compute the sign bit
+    // directly.  This matters if the multiplication always overflows, in
+    // which case we prefer to follow the result of the direct computation,
+    // though as the program is invoking undefined behaviour we can choose
+    // whatever we like here.
+    if (isKnownNonNegative && !KnownOne.isNegative())
       KnownZero.setBit(BitWidth - 1);
-    else if (isKnownNegative)
+    else if (isKnownNegative && !KnownZero.isNegative())
       KnownOne.setBit(BitWidth - 1);
 
     return;
@@ -1362,6 +1370,8 @@ Value *llvm::isBytewiseValue(Value *V) {
     
     return Val;
   }
+
+  // FIXME: Vector types (e.g., <4 x i32> <i32 -1, i32 -1, i32 -1, i32 -1>).
   
   // Conceptually, we could handle things like:
   //   %a = zext i8 %X to i16
@@ -1550,7 +1560,8 @@ Value *llvm::FindInsertedValue(Value *V, ArrayRef<unsigned> idx_range,
 Value *llvm::GetPointerBaseWithConstantOffset(Value *Ptr, int64_t &Offset,
                                               const TargetData &TD) {
   Operator *PtrOp = dyn_cast<Operator>(Ptr);
-  if (PtrOp == 0) return Ptr;
+  if (PtrOp == 0 || Ptr->getType()->isVectorTy())
+    return Ptr;
   
   // Just look through bitcasts.
   if (PtrOp->getOpcode() == Instruction::BitCast)

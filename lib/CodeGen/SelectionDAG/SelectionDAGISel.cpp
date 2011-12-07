@@ -177,7 +177,7 @@ TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
 
 void TargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
                                                    SDNode *Node) const {
-  assert(!MI->getDesc().hasPostISelHook() &&
+  assert(!MI->hasPostISelHook() &&
          "If a target marks an instruction with 'hasPostISelHook', "
          "it must implement TargetLowering::AdjustInstrPostInstrSelection!");
 }
@@ -256,9 +256,9 @@ static void SplitCriticalSideEffectEdges(Function &Fn, Pass *SDISel) {
 
 bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   // Do some sanity-checking on the command-line options.
-  assert((!EnableFastISelVerbose || EnableFastISel) &&
+  assert((!EnableFastISelVerbose || TM.Options.EnableFastISel) &&
          "-fast-isel-verbose requires -fast-isel");
-  assert((!EnableFastISelAbort || EnableFastISel) &&
+  assert((!EnableFastISelAbort || TM.Options.EnableFastISel) &&
          "-fast-isel-abort requires -fast-isel");
 
   const Function &Fn = *mf.getFunction();
@@ -346,7 +346,8 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
                   TII.get(TargetOpcode::DBG_VALUE))
           .addReg(CopyUseMI->getOperand(0).getReg(), RegState::Debug)
           .addImm(Offset).addMetadata(Variable);
-        EntryMBB->insertAfter(CopyUseMI, NewMI);
+        MachineBasicBlock::iterator Pos = CopyUseMI;
+        EntryMBB->insertAfter(Pos, NewMI);
       }
     }
   }
@@ -476,8 +477,8 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
 #endif
   {
     BlockNumber = FuncInfo->MBB->getNumber();
-    BlockName = MF->getFunction()->getNameStr() + ":" +
-                FuncInfo->MBB->getBasicBlock()->getNameStr();
+    BlockName = MF->getFunction()->getName().str() + ":" +
+                FuncInfo->MBB->getBasicBlock()->getName().str();
   }
   DEBUG(dbgs() << "Initial selection DAG: BB#" << BlockNumber
         << " '" << BlockName << "'\n"; CurDAG->dump());
@@ -487,7 +488,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
   // Run the DAG combiner in pre-legalize mode.
   {
     NamedRegionTimer T("DAG Combining 1", GroupName, TimePassesIsEnabled);
-    CurDAG->Combine(Unrestricted, *AA, OptLevel);
+    CurDAG->Combine(BeforeLegalizeTypes, *AA, OptLevel);
   }
 
   DEBUG(dbgs() << "Optimized lowered selection DAG: BB#" << BlockNumber
@@ -515,7 +516,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
     {
       NamedRegionTimer T("DAG Combining after legalize types", GroupName,
                          TimePassesIsEnabled);
-      CurDAG->Combine(NoIllegalTypes, *AA, OptLevel);
+      CurDAG->Combine(AfterLegalizeTypes, *AA, OptLevel);
     }
 
     DEBUG(dbgs() << "Optimized type-legalized selection DAG: BB#" << BlockNumber
@@ -540,7 +541,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
     {
       NamedRegionTimer T("DAG Combining after legalize vectors", GroupName,
                          TimePassesIsEnabled);
-      CurDAG->Combine(NoIllegalOperations, *AA, OptLevel);
+      CurDAG->Combine(AfterLegalizeVectorOps, *AA, OptLevel);
     }
 
     DEBUG(dbgs() << "Optimized vector-legalized selection DAG: BB#"
@@ -562,7 +563,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
   // Run the DAG combiner in post-legalize mode.
   {
     NamedRegionTimer T("DAG Combining 2", GroupName, TimePassesIsEnabled);
-    CurDAG->Combine(NoIllegalOperations, *AA, OptLevel);
+    CurDAG->Combine(AfterLegalizeDAG, *AA, OptLevel);
   }
 
   DEBUG(dbgs() << "Optimized legalized selection DAG: BB#" << BlockNumber
@@ -823,7 +824,7 @@ static bool isFoldedOrDeadInstruction(const Instruction *I,
 void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
   // Initialize the Fast-ISel state, if needed.
   FastISel *FastIS = 0;
-  if (EnableFastISel)
+  if (TM.Options.EnableFastISel)
     FastIS = TLI.createFastISel(*FuncInfo);
 
   // Iterate over all basic blocks in the function.
@@ -892,13 +893,16 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
           FastIS->setLastLocalValue(0);
       }
 
+      unsigned NumFastIselRemaining = std::distance(Begin, End);
       // Do FastISel on as many instructions as possible.
       for (; BI != Begin; --BI) {
         const Instruction *Inst = llvm::prior(BI);
 
         // If we no longer require this instruction, skip it.
-        if (isFoldedOrDeadInstruction(Inst, FuncInfo))
+        if (isFoldedOrDeadInstruction(Inst, FuncInfo)) {
+          --NumFastIselRemaining;
           continue;
+        }
 
         // Bottom-up: reset the insert pos at the top, after any local-value
         // instructions.
@@ -906,6 +910,7 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
 
         // Try to select the instruction with FastISel.
         if (FastIS->SelectInstruction(Inst)) {
+          --NumFastIselRemaining;
           ++NumFastIselSuccess;
           // If fast isel succeeded, skip over all the folded instructions, and
           // then see if there is a load right before the selected instructions.
@@ -918,15 +923,18 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
           }
           if (BeforeInst != Inst && isa<LoadInst>(BeforeInst) &&
               BeforeInst->hasOneUse() &&
-              TryToFoldFastISelLoad(cast<LoadInst>(BeforeInst), Inst, FastIS))
+              TryToFoldFastISelLoad(cast<LoadInst>(BeforeInst), Inst, FastIS)) {
             // If we succeeded, don't re-select the load.
             BI = llvm::next(BasicBlock::const_iterator(BeforeInst));
+            --NumFastIselRemaining;
+            ++NumFastIselSuccess;
+          }
           continue;
         }
 
         // Then handle certain instructions as single-LLVM-Instruction blocks.
         if (isa<CallInst>(Inst)) {
-          ++NumFastIselFailures;
+
           if (EnableFastISelVerbose || EnableFastISelAbort) {
             dbgs() << "FastISel missed call: ";
             Inst->dump();
@@ -941,24 +949,30 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
           bool HadTailCall = false;
           SelectBasicBlock(Inst, BI, HadTailCall);
 
+          // Recompute NumFastIselRemaining as Selection DAG instruction
+          // selection may have handled the call, input args, etc.
+          unsigned RemainingNow = std::distance(Begin, BI);
+          NumFastIselFailures += NumFastIselRemaining - RemainingNow;
+
           // If the call was emitted as a tail call, we're done with the block.
           if (HadTailCall) {
             --BI;
             break;
           }
 
+          NumFastIselRemaining = RemainingNow;
           continue;
         }
 
         if (isa<TerminatorInst>(Inst) && !isa<BranchInst>(Inst)) {
           // Don't abort, and use a different message for terminator misses.
-          ++NumFastIselFailures;
+          NumFastIselFailures += NumFastIselRemaining;
           if (EnableFastISelVerbose || EnableFastISelAbort) {
             dbgs() << "FastISel missed terminator: ";
             Inst->dump();
           }
         } else {
-          ++NumFastIselFailures;
+          NumFastIselFailures += NumFastIselRemaining;
           if (EnableFastISelVerbose || EnableFastISelAbort) {
             dbgs() << "FastISel miss: ";
             Inst->dump();

@@ -92,7 +92,7 @@
       <li><a href="#complexconstants">Complex Constants</a></li>
       <li><a href="#globalconstants">Global Variable and Function Addresses</a></li>
       <li><a href="#undefvalues">Undefined Values</a></li>
-      <li><a href="#trapvalues">Trap Values</a></li>
+      <li><a href="#poisonvalues">Poison Values</a></li>
       <li><a href="#blockaddress">Addresses of Basic Blocks</a></li>
       <li><a href="#constantexprs">Constant Expressions</a></li>
     </ol>
@@ -288,10 +288,10 @@
       </li>
       <li><a href="#int_memorymarkers">Memory Use Markers</a>
         <ol>
-          <li><a href="#int_lifetime_start"><tt>llvm.lifetime.start</tt></a></li>
-          <li><a href="#int_lifetime_end"><tt>llvm.lifetime.end</tt></a></li>
-          <li><a href="#int_invariant_start"><tt>llvm.invariant.start</tt></a></li>
-          <li><a href="#int_invariant_end"><tt>llvm.invariant.end</tt></a></li>
+          <li><a href="#int_lifetime_start">'<tt>llvm.lifetime.start</tt>' Intrinsic</a></li>
+          <li><a href="#int_lifetime_end">'<tt>llvm.lifetime.end</tt>' Intrinsic</a></li>
+          <li><a href="#int_invariant_start">'<tt>llvm.invariant.start</tt>' Intrinsic</a></li>
+          <li><a href="#int_invariant_end">'<tt>llvm.invariant.end</tt>' Intrinsic</a></li>
         </ol>
       </li>
       <li><a href="#int_general">General intrinsics</a>
@@ -306,6 +306,8 @@
             '<tt>llvm.stackprotector</tt>' Intrinsic</a></li>
 	  <li><a href="#int_objectsize">
             '<tt>llvm.objectsize</tt>' Intrinsic</a></li>
+	  <li><a href="#int_expect">
+            '<tt>llvm.expect</tt>' Intrinsic</a></li>
         </ol>
       </li>
     </ol>
@@ -635,7 +637,7 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
       be merged with equivalent globals.  These linkage types are otherwise the
       same as their non-<tt>odr</tt> versions.</dd>
 
-  <dt><tt><b><a name="linkage_external">external</a></b></tt>:</dt>
+  <dt><tt><b><a name="linkage_external">external</a></b></tt></dt>
   <dd>If none of the above identifiers are used, the global is externally
       visible, meaning that it participates in linkage and can be used to
       resolve external symbol references.</dd>
@@ -932,7 +934,7 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
    alignments must be a power of 2.</p>
 
 <p>If the <tt>unnamed_addr</tt> attribute is given, the address is know to not
-  be significant and two identical functions can be merged</p>.
+   be significant and two identical functions can be merged.</p>
 
 <h5>Syntax:</h5>
 <pre class="doc_code">
@@ -1214,6 +1216,12 @@ define void @f() optsize { ... }
       exception by calling the <tt>C++</tt> exception throwing methods, but may
       use the <tt>unwind</tt> instruction.</dd>
 
+  <dt><tt><b><a name="returns_twice">returns_twice</a></b></tt></dt>
+  <dd>This attribute indicates that this function can return twice. The
+      C <code>setjmp</code> is an example of such a function.  The compiler
+      disables some optimizations (like tail calls) in the caller of these
+      functions.</dd>
+
   <dt><tt><b><a name="ssp">ssp</a></b></tt></dt>
   <dd>This attribute indicates that the function should emit a stack smashing
       protector. It is in the form of a "canary"&mdash;a random value placed on
@@ -1241,12 +1249,6 @@ define void @f() optsize { ... }
       show that no exceptions passes by it. This is normally the case for
       the ELF x86-64 abi, but it can be disabled for some compilation
       units.</dd>
-
-  <dt><tt><b><a name="returns_twice">returns_twice</a></b></tt></dt>
-  <dd>This attribute indicates that this function can return
-  twice. The C <code>setjmp</code> is an example of such a function.
-  The compiler disables some optimizations (like tail calls) in the caller of
-  these functions.</dd>
 </dl>
 
 </div>
@@ -2187,8 +2189,8 @@ in signal handlers).</p>
 </pre>
 
 <p>The number of elements is a constant integer value larger than 0; elementtype
-   may be any integer or floating point type.  Vectors of size zero are not
-   allowed, and pointers are not allowed as the element type.</p>
+   may be any integer or floating point type, or a pointer to these types.
+   Vectors of size zero are not allowed. </p>
 
 <h5>Examples:</h5>
 <table class="layout">
@@ -2203,6 +2205,10 @@ in signal handlers).</p>
   <tr class="layout">
     <td class="left"><tt>&lt;2 x i64&gt;</tt></td>
     <td class="left">Vector of 2 64-bit integer values.</td>
+  </tr>
+  <tr class="layout">
+    <td class="left"><tt>&lt;4 x i64*&gt;</tt></td>
+    <td class="left">Vector of 4 pointers to 64-bit integer values.</td>
   </tr>
 </table>
 
@@ -2500,22 +2506,21 @@ b: unreachable
 
 <!-- ======================================================================= -->
 <h3>
-  <a name="trapvalues">Trap Values</a>
+  <a name="poisonvalues">Poison Values</a>
 </h3>
 
 <div>
 
-<p>Trap values are similar to <a href="#undefvalues">undef values</a>, however
-   instead of representing an unspecified bit pattern, they represent the
-   fact that an instruction or constant expression which cannot evoke side
-   effects has nevertheless detected a condition which results in undefined
-   behavior.</p>
+<p>Poison values are similar to <a href="#undefvalues">undef values</a>, however
+   they also represent the fact that an instruction or constant expression which
+   cannot evoke side effects has nevertheless detected a condition which results
+   in undefined behavior.</p>
 
-<p>There is currently no way of representing a trap value in the IR; they
+<p>There is currently no way of representing a poison value in the IR; they
    only exist when produced by operations such as
    <a href="#i_add"><tt>add</tt></a> with the <tt>nsw</tt> flag.</p>
 
-<p>Trap value behavior is defined in terms of value <i>dependence</i>:</p>
+<p>Poison value behavior is defined in terms of value <i>dependence</i>:</p>
 
 <ul>
 <li>Values other than <a href="#i_phi"><tt>phi</tt></a> nodes depend on
@@ -2566,62 +2571,61 @@ b: unreachable
 
 </ul>
 
-<p>Whenever a trap value is generated, all values which depend on it evaluate
-   to trap. If they have side effects, they evoke their side effects as if each
-   operand with a trap value were undef. If they have externally-visible side
-   effects, the behavior is undefined.</p>
+<p>Poison Values have the same behavior as <a href="#undefvalues">undef values</a>,
+   with the additional affect that any instruction which has a <i>dependence</i>
+   on a poison value has undefined behavior.</p>
 
 <p>Here are some examples:</p>
 
 <pre class="doc_code">
 entry:
-  %trap = sub nuw i32 0, 1           ; Results in a trap value.
-  %still_trap = and i32 %trap, 0     ; Whereas (and i32 undef, 0) would return 0.
-  %trap_yet_again = getelementptr i32* @h, i32 %still_trap
-  store i32 0, i32* %trap_yet_again  ; undefined behavior
+  %poison = sub nuw i32 0, 1           ; Results in a poison value.
+  %still_poison = and i32 %poison, 0   ; 0, but also poison.
+  %poison_yet_again = getelementptr i32* @h, i32 %still_poison
+  store i32 0, i32* %poison_yet_again  ; memory at @h[0] is poisoned
 
-  store i32 %trap, i32* @g           ; Trap value conceptually stored to memory.
-  %trap2 = load i32* @g              ; Returns a trap value, not just undef.
+  store i32 %poison, i32* @g           ; Poison value stored to memory.
+  %poison2 = load i32* @g              ; Poison value loaded back from memory.
 
-  volatile store i32 %trap, i32* @g  ; External observation; undefined behavior.
+  store volatile i32 %poison, i32* @g  ; External observation; undefined behavior.
 
   %narrowaddr = bitcast i32* @g to i16*
   %wideaddr = bitcast i32* @g to i64*
-  %trap3 = load i16* %narrowaddr     ; Returns a trap value.
-  %trap4 = load i64* %wideaddr       ; Returns a trap value.
+  %poison3 = load i16* %narrowaddr     ; Returns a poison value.
+  %poison4 = load i64* %wideaddr       ; Returns a poison value.
 
-  %cmp = icmp slt i32 %trap, 0       ; Returns a trap value.
-  br i1 %cmp, label %true, label %end ; Branch to either destination.
+  %cmp = icmp slt i32 %poison, 0       ; Returns a poison value.
+  br i1 %cmp, label %true, label %end  ; Branch to either destination.
 
 true:
-  volatile store i32 0, i32* @g      ; This is control-dependent on %cmp, so
-                                     ; it has undefined behavior.
+  store volatile i32 0, i32* @g        ; This is control-dependent on %cmp, so
+                                       ; it has undefined behavior.
   br label %end
 
 end:
   %p = phi i32 [ 0, %entry ], [ 1, %true ]
-                                     ; Both edges into this PHI are
-                                     ; control-dependent on %cmp, so this
-                                     ; always results in a trap value.
+                                       ; Both edges into this PHI are
+                                       ; control-dependent on %cmp, so this
+                                       ; always results in a poison value.
 
-  volatile store i32 0, i32* @g      ; This would depend on the store in %true
-                                     ; if %cmp is true, or the store in %entry
-                                     ; otherwise, so this is undefined behavior.
+  store volatile i32 0, i32* @g        ; This would depend on the store in %true
+                                       ; if %cmp is true, or the store in %entry
+                                       ; otherwise, so this is undefined behavior.
 
   br i1 %cmp, label %second_true, label %second_end
-                                     ; The same branch again, but this time the
-                                     ; true block doesn't have side effects.
+                                       ; The same branch again, but this time the
+                                       ; true block doesn't have side effects.
 
 second_true:
   ; No side effects!
   ret void
 
 second_end:
-  volatile store i32 0, i32* @g      ; This time, the instruction always depends
-                                     ; on the store in %end. Also, it is
-                                     ; control-equivalent to %end, so this is
-                                     ; well-defined (again, ignoring earlier
-                                     ; undefined behavior in this example).
+  store volatile i32 0, i32* @g        ; This time, the instruction always depends
+                                       ; on the store in %end. Also, it is
+                                       ; control-equivalent to %end, so this is
+                                       ; well-defined (ignoring earlier undefined
+                                       ; behavior in this example).
 </pre>
 
 </div>
@@ -2800,7 +2804,7 @@ second_end:
 <div>
 
 <p>LLVM supports inline assembler expressions (as opposed
-   to <a href="#moduleasm"> Module-Level Inline Assembly</a>) through the use of
+   to <a href="#moduleasm">Module-Level Inline Assembly</a>) through the use of
    a special value.  This value represents the inline assembler as a string
    (containing the instructions to emit), a list of operand constraints (stored
    as a string), a flag that indicates whether or not the inline asm
@@ -2842,23 +2846,27 @@ call void asm alignstack "eieio", ""()
 <p>If both keywords appear the '<tt>sideeffect</tt>' keyword must come
    first.</p>
 
+<!--
 <p>TODO: The format of the asm and constraints string still need to be
    documented here.  Constraints on what can be done (e.g. duplication, moving,
    etc need to be documented).  This is probably best done by reference to
    another document that covers inline asm from a holistic perspective.</p>
+  -->
 
+<!-- _______________________________________________________________________ -->
 <h4>
-<a name="inlineasm_md">Inline Asm Metadata</a>
+  <a name="inlineasm_md">Inline Asm Metadata</a>
 </h4>
 
 <div>
 
-<p>The call instructions that wrap inline asm nodes may have a "!srcloc" MDNode
-   attached to it that contains a list of constant integers.  If present, the
-  code generator will use the integer as the location cookie value when report
-   errors through the LLVMContext error reporting mechanisms.  This allows a
-   front-end to correlate backend errors that occur with inline asm back to the
-   source code that produced it.  For example:</p>
+<p>The call instructions that wrap inline asm nodes may have a
+   "<tt>!srcloc</tt>" MDNode attached to it that contains a list of constant
+   integers.  If present, the code generator will use the integer as the
+   location cookie value when report errors through the <tt>LLVMContext</tt>
+   error reporting mechanisms.  This allows a front-end to correlate backend
+   errors that occur with inline asm back to the source code that produced it.
+   For example:</p>
 
 <pre class="doc_code">
 call void asm sideeffect "something bad", ""()<b>, !srcloc !42</b>
@@ -2867,7 +2875,7 @@ call void asm sideeffect "something bad", ""()<b>, !srcloc !42</b>
 </pre>
 
 <p>It is up to the front-end to make sense of the magic numbers it places in the
-   IR.  If the MDNode contains multiple constants, the code generator will use
+   IR. If the MDNode contains multiple constants, the code generator will use
    the one that corresponds to the line of the asm that the error occurs on.</p>
 
 </div>
@@ -2889,20 +2897,33 @@ call void asm sideeffect "something bad", ""()<b>, !srcloc !42</b>
    preceding exclamation point ('<tt>!</tt>').</p>
 
 <p>A metadata string is a string surrounded by double quotes.  It can contain
-   any character by escaping non-printable characters with "\xx" where "xx" is
-   the two digit hex code.  For example: "<tt>!"test\00"</tt>".</p>
+   any character by escaping non-printable characters with "<tt>\xx</tt>" where
+   "<tt>xx</tt>" is the two digit hex code.  For example:
+   "<tt>!"test\00"</tt>".</p>
 
 <p>Metadata nodes are represented with notation similar to structure constants
    (a comma separated list of elements, surrounded by braces and preceded by an
-   exclamation point).  For example: "<tt>!{ metadata !"test\00", i32
-   10}</tt>".  Metadata nodes can have any values as their operand.</p>
+   exclamation point). Metadata nodes can have any values as their operand. For
+   example:</p>
+
+<div class="doc_code">
+<pre>
+!{ metadata !"test\00", i32 10}
+</pre>
+</div>
 
 <p>A <a href="#namedmetadatastructure">named metadata</a> is a collection of 
    metadata nodes, which can be looked up in the module symbol table. For
-   example: "<tt>!foo =  metadata !{!4, !3}</tt>".
+   example:</p>
+
+<div class="doc_code">
+<pre>
+!foo =  metadata !{!4, !3}
+</pre>
+</div>
 
 <p>Metadata can be used as function arguments. Here <tt>llvm.dbg.value</tt> 
-   function is using two metadata arguments.</p>
+   function is using two metadata arguments:</p>
 
 <div class="doc_code">
 <pre>
@@ -2911,7 +2932,8 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 </div>
 
 <p>Metadata can be attached with an instruction. Here metadata <tt>!21</tt> is
-   attached with <tt>add</tt> instruction using <tt>!dbg</tt> identifier.</p>
+   attached to the <tt>add</tt> instruction using the <tt>!dbg</tt>
+   identifier:</p>
 
 <div class="doc_code">
 <pre>
@@ -2922,6 +2944,7 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 <p>More information about specific metadata nodes recognized by the optimizers
    and code generator is found below.</p>
 
+<!-- _______________________________________________________________________ -->
 <h4>
   <a name="tbaa">'<tt>tbaa</tt>' Metadata</a>
 </h4>
@@ -2966,6 +2989,7 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 
 </div>
 
+<!-- _______________________________________________________________________ -->
 <h4>
   <a name="fpaccuracy">'<tt>fpaccuracy</tt>' Metadata</a>
 </h4>
@@ -2976,12 +3000,15 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
    point type.  It expresses the maximum relative error of the result of
    that instruction, in ULPs. ULP is defined as follows:</p>
 
-<blockquote><p>
-If x is a real number that lies between two finite consecutive floating-point
-numbers a and b, without being equal to one of them, then ulp(x) = |b - a|,
-otherwise ulp(x) is the distance between the two non-equal finite
-floating-point numbers nearest x. Moreover, ulp(NaN) is NaN.
-</p></blockquote>
+<blockquote>
+
+<p>If <tt>x</tt> is a real number that lies between two finite consecutive
+   floating-point numbers <tt>a</tt> and <tt>b</tt>, without being equal to one
+   of them, then <tt>ulp(x) = |b - a|</tt>, otherwise <tt>ulp(x)</tt> is the
+   distance between the two non-equal finite floating-point numbers nearest
+   <tt>x</tt>. Moreover, <tt>ulp(NaN)</tt> is <tt>NaN</tt>.</p>
+
+</blockquote>
 
 <p>The maximum relative error may be any rational number.  The metadata node
    shall consist of a pair of unsigned integers respectively representing
@@ -3023,26 +3050,29 @@ href="#linkage_appending">appending linkage</a>.  This array contains a list of
 pointers to global variables and functions which may optionally have a pointer
 cast formed of bitcast or getelementptr.  For example, a legal use of it is:</p>
 
+<div class="doc_code">
 <pre>
-  @X = global i8 4
-  @Y = global i32 123
+@X = global i8 4
+@Y = global i32 123
 
-  @llvm.used = appending global [2 x i8*] [
-     i8* @X,
-     i8* bitcast (i32* @Y to i8*)
-  ], section "llvm.metadata"
+@llvm.used = appending global [2 x i8*] [
+   i8* @X,
+   i8* bitcast (i32* @Y to i8*)
+], section "llvm.metadata"
 </pre>
+</div>
 
 <p>If a global variable appears in the <tt>@llvm.used</tt> list, then the
-compiler, assembler, and linker are required to treat the symbol as if there is
-a reference to the global that it cannot see.  For example, if a variable has
-internal linkage and no references other than that from the <tt>@llvm.used</tt>
-list, it cannot be deleted.  This is commonly used to represent references from
-inline asms and other things the compiler cannot "see", and corresponds to
-"attribute((used))" in GNU C.</p>
+   compiler, assembler, and linker are required to treat the symbol as if there
+   is a reference to the global that it cannot see.  For example, if a variable
+   has internal linkage and no references other than that from
+   the <tt>@llvm.used</tt> list, it cannot be deleted.  This is commonly used to
+   represent references from inline asms and other things the compiler cannot
+   "see", and corresponds to "<tt>attribute((used))</tt>" in GNU C.</p>
 
 <p>On some targets, the code generator must emit a directive to the assembler or
-object file to prevent the assembler and linker from molesting the symbol.</p>
+   object file to prevent the assembler and linker from molesting the
+   symbol.</p>
 
 </div>
 
@@ -3056,13 +3086,13 @@ object file to prevent the assembler and linker from molesting the symbol.</p>
 <div>
 
 <p>The <tt>@llvm.compiler.used</tt> directive is the same as the
-<tt>@llvm.used</tt> directive, except that it only prevents the compiler from
-touching the symbol.  On targets that support it, this allows an intelligent
-linker to optimize references to the symbol without being impeded as it would be
-by <tt>@llvm.used</tt>.</p>
+   <tt>@llvm.used</tt> directive, except that it only prevents the compiler from
+   touching the symbol.  On targets that support it, this allows an intelligent
+   linker to optimize references to the symbol without being impeded as it would
+   be by <tt>@llvm.used</tt>.</p>
 
 <p>This is a rare construct that should only be used in rare circumstances, and
-should not be exposed to source languages.</p>
+   should not be exposed to source languages.</p>
 
 </div>
 
@@ -3072,12 +3102,19 @@ should not be exposed to source languages.</p>
 </h3>
 
 <div>
+
+<div class="doc_code">
 <pre>
 %0 = type { i32, void ()* }
 @llvm.global_ctors = appending global [1 x %0] [%0 { i32 65535, void ()* @ctor }]
 </pre>
-<p>The <tt>@llvm.global_ctors</tt> array contains a list of constructor functions and associated priorities.  The functions referenced by this array will be called in ascending order of priority (i.e. lowest first) when the module is loaded.  The order of functions with the same priority is not defined.
-</p>
+</div>
+
+<p>The <tt>@llvm.global_ctors</tt> array contains a list of constructor
+   functions and associated priorities.  The functions referenced by this array
+   will be called in ascending order of priority (i.e. lowest first) when the
+   module is loaded.  The order of functions with the same priority is not
+   defined.</p>
 
 </div>
 
@@ -3087,13 +3124,18 @@ should not be exposed to source languages.</p>
 </h3>
 
 <div>
+
+<div class="doc_code">
 <pre>
 %0 = type { i32, void ()* }
 @llvm.global_dtors = appending global [1 x %0] [%0 { i32 65535, void ()* @dtor }]
 </pre>
+</div>
 
-<p>The <tt>@llvm.global_dtors</tt> array contains a list of destructor functions and associated priorities.  The functions referenced by this array will be called in descending order of priority (i.e. highest first) when the module is loaded.  The order of functions with the same priority is not defined.
-</p>
+<p>The <tt>@llvm.global_dtors</tt> array contains a list of destructor functions
+   and associated priorities.  The functions referenced by this array will be
+   called in descending order of priority (i.e. highest first) when the module
+   is loaded.  The order of functions with the same priority is not defined.</p>
 
 </div>
 
@@ -3575,7 +3617,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
 <p><tt>nuw</tt> and <tt>nsw</tt> stand for &quot;No Unsigned Wrap&quot;
    and &quot;No Signed Wrap&quot;, respectively. If the <tt>nuw</tt> and/or
    <tt>nsw</tt> keywords are present, the result value of the <tt>add</tt>
-   is a <a href="#trapvalues">trap value</a> if unsigned and/or signed overflow,
+   is a <a href="#poisonvalues">poison value</a> if unsigned and/or signed overflow,
    respectively, occurs.</p>
 
 <h5>Example:</h5>
@@ -3656,7 +3698,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
 <p><tt>nuw</tt> and <tt>nsw</tt> stand for &quot;No Unsigned Wrap&quot;
    and &quot;No Signed Wrap&quot;, respectively. If the <tt>nuw</tt> and/or
    <tt>nsw</tt> keywords are present, the result value of the <tt>sub</tt>
-   is a <a href="#trapvalues">trap value</a> if unsigned and/or signed overflow,
+   is a <a href="#poisonvalues">poison value</a> if unsigned and/or signed overflow,
    respectively, occurs.</p>
 
 <h5>Example:</h5>
@@ -3743,7 +3785,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
 <p><tt>nuw</tt> and <tt>nsw</tt> stand for &quot;No Unsigned Wrap&quot;
    and &quot;No Signed Wrap&quot;, respectively. If the <tt>nuw</tt> and/or
    <tt>nsw</tt> keywords are present, the result value of the <tt>mul</tt>
-   is a <a href="#trapvalues">trap value</a> if unsigned and/or signed overflow,
+   is a <a href="#poisonvalues">poison value</a> if unsigned and/or signed overflow,
    respectively, occurs.</p>
 
 <h5>Example:</h5>
@@ -3813,7 +3855,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
 <p>Division by zero leads to undefined behavior.</p>
 
 <p>If the <tt>exact</tt> keyword is present, the result value of the
-   <tt>udiv</tt> is a <a href="#trapvalues">trap value</a> if %op1 is not a
+   <tt>udiv</tt> is a <a href="#poisonvalues">poison value</a> if %op1 is not a
   multiple of %op2 (as such, "((a udiv exact b) mul b) == a").</p>
 
 
@@ -3857,7 +3899,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
    a 32-bit division of -2147483648 by -1.</p>
 
 <p>If the <tt>exact</tt> keyword is present, the result value of the
-   <tt>sdiv</tt> is a <a href="#trapvalues">trap value</a> if the result would
+   <tt>sdiv</tt> is a <a href="#poisonvalues">poison value</a> if the result would
    be rounded.</p>
 
 <h5>Example:</h5>
@@ -4066,9 +4108,9 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
    shift amount in <tt>op2</tt>.</p>
 
 <p>If the <tt>nuw</tt> keyword is present, then the shift produces a 
-   <a href="#trapvalues">trap value</a> if it shifts out any non-zero bits.  If
+   <a href="#poisonvalues">poison value</a> if it shifts out any non-zero bits.  If
    the <tt>nsw</tt> keyword is present, then the shift produces a
-   <a href="#trapvalues">trap value</a> if it shifts out any bits that disagree
+   <a href="#poisonvalues">poison value</a> if it shifts out any bits that disagree
    with the resultant sign bit.  As such, NUW/NSW have the same semantics as
    they would if the shift were expressed as a mul instruction with the same
    nsw/nuw bits in (mul %op1, (shl 1, %op2)).</p>
@@ -4115,7 +4157,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
    shift amount in <tt>op2</tt>.</p>
 
 <p>If the <tt>exact</tt> keyword is present, the result value of the
-   <tt>lshr</tt> is a <a href="#trapvalues">trap value</a> if any of the bits
+   <tt>lshr</tt> is a <a href="#poisonvalues">poison value</a> if any of the bits
    shifted out are non-zero.</p>
 
 
@@ -4163,7 +4205,7 @@ that the invoke/unwind semantics are likely to change in future versions.</p>
    the corresponding shift amount in <tt>op2</tt>.</p>
 
 <p>If the <tt>exact</tt> keyword is present, the result value of the
-   <tt>ashr</tt> is a <a href="#trapvalues">trap value</a> if any of the bits
+   <tt>ashr</tt> is a <a href="#poisonvalues">poison value</a> if any of the bits
    shifted out are non-zero.</p>
 
 <h5>Example:</h5>
@@ -5029,6 +5071,7 @@ specified by the <var>operation</var> argument:</p>
 <pre>
   &lt;result&gt; = getelementptr &lt;pty&gt;* &lt;ptrval&gt;{, &lt;ty&gt; &lt;idx&gt;}*
   &lt;result&gt; = getelementptr inbounds &lt;pty&gt;* &lt;ptrval&gt;{, &lt;ty&gt; &lt;idx&gt;}*
+  &lt;result&gt; = getelementptr &lt;ptr vector&gt; ptrval, &lt;vector index type&gt; idx 
 </pre>
 
 <h5>Overview:</h5>
@@ -5037,7 +5080,8 @@ specified by the <var>operation</var> argument:</p>
    It performs address calculation only and does not access memory.</p>
 
 <h5>Arguments:</h5>
-<p>The first argument is always a pointer, and forms the basis of the
+<p>The first argument is always a pointer or a vector of pointers,
+   and forms the basis of the
    calculation. The remaining arguments are indices that indicate which of the
    elements of the aggregate object are indexed. The interpretation of each
    index is dependent on the type being indexed into. The first index always
@@ -5115,14 +5159,16 @@ entry:
 </pre>
 
 <p>If the <tt>inbounds</tt> keyword is present, the result value of the
-   <tt>getelementptr</tt> is a <a href="#trapvalues">trap value</a> if the
+   <tt>getelementptr</tt> is a <a href="#poisonvalues">poison value</a> if the
    base pointer is not an <i>in bounds</i> address of an allocated object,
    or if any of the addresses that would be formed by successive addition of
    the offsets implied by the indices to the base address with infinitely
    precise signed arithmetic are not an <i>in bounds</i> address of that
    allocated object. The <i>in bounds</i> addresses for an allocated object
    are all the addresses that point into the object, plus the address one
-   byte past the end.</p>
+   byte past the end.
+   In cases where the base is a vector of pointers the <tt>inbounds</tt> keyword
+   applies to each of the computations element-wise. </p>
 
 <p>If the <tt>inbounds</tt> keyword is not present, the offsets are added to
    the base address with silently-wrapping two's complement arithmetic. If the
@@ -5147,6 +5193,13 @@ entry:
     %eptr = getelementptr [12 x i8]* %aptr, i64 0, i32 1
     <i>; yields i32*:iptr</i>
     %iptr = getelementptr [10 x i32]* @arr, i16 0, i16 0
+</pre>
+
+<p>In cases where the pointer argument is a vector of pointers, only a
+   single index may be used, and the number of vector elements has to be
+   the same.  For example: </p>
+<pre class="doc_code">
+ %A = getelementptr <4 x i8*> %ptrs, <4 x i64> %offsets,
 </pre>
 
 </div>
@@ -5521,13 +5574,16 @@ entry:
 </pre>
 
 <h5>Overview:</h5>
-<p>The '<tt>ptrtoint</tt>' instruction converts the pointer <tt>value</tt> to
-   the integer type <tt>ty2</tt>.</p>
+<p>The '<tt>ptrtoint</tt>' instruction converts the pointer or a vector of
+   pointers <tt>value</tt> to
+   the integer (or vector of integers) type <tt>ty2</tt>.</p>
 
 <h5>Arguments:</h5>
 <p>The '<tt>ptrtoint</tt>' instruction takes a <tt>value</tt> to cast, which
-   must be a <a href="#t_pointer">pointer</a> value, and a type to cast it to
-   <tt>ty2</tt>, which must be an <a href="#t_integer">integer</a> type.</p>
+   must be a a value of type <a href="#t_pointer">pointer</a> or a vector of
+    pointers, and a type to cast it to
+   <tt>ty2</tt>, which must be an <a href="#t_integer">integer</a> or a vector
+   of integers type.</p>
 
 <h5>Semantics:</h5>
 <p>The '<tt>ptrtoint</tt>' instruction converts <tt>value</tt> to integer type
@@ -5540,8 +5596,9 @@ entry:
 
 <h5>Example:</h5>
 <pre>
-  %X = ptrtoint i32* %X to i8           <i>; yields truncation on 32-bit architecture</i>
-  %Y = ptrtoint i32* %x to i64          <i>; yields zero extension on 32-bit architecture</i>
+  %X = ptrtoint i32* %P to i8                         <i>; yields truncation on 32-bit architecture</i>
+  %Y = ptrtoint i32* %P to i64                        <i>; yields zero extension on 32-bit architecture</i>
+  %Z = ptrtoint &lt;4 x i32*&gt; %P to &lt;4 x i64&gt;<i>; yields vector zero extension for a vector of addresses on 32-bit architecture</i>
 </pre>
 
 </div>
@@ -5580,6 +5637,7 @@ entry:
   %X = inttoptr i32 255 to i32*          <i>; yields zero extension on 64-bit architecture</i>
   %Y = inttoptr i32 255 to i32*          <i>; yields no-op on 32-bit architecture</i>
   %Z = inttoptr i64 0 to i32*            <i>; yields truncation on 32-bit architecture</i>
+  %Z = inttoptr &lt;4 x i32&gt; %G to &lt;4 x i8*&gt;<i>; yields truncation of vector G to four pointers</i>
 </pre>
 
 </div>
@@ -5614,8 +5672,9 @@ entry:
 <p>The '<tt>bitcast</tt>' instruction converts <tt>value</tt> to type
    <tt>ty2</tt>. It is always a <i>no-op cast</i> because no bits change with
    this conversion.  The conversion is done as if the <tt>value</tt> had been
-   stored to memory and read back as type <tt>ty2</tt>. Pointer types may only
-   be converted to other pointer types with this instruction. To convert
+   stored to memory and read back as type <tt>ty2</tt>.
+   Pointer (or vector of pointers) types may only be converted to other pointer
+   (or vector of pointers) types with this instruction. To convert
    pointers to other types, use the <a href="#i_inttoptr">inttoptr</a> or
    <a href="#i_ptrtoint">ptrtoint</a> instructions first.</p>
 
@@ -5623,7 +5682,8 @@ entry:
 <pre>
   %X = bitcast i8 255 to i8              <i>; yields i8 :-1</i>
   %Y = bitcast i32* %x to sint*          <i>; yields sint*:%x</i>
-  %Z = bitcast &lt;2 x int&gt; %V to i64;      <i>; yields i64: %V</i>
+  %Z = bitcast &lt;2 x int&gt; %V to i64;        <i>; yields i64: %V</i>
+  %Z = bitcast &lt;2 x i32*&gt; %V to &lt;2 x i64*&gt; <i>; yields &lt;2 x i64*&gt;</i>
 </pre>
 
 </div>
@@ -5654,8 +5714,8 @@ entry:
 
 <h5>Overview:</h5>
 <p>The '<tt>icmp</tt>' instruction returns a boolean value or a vector of
-   boolean values based on comparison of its two integer, integer vector, or
-   pointer operands.</p>
+   boolean values based on comparison of its two integer, integer vector,
+   pointer, or pointer vector operands.</p>
 
 <h5>Arguments:</h5>
 <p>The '<tt>icmp</tt>' instruction takes three operands. The first operand is
@@ -8167,11 +8227,35 @@ LLVM</a>.</p>
    compile time.</p>
 
 </div>
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_expect">'<tt>llvm.expect</tt>' Intrinsic</a>
+</h4>
 
+<div>
+
+<h5>Syntax:</h5>
+<pre>
+  declare i32 @llvm.expect.i32(i32 &lt;val&gt;, i32 &lt;expected_val&gt;)
+  declare i64 @llvm.expect.i64(i64 &lt;val&gt;, i64 &lt;expected_val&gt;)
+</pre>
+
+<h5>Overview:</h5>
+<p>The <tt>llvm.expect</tt> intrinsic provides information about expected (the
+   most probable) value of <tt>val</tt>, which can be used by optimizers.</p>
+
+<h5>Arguments:</h5>
+<p>The <tt>llvm.expect</tt> intrinsic takes two arguments. The first
+   argument is a value. The second argument is an expected value, this needs to
+   be a constant value, variables are not allowed.</p>
+
+<h5>Semantics:</h5>
+<p>This intrinsic is lowered to the <tt>val</tt>.</p>
 </div>
 
 </div>
 
+</div>
 <!-- *********************************************************************** -->
 <hr>
 <address>

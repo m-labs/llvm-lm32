@@ -69,11 +69,11 @@ def vfp_f64imm : Operand<f64>,
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
 
 def VLDRD : ADI5<0b1101, 0b01, (outs DPR:$Dd), (ins addrmode5:$addr),
-                 IIC_fpLoad64, "vldr", ".64\t$Dd, $addr",
+                 IIC_fpLoad64, "vldr", "\t$Dd, $addr",
                  [(set DPR:$Dd, (f64 (load addrmode5:$addr)))]>;
 
 def VLDRS : ASI5<0b1101, 0b01, (outs SPR:$Sd), (ins addrmode5:$addr),
-                 IIC_fpLoad32, "vldr", ".32\t$Sd, $addr",
+                 IIC_fpLoad32, "vldr", "\t$Sd, $addr",
                  [(set SPR:$Sd, (load addrmode5:$addr))]> {
   // Some single precision VFP instructions may be executed on both NEON and VFP
   // pipelines.
@@ -83,11 +83,11 @@ def VLDRS : ASI5<0b1101, 0b01, (outs SPR:$Sd), (ins addrmode5:$addr),
 } // End of 'let canFoldAsLoad = 1, isReMaterializable = 1 in'
 
 def VSTRD : ADI5<0b1101, 0b00, (outs), (ins DPR:$Dd, addrmode5:$addr),
-                 IIC_fpStore64, "vstr", ".64\t$Dd, $addr",
+                 IIC_fpStore64, "vstr", "\t$Dd, $addr",
                  [(store (f64 DPR:$Dd), addrmode5:$addr)]>;
 
 def VSTRS : ASI5<0b1101, 0b00, (outs), (ins SPR:$Sd, addrmode5:$addr),
-                 IIC_fpStore32, "vstr", ".32\t$Sd, $addr",
+                 IIC_fpStore32, "vstr", "\t$Sd, $addr",
                  [(store SPR:$Sd, addrmode5:$addr)]> {
   // Some single precision VFP instructions may be executed on both NEON and VFP
   // pipelines.
@@ -1163,3 +1163,44 @@ def FCONSTS : VFPAI<(outs SPR:$Sd), (ins vfp_f32imm:$imm),
 
 def : VFP2InstAlias<"fmstat${p}", (FMSTAT pred:$p)>;
 
+// VLDR/VSTR accept an optional type suffix.
+def : VFP2InstAlias<"vldr${p}.32 $Sd, $addr",
+                    (VLDRS SPR:$Sd, addrmode5:$addr, pred:$p)>;
+def : VFP2InstAlias<"vstr${p}.32 $Sd, $addr",
+                    (VSTRS SPR:$Sd, addrmode5:$addr, pred:$p)>;
+def : VFP2InstAlias<"vldr${p}.64 $Dd, $addr",
+                    (VLDRD DPR:$Dd, addrmode5:$addr, pred:$p)>;
+def : VFP2InstAlias<"vstr${p}.64 $Dd, $addr",
+                    (VSTRD DPR:$Dd, addrmode5:$addr, pred:$p)>;
+
+// VMUL has a two-operand form (implied destination operand)
+def : VFP2InstAlias<"vmul${p}.f64 $Dn, $Dm",
+                    (VMULD DPR:$Dn, DPR:$Dn, DPR:$Dm, pred:$p)>;
+def : VFP2InstAlias<"vmul${p}.f32 $Sn, $Sm",
+                    (VMULS SPR:$Sn, SPR:$Sn, SPR:$Sm, pred:$p)>;
+// VADD has a two-operand form (implied destination operand)
+def : VFP2InstAlias<"vadd${p}.f64 $Dn, $Dm",
+                    (VADDD DPR:$Dn, DPR:$Dn, DPR:$Dm, pred:$p)>;
+def : VFP2InstAlias<"vadd${p}.f32 $Sn, $Sm",
+                    (VADDS SPR:$Sn, SPR:$Sn, SPR:$Sm, pred:$p)>;
+// VSUB has a two-operand form (implied destination operand)
+def : VFP2InstAlias<"vsub${p}.f64 $Dn, $Dm",
+                    (VSUBD DPR:$Dn, DPR:$Dn, DPR:$Dm, pred:$p)>;
+def : VFP2InstAlias<"vsub${p}.f32 $Sn, $Sm",
+                    (VSUBS SPR:$Sn, SPR:$Sn, SPR:$Sm, pred:$p)>;
+
+// VMOV can accept optional .f32/.f64 suffix.
+def : VFP2InstAlias<"vmov${p}.f32 $Rt, $Sn",
+                    (VMOVRS GPR:$Rt, SPR:$Sn, pred:$p)>;
+def : VFP2InstAlias<"vmov${p}.f32 $Sn, $Rt",
+                    (VMOVSR SPR:$Sn, GPR:$Rt, pred:$p)>;
+
+def : VFP2InstAlias<"vmov${p}.f64 $Rt, $Rt2, $Dn",
+                    (VMOVRRD GPR:$Rt, GPR:$Rt2, DPR:$Dn, pred:$p)>;
+def : VFP2InstAlias<"vmov${p}.f64 $Dn, $Rt, $Rt2",
+                    (VMOVDRR DPR:$Dn, GPR:$Rt, GPR:$Rt2, pred:$p)>;
+
+// VMOVS doesn't need the .f32 to disambiguate from the NEON encoding the way
+// VMOVD does.
+def : VFP2InstAlias<"vmov${p} $Sd, $Sm",
+                    (VMOVS SPR:$Sd, SPR:$Sm, pred:$p)>;

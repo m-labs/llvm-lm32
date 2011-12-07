@@ -83,8 +83,8 @@ bool LiveRangeEdit::allUsesAvailableAt(const MachineInstr *OrigMI,
                                        SlotIndex OrigIdx,
                                        SlotIndex UseIdx,
                                        LiveIntervals &lis) {
-  OrigIdx = OrigIdx.getUseIndex();
-  UseIdx = UseIdx.getUseIndex();
+  OrigIdx = OrigIdx.getRegSlot(true);
+  UseIdx = UseIdx.getRegSlot(true);
   for (unsigned i = 0, e = OrigMI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = OrigMI->getOperand(i);
     if (!MO.isReg() || !MO.getReg() || MO.isDef())
@@ -129,7 +129,7 @@ bool LiveRangeEdit::canRematerializeAt(Remat &RM,
   }
 
   // If only cheap remats were requested, bail out early.
-  if (cheapAsAMove && !RM.OrigMI->getDesc().isAsCheapAsAMove())
+  if (cheapAsAMove && !RM.OrigMI->isAsCheapAsAMove())
     return false;
 
   // Verify that all used registers are available with the same values.
@@ -151,7 +151,7 @@ SlotIndex LiveRangeEdit::rematerializeAt(MachineBasicBlock &MBB,
   tii.reMaterialize(MBB, MI, DestReg, 0, RM.OrigMI, tri);
   rematted_.insert(RM.ParentVNI);
   return lis.getSlotIndexes()->insertMachineInstrInMaps(--MI, Late)
-           .getDefIndex();
+           .getRegSlot();
 }
 
 void LiveRangeEdit::eraseVirtReg(unsigned Reg, LiveIntervals &LIS) {
@@ -174,7 +174,7 @@ bool LiveRangeEdit::foldAsLoad(LiveInterval *LI,
     if (MO.isDef()) {
       if (DefMI && DefMI != MI)
         return false;
-      if (!MI->getDesc().canFoldAsLoad())
+      if (!MI->canFoldAsLoad())
         return false;
       DefMI = MI;
     } else if (!MO.isUndef()) {
@@ -221,7 +221,7 @@ void LiveRangeEdit::eliminateDeadDefs(SmallVectorImpl<MachineInstr*> &Dead,
     while (!Dead.empty()) {
       MachineInstr *MI = Dead.pop_back_val();
       assert(MI->allDefsAreDead() && "Def isn't really dead");
-      SlotIndex Idx = LIS.getInstructionIndex(MI).getDefIndex();
+      SlotIndex Idx = LIS.getInstructionIndex(MI).getRegSlot();
 
       // Never delete inline asm.
       if (MI->isInlineAsm()) {

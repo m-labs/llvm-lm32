@@ -34,6 +34,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/STLExtras.h"
 using namespace llvm;
 
 STATISTIC(NumFastStores, "Number of stores deleted");
@@ -43,25 +44,26 @@ namespace {
   struct DSE : public FunctionPass {
     AliasAnalysis *AA;
     MemoryDependenceAnalysis *MD;
+    DominatorTree *DT;
 
     static char ID; // Pass identification, replacement for typeid
-    DSE() : FunctionPass(ID), AA(0), MD(0) {
+    DSE() : FunctionPass(ID), AA(0), MD(0), DT(0) {
       initializeDSEPass(*PassRegistry::getPassRegistry());
     }
 
     virtual bool runOnFunction(Function &F) {
       AA = &getAnalysis<AliasAnalysis>();
       MD = &getAnalysis<MemoryDependenceAnalysis>();
-      DominatorTree &DT = getAnalysis<DominatorTree>();
+      DT = &getAnalysis<DominatorTree>();
 
       bool Changed = false;
       for (Function::iterator I = F.begin(), E = F.end(); I != E; ++I)
         // Only check non-dead blocks.  Dead blocks may have strange pointer
         // cycles that will confuse alias analysis.
-        if (DT.isReachableFromEntry(I))
+        if (DT->isReachableFromEntry(I))
           Changed |= runOnBasicBlock(*I);
 
-      AA = 0; MD = 0;
+      AA = 0; MD = 0; DT = 0;
       return Changed;
     }
 
@@ -272,43 +274,35 @@ static Value *getStoredPointerOperand(Instruction *I) {
   }
 }
 
-static uint64_t getPointerSize(Value *V, AliasAnalysis &AA) {
+static uint64_t getPointerSize(const Value *V, AliasAnalysis &AA) {
   const TargetData *TD = AA.getTargetData();
 
-  if (CallInst *CI = dyn_cast<CallInst>(V)) {
-    assert(isMalloc(CI) && "Expected Malloc call!");
-    if (ConstantInt *C = dyn_cast<ConstantInt>(CI->getArgOperand(0)))
+  if (const CallInst *CI = extractMallocCall(V)) {
+    if (const ConstantInt *C = dyn_cast<ConstantInt>(CI->getArgOperand(0)))
       return C->getZExtValue();
-    return AliasAnalysis::UnknownSize;
   }
 
   if (TD == 0)
     return AliasAnalysis::UnknownSize;
 
-  if (AllocaInst *A = dyn_cast<AllocaInst>(V)) {
+  if (const AllocaInst *A = dyn_cast<AllocaInst>(V)) {
     // Get size information for the alloca
-    if (ConstantInt *C = dyn_cast<ConstantInt>(A->getArraySize()))
+    if (const ConstantInt *C = dyn_cast<ConstantInt>(A->getArraySize()))
       return C->getZExtValue() * TD->getTypeAllocSize(A->getAllocatedType());
-    return AliasAnalysis::UnknownSize;
   }
 
-  assert(isa<Argument>(V) && "Expected AllocaInst, malloc call or Argument!");
-  PointerType *PT = cast<PointerType>(V->getType());
-  return TD->getTypeAllocSize(PT->getElementType());
-}
+  if (const Argument *A = dyn_cast<Argument>(V)) {
+    if (A->hasByValAttr())
+      if (PointerType *PT = dyn_cast<PointerType>(A->getType()))
+        return TD->getTypeAllocSize(PT->getElementType());
+  }
 
-/// isObjectPointerWithTrustworthySize - Return true if the specified Value* is
-/// pointing to an object with a pointer size we can trust.
-static bool isObjectPointerWithTrustworthySize(const Value *V) {
-  if (const AllocaInst *AI = dyn_cast<AllocaInst>(V))
-    return !AI->isArrayAllocation();
-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V))
-    return !GV->mayBeOverridden();
-  if (const Argument *A = dyn_cast<Argument>(V))
-    return A->hasByValAttr();
-  if (isMalloc(V))
-    return true;
-  return false;
+  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+    if (!GV->mayBeOverridden())
+      return TD->getTypeAllocSize(GV->getType()->getElementType());
+  }
+
+  return AliasAnalysis::UnknownSize;
 }
 
 namespace {
@@ -327,8 +321,8 @@ namespace {
 static OverwriteResult isOverwrite(const AliasAnalysis::Location &Later,
                                    const AliasAnalysis::Location &Earlier,
                                    AliasAnalysis &AA,
-                                   int64_t& EarlierOff,
-                                   int64_t& LaterOff) {
+                                   int64_t &EarlierOff,
+                                   int64_t &LaterOff) {
   const Value *P1 = Earlier.Ptr->stripPointerCasts();
   const Value *P2 = Later.Ptr->stripPointerCasts();
 
@@ -375,12 +369,10 @@ static OverwriteResult isOverwrite(const AliasAnalysis::Location &Later,
     return OverwriteUnknown;
 
   // If the "Later" store is to a recognizable object, get its size.
-  if (isObjectPointerWithTrustworthySize(UO2)) {
-    uint64_t ObjectSize =
-      TD.getTypeAllocSize(cast<PointerType>(UO2->getType())->getElementType());
-    if (ObjectSize == Later.Size)
+  uint64_t ObjectSize = getPointerSize(UO2, AA);
+  if (ObjectSize != AliasAnalysis::UnknownSize)
+    if (ObjectSize == Later.Size && ObjectSize >= Earlier.Size)
       return OverwriteComplete;
-  }
 
   // Okay, we have stores to two completely different pointers.  Try to
   // decompose the pointer into a "base + constant_offset" form.  If the base
@@ -423,7 +415,8 @@ static OverwriteResult isOverwrite(const AliasAnalysis::Location &Later,
   // In this case we may want to trim the size of earlier to avoid generating
   // writes to addresses which will definitely be overwritten later
   if (LaterOff > EarlierOff &&
-      LaterOff + Later.Size >= EarlierOff + Earlier.Size)
+      LaterOff < int64_t(EarlierOff + Earlier.Size) &&
+      int64_t(LaterOff + Later.Size) >= int64_t(EarlierOff + Earlier.Size))
     return OverwriteEnd;
 
   // Otherwise, they don't completely overlap.
@@ -625,37 +618,66 @@ bool DSE::runOnBasicBlock(BasicBlock &BB) {
   return MadeChange;
 }
 
+/// Find all blocks that will unconditionally lead to the block BB and append
+/// them to F.
+static void FindUnconditionalPreds(SmallVectorImpl<BasicBlock *> &Blocks,
+                                   BasicBlock *BB, DominatorTree *DT) {
+  for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
+    BasicBlock *Pred = *I;
+    TerminatorInst *PredTI = Pred->getTerminator();
+    if (PredTI->getNumSuccessors() != 1)
+      continue;
+
+    if (DT->isReachableFromEntry(Pred))
+      Blocks.push_back(Pred);
+  }
+}
+
 /// HandleFree - Handle frees of entire structures whose dependency is a store
 /// to a field of that structure.
 bool DSE::HandleFree(CallInst *F) {
   bool MadeChange = false;
 
-  MemDepResult Dep = MD->getDependency(F);
+  AliasAnalysis::Location Loc = AliasAnalysis::Location(F->getOperand(0));
+  SmallVector<BasicBlock *, 16> Blocks;
+  Blocks.push_back(F->getParent());
 
-  while (Dep.isDef() || Dep.isClobber()) {
-    Instruction *Dependency = Dep.getInst();
-    if (!hasMemoryWrite(Dependency) || !isRemovable(Dependency))
-      return MadeChange;
+  while (!Blocks.empty()) {
+    BasicBlock *BB = Blocks.pop_back_val();
+    Instruction *InstPt = BB->getTerminator();
+    if (BB == F->getParent()) InstPt = F;
 
-    Value *DepPointer =
-      GetUnderlyingObject(getStoredPointerOperand(Dependency));
+    MemDepResult Dep = MD->getPointerDependencyFrom(Loc, false, InstPt, BB);
+    while (Dep.isDef() || Dep.isClobber()) {
+      Instruction *Dependency = Dep.getInst();
+      if (!hasMemoryWrite(Dependency) || !isRemovable(Dependency))
+        break;
 
-    // Check for aliasing.
-    if (!AA->isMustAlias(F->getArgOperand(0), DepPointer))
-      return MadeChange;
+      Value *DepPointer =
+        GetUnderlyingObject(getStoredPointerOperand(Dependency));
 
-    // DCE instructions only used to calculate that store
-    DeleteDeadInstruction(Dependency, *MD);
-    ++NumFastStores;
-    MadeChange = true;
+      // Check for aliasing.
+      if (!AA->isMustAlias(F->getArgOperand(0), DepPointer))
+        break;
 
-    // Inst's old Dependency is now deleted. Compute the next dependency,
-    // which may also be dead, as in
-    //    s[0] = 0;
-    //    s[1] = 0; // This has just been deleted.
-    //    free(s);
-    Dep = MD->getDependency(F);
-  };
+      Instruction *Next = llvm::next(BasicBlock::iterator(Dependency));
+
+      // DCE instructions only used to calculate that store
+      DeleteDeadInstruction(Dependency, *MD);
+      ++NumFastStores;
+      MadeChange = true;
+
+      // Inst's old Dependency is now deleted. Compute the next dependency,
+      // which may also be dead, as in
+      //    s[0] = 0;
+      //    s[1] = 0; // This has just been deleted.
+      //    free(s);
+      Dep = MD->getPointerDependencyFrom(Loc, false, Next, BB);
+    }
+
+    if (Dep.isNonLocal())
+      FindUnconditionalPreds(Blocks, BB, DT);
+  }
 
   return MadeChange;
 }

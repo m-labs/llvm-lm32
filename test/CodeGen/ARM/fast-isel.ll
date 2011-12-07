@@ -158,3 +158,43 @@ define void @test4() {
 ; ARM: ldr r1, [r1]
 ; ARM: str r0, [r1]
 }
+
+; Check unaligned stores
+%struct.anon = type <{ float }>
+
+@a = common global %struct.anon* null, align 4
+
+define void @unaligned_store(float %x, float %y) nounwind {
+entry:
+; ARM: @unaligned_store
+; ARM: vmov r1, s0
+; ARM: str r1, [r0]
+
+; THUMB: @unaligned_store
+; THUMB: vmov r1, s0
+; THUMB: str r1, [r0]
+
+  %add = fadd float %x, %y
+  %0 = load %struct.anon** @a, align 4
+  %x1 = getelementptr inbounds %struct.anon* %0, i32 0, i32 0
+  store float %add, float* %x1, align 1
+  ret void
+}
+
+; Doublewords require only word-alignment.
+; rdar://10528060
+%struct.anon.0 = type { double }
+
+@foo_unpacked = common global %struct.anon.0 zeroinitializer, align 4
+
+define void @test5(double %a, double %b) nounwind {
+entry:
+; ARM: @test5
+; THUMB: @test5
+  %add = fadd double %a, %b
+  store double %add, double* getelementptr inbounds (%struct.anon.0* @foo_unpacked, i32 0, i32 0), align 4
+; ARM: vstr d16, [r0]
+; THUMB: vstr d16, [r0]
+  ret void
+}
+

@@ -174,7 +174,7 @@ def s_cc_out : OptionalDefOperand<OtherVT, (ops CCR), (ops (i32 CPSR))> {
 
 // ARM special operands for disassembly only.
 //
-def SetEndAsmOperand : AsmOperandClass {
+def SetEndAsmOperand : ImmAsmOperand {
   let Name = "SetEndImm";
   let ParserMethod = "parseSetEndImm";
 }
@@ -231,6 +231,8 @@ class VFP2InstAlias<string Asm, dag Result, bit Emit = 0b1>
       : InstAlias<Asm, Result, Emit>, Requires<[HasVFP2]>;
 class VFP3InstAlias<string Asm, dag Result, bit Emit = 0b1>
       : InstAlias<Asm, Result, Emit>, Requires<[HasVFP3]>;
+class NEONInstAlias<string Asm, dag Result, bit Emit = 0b1>
+      : InstAlias<Asm, Result, Emit>, Requires<[HasNEON]>;
 
 //===----------------------------------------------------------------------===//
 // ARM Instruction templates.
@@ -293,21 +295,27 @@ class InstThumb<AddrMode am, int sz, IndexMode im,
 // Pseudo-instructions for alternate assembly syntax (never used by codegen).
 // These are aliases that require C++ handling to convert to the target
 // instruction, while InstAliases can be handled directly by tblgen.
-class AsmPseudoInst<dag iops>
+class AsmPseudoInst<string asm, dag iops>
   : InstTemplate<AddrModeNone, 0, IndexModeNone, Pseudo, GenericDomain,
                  "", NoItinerary> {
-  let OutOperandList = (ops);
+  let OutOperandList = (outs);
   let InOperandList = iops;
   let Pattern = [];
   let isCodeGenOnly = 0; // So we get asm matcher for it.
+  let AsmString = asm;
   let isPseudo = 1;
 }
 
-class ARMAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsARM]>;
-class tAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsThumb]>;
-class t2AsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[IsThumb2]>;
-class VFP2AsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[HasVFP2]>;
-class NEONAsmPseudo<dag iops> : AsmPseudoInst<iops>, Requires<[HasNEON]>;
+class ARMAsmPseudo<string asm, dag iops> : AsmPseudoInst<asm, iops>,
+        Requires<[IsARM]>;
+class tAsmPseudo<string asm, dag iops> : AsmPseudoInst<asm, iops>,
+        Requires<[IsThumb]>;
+class t2AsmPseudo<string asm, dag iops> : AsmPseudoInst<asm, iops>,
+        Requires<[IsThumb2]>;
+class VFP2AsmPseudo<string asm, dag iops> : AsmPseudoInst<asm, iops>,
+        Requires<[HasVFP2]>;
+class NEONAsmPseudo<string asm, dag iops> : AsmPseudoInst<asm, iops>,
+        Requires<[HasNEON]>;
 
 // Pseudo instructions for the code generator.
 class PseudoInst<dag oops, dag iops, InstrItinClass itin, list<dag> pattern>
@@ -814,7 +822,7 @@ class AMiscA1I<bits<8> opcod, bits<4> opc7_4, dag oops, dag iops,
 }
 
 // PKH instructions
-def PKHLSLAsmOperand : AsmOperandClass {
+def PKHLSLAsmOperand : ImmAsmOperand {
   let Name = "PKHLSLImm";
   let ParserMethod = "parsePKHLSLImm";
 }
@@ -1985,3 +1993,114 @@ class NVDupLane<bits<4> op19_16, bit op6, dag oops, dag iops,
 class NEONFPPat<dag pattern, dag result> : Pat<pattern, result> {
   list<Predicate> Predicates = [HasNEON,UseNEONForFP];
 }
+
+// VFP/NEON Instruction aliases for type suffices.
+class VFPDataTypeInstAlias<string opc, string dt, string asm, dag Result> :
+  InstAlias<!strconcat(opc, dt, "\t", asm), Result>, Requires<[HasVFP2]>;
+
+multiclass VFPDTAnyInstAlias<string opc, string asm, dag Result> {
+  def : VFPDataTypeInstAlias<opc, ".8", asm, Result>;
+  def : VFPDataTypeInstAlias<opc, ".16", asm, Result>;
+  def : VFPDataTypeInstAlias<opc, ".32", asm, Result>;
+  def : VFPDataTypeInstAlias<opc, ".64", asm, Result>;
+}
+
+// The same alias classes using AsmPseudo instead, for the more complex
+// stuff in NEON that InstAlias can't quite handle.
+// Note that we can't use anonymous defm references here like we can
+// above, as we care about the ultimate instruction enum names generated, unlike
+// for instalias defs.
+class NEONDataTypeAsmPseudoInst<string opc, string dt, string asm, dag iops> :
+  AsmPseudoInst<!strconcat(opc, dt, "\t", asm), iops>, Requires<[HasNEON]>;
+multiclass NEONDT8ReqAsmPseudoInst<string opc, string asm, dag iops> {
+  def I8 : NEONDataTypeAsmPseudoInst<opc, ".i8", asm, iops>;
+  def S8 : NEONDataTypeAsmPseudoInst<opc, ".s8", asm, iops>;
+  def U8 : NEONDataTypeAsmPseudoInst<opc, ".u8", asm, iops>;
+  def P8 : NEONDataTypeAsmPseudoInst<opc, ".p8", asm, iops>;
+}
+// NEONDT8ReqAsmPseudoInst plus plain ".8"
+multiclass NEONDT8AsmPseudoInst<string opc, string asm, dag iops> {
+  def _8 : NEONDataTypeAsmPseudoInst<opc, ".8", asm, iops>;
+  defm _ : NEONDT8ReqAsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDT16ReqAsmPseudoInst<string opc, string asm, dag iops> {
+  def I16 : NEONDataTypeAsmPseudoInst<opc, ".i16", asm, iops>;
+  def S16 : NEONDataTypeAsmPseudoInst<opc, ".s16", asm, iops>;
+  def U16 : NEONDataTypeAsmPseudoInst<opc, ".u16", asm, iops>;
+  def P16 : NEONDataTypeAsmPseudoInst<opc, ".p16", asm, iops>;
+}
+// NEONDT16ReqAsmPseudoInst plus plain ".16"
+multiclass NEONDT16AsmPseudoInst<string opc, string asm, dag iops> {
+  def _16 : NEONDataTypeAsmPseudoInst<opc, ".16", asm, iops>;
+  defm _ : NEONDT16ReqAsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDT32ReqAsmPseudoInst<string opc, string asm, dag iops> {
+  def I32 : NEONDataTypeAsmPseudoInst<opc, ".i32", asm, iops>;
+  def S32 : NEONDataTypeAsmPseudoInst<opc, ".s32", asm, iops>;
+  def U32 : NEONDataTypeAsmPseudoInst<opc, ".u32", asm, iops>;
+  def F32 : NEONDataTypeAsmPseudoInst<opc, ".f32", asm, iops>;
+  def F   : NEONDataTypeAsmPseudoInst<opc, ".f",   asm, iops>;
+}
+// NEONDT32ReqAsmPseudoInst plus plain ".32"
+multiclass NEONDT32AsmPseudoInst<string opc, string asm, dag iops> {
+  def _32 : NEONDataTypeAsmPseudoInst<opc, ".32", asm, iops>;
+  defm _ : NEONDT32ReqAsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDT64ReqAsmPseudoInst<string opc, string asm, dag iops> {
+  def I64 : NEONDataTypeAsmPseudoInst<opc, ".i64", asm, iops>;
+  def S64 : NEONDataTypeAsmPseudoInst<opc, ".s64", asm, iops>;
+  def U64 : NEONDataTypeAsmPseudoInst<opc, ".u64", asm, iops>;
+  def F64 : NEONDataTypeAsmPseudoInst<opc, ".f64", asm, iops>;
+  def D   : NEONDataTypeAsmPseudoInst<opc, ".d",   asm, iops>;
+}
+// NEONDT64ReqAsmPseudoInst plus plain ".64"
+multiclass NEONDT64AsmPseudoInst<string opc, string asm, dag iops> {
+  def _64 : NEONDataTypeAsmPseudoInst<opc, ".64", asm, iops>;
+  defm _ : NEONDT64ReqAsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDT64NoF64ReqAsmPseudoInst<string opc, string asm, dag iops> {
+  def I64 : NEONDataTypeAsmPseudoInst<opc, ".i64", asm, iops>;
+  def S64 : NEONDataTypeAsmPseudoInst<opc, ".s64", asm, iops>;
+  def U64 : NEONDataTypeAsmPseudoInst<opc, ".u64", asm, iops>;
+  def D   : NEONDataTypeAsmPseudoInst<opc, ".d",   asm, iops>;
+}
+// NEONDT64ReqAsmPseudoInst plus plain ".64"
+multiclass NEONDT64NoF64AsmPseudoInst<string opc, string asm, dag iops> {
+  def _64 : NEONDataTypeAsmPseudoInst<opc, ".64", asm, iops>;
+  defm _ : NEONDT64ReqAsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDTAnyAsmPseudoInst<string opc, string asm, dag iops> {
+  defm _ : NEONDT8AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT16AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT32AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT64AsmPseudoInst<opc, asm, iops>;
+}
+multiclass NEONDTAnyNoF64AsmPseudoInst<string opc, string asm, dag iops> {
+  defm _ : NEONDT8AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT16AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT32AsmPseudoInst<opc, asm, iops>;
+  defm _ : NEONDT64NoF64AsmPseudoInst<opc, asm, iops>;
+}
+
+// Data type suffix token aliases. Implements Table A7-3 in the ARM ARM.
+def : TokenAlias<".s8", ".i8">;
+def : TokenAlias<".u8", ".i8">;
+def : TokenAlias<".s16", ".i16">;
+def : TokenAlias<".u16", ".i16">;
+def : TokenAlias<".s32", ".i32">;
+def : TokenAlias<".u32", ".i32">;
+def : TokenAlias<".s64", ".i64">;
+def : TokenAlias<".u64", ".i64">;
+
+def : TokenAlias<".i8", ".8">;
+def : TokenAlias<".i16", ".16">;
+def : TokenAlias<".i32", ".32">;
+def : TokenAlias<".i64", ".64">;
+
+def : TokenAlias<".p8", ".8">;
+def : TokenAlias<".p16", ".16">;
+
+def : TokenAlias<".f32", ".32">;
+def : TokenAlias<".f64", ".64">;
+def : TokenAlias<".f", ".f32">;
+def : TokenAlias<".d", ".f64">;

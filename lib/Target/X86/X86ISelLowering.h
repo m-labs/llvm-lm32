@@ -172,11 +172,17 @@ namespace llvm {
       /// ANDNP - Bitwise Logical AND NOT of Packed FP values.
       ANDNP,
 
-      /// PSIGNB/W/D - Copy integer sign.
-      PSIGNB, PSIGNW, PSIGND,
+      /// PSIGN - Copy integer sign.
+      PSIGN,
 
       /// BLEND family of opcodes
       BLENDV,
+
+      /// HADD - Integer horizontal add.
+      HADD,
+
+      /// HSUB - Integer horizontal sub.
+      HSUB,
 
       /// FHADD - Floating point horizontal add.
       FHADD,
@@ -267,27 +273,10 @@ namespace llvm {
       MOVLPD,
       MOVSD,
       MOVSS,
-      UNPCKLPS,
-      UNPCKLPD,
-      VUNPCKLPSY,
-      VUNPCKLPDY,
-      UNPCKHPS,
-      UNPCKHPD,
-      VUNPCKHPSY,
-      VUNPCKHPDY,
-      PUNPCKLBW,
-      PUNPCKLWD,
-      PUNPCKLDQ,
-      PUNPCKLQDQ,
-      PUNPCKHBW,
-      PUNPCKHWD,
-      PUNPCKHDQ,
-      PUNPCKHQDQ,
-      VPERMILPS,
-      VPERMILPSY,
-      VPERMILPD,
-      VPERMILPDY,
-      VPERM2F128,
+      UNPCKL,
+      UNPCKH,
+      VPERMILP,
+      VPERM2X128,
       VBROADCAST,
 
       // VASTART_SAVE_XMM_REGS - Save xmm argument registers to the stack,
@@ -408,11 +397,13 @@ namespace llvm {
 
     /// isUNPCKLMask - Return true if the specified VECTOR_SHUFFLE operand
     /// specifies a shuffle of elements that is suitable for input to UNPCKL.
-    bool isUNPCKLMask(ShuffleVectorSDNode *N, bool V2IsSplat = false);
+    bool isUNPCKLMask(ShuffleVectorSDNode *N, bool HasAVX2,
+                      bool V2IsSplat = false);
 
     /// isUNPCKHMask - Return true if the specified VECTOR_SHUFFLE operand
     /// specifies a shuffle of elements that is suitable for input to UNPCKH.
-    bool isUNPCKHMask(ShuffleVectorSDNode *N, bool V2IsSplat = false);
+    bool isUNPCKHMask(ShuffleVectorSDNode *N, bool HasAVX2,
+                      bool V2IsSplat = false);
 
     /// isUNPCKL_v_undef_Mask - Special case of isUNPCKLMask for canonical form
     /// of vector_shuffle v, v, <0, 4, 1, 5>, i.e. vector_shuffle v, undef,

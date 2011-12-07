@@ -19,6 +19,7 @@
 #include "llvm/GlobalVariable.h"
 #include "llvm/Instructions.h"
 #include "llvm/Analysis/DIBuilder.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Target/Mangler.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetFrameLowering.h"
@@ -605,7 +606,11 @@ DIE *CompileUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
     assert(Ty.isDerivedType() && "Unknown kind of DIType");
     constructTypeDIE(*TyDIE, DIDerivedType(Ty));
   }
-
+  // If this is a named finished type then include it in the list of types
+  // for the accelerator tables.
+  if (!Ty.getName().empty() && !Ty.isForwardDecl())
+    addAccelType(Ty.getName(), TyDIE);
+  
   addToContextOwner(TyDIE, Ty.getContext());
   return TyDIE;
 }
@@ -904,8 +909,11 @@ DIE *CompileUnit::getOrCreateNameSpace(DINameSpace NS) {
     return NDie;
   NDie = new DIE(dwarf::DW_TAG_namespace);
   insertDIE(NS, NDie);
-  if (!NS.getName().empty())
+  if (!NS.getName().empty()) {
     addString(NDie, dwarf::DW_AT_name, NS.getName());
+    addAccelNamespace(NS.getName(), NDie);
+  } else
+    addAccelNamespace("(anonymous namespace)", NDie);
   addSourceLine(NDie, NS);
   addToContextOwner(NDie, NS.getContext());
   return NDie;
@@ -927,6 +935,12 @@ DIE *CompileUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
   if (SPDie)
     return SPDie;
 
+  DISubprogram SPDecl = SP.getFunctionDeclaration();
+  DIE *DeclDie = NULL;
+  if (SPDecl.isSubprogram()) {
+    DeclDie = getOrCreateSubprogramDIE(SPDecl);
+  }
+
   SPDie = new DIE(dwarf::DW_TAG_subprogram);
   
   // DW_TAG_inlined_subroutine may refer to this DIE.
@@ -945,8 +959,13 @@ DIE *CompileUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
 
   // If this DIE is going to refer declaration info using AT_specification
   // then there is no need to add other attributes.
-  if (SP.getFunctionDeclaration().isSubprogram())
+  if (DeclDie) {
+    // Refer function declaration directly.
+    addDIEEntry(SPDie, dwarf::DW_AT_specification, dwarf::DW_FORM_ref4,
+                DeclDie);
+
     return SPDie;
+  }
 
   // Constructors and operators for anonymous aggregates do not have names.
   if (!SP.getName().empty())
@@ -1067,18 +1086,19 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
   addType(VariableDIE, GTy);
 
   // Add scoping info.
-  if (!GV.isLocalToUnit()) {
+  if (!GV.isLocalToUnit())
     addUInt(VariableDIE, dwarf::DW_AT_external, dwarf::DW_FORM_flag, 1);
-    // Expose as global. 
-    addGlobal(GV.getName(), VariableDIE);
-  }
+
   // Add line number info.
   addSourceLine(VariableDIE, GV);
   // Add to context owner.
   DIDescriptor GVContext = GV.getContext();
   addToContextOwner(VariableDIE, GVContext);
   // Add location.
+  bool addToAccelTable = false;
+  DIE *VariableSpecDIE = NULL;
   if (isGlobalVariable) {
+    addToAccelTable = true;
     DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
     addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_addr);
     addLabel(Block, 0, dwarf::DW_FORM_udata,
@@ -1088,7 +1108,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     if (GVContext && GV.isDefinition() && !GVContext.isCompileUnit() &&
         !GVContext.isFile() && !isSubprogramContext(GVContext)) {
       // Create specification DIE.
-      DIE *VariableSpecDIE = new DIE(dwarf::DW_TAG_variable);
+      VariableSpecDIE = new DIE(dwarf::DW_TAG_variable);
       addDIEEntry(VariableSpecDIE, dwarf::DW_AT_specification,
                   dwarf::DW_FORM_ref4, VariableDIE);
       addBlock(VariableSpecDIE, dwarf::DW_AT_location, 0, Block);
@@ -1097,11 +1117,12 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
       addDie(VariableSpecDIE);
     } else {
       addBlock(VariableDIE, dwarf::DW_AT_location, 0, Block);
-    } 
+    }
   } else if (const ConstantInt *CI = 
              dyn_cast_or_null<ConstantInt>(GV.getConstant()))
     addConstantValue(VariableDIE, CI, GTy.isUnsignedDIType());
   else if (const ConstantExpr *CE = getMergedGlobalExpr(N->getOperand(11))) {
+    addToAccelTable = true;
     // GV is a merged global.
     DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
     Value *Ptr = CE->getOperand(0);
@@ -1116,6 +1137,16 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     addBlock(VariableDIE, dwarf::DW_AT_location, 0, Block);
   }
 
+  if (addToAccelTable) {
+    DIE *AddrDIE = VariableSpecDIE ? VariableSpecDIE : VariableDIE;
+    addAccelName(GV.getName(), AddrDIE);
+
+    // If the linkage name is different than the name, go ahead and output
+    // that as well into the name table.
+    if (GV.getLinkageName() != "" && GV.getName() != GV.getLinkageName())
+      addAccelName(GV.getLinkageName(), AddrDIE);
+  }
+
   return;
 }
 
@@ -1123,8 +1154,8 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
 void CompileUnit::constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy){
   DIE *DW_Subrange = new DIE(dwarf::DW_TAG_subrange_type);
   addDIEEntry(DW_Subrange, dwarf::DW_AT_type, dwarf::DW_FORM_ref4, IndexTy);
-  int64_t L = SR.getLo();
-  int64_t H = SR.getHi();
+  uint64_t L = SR.getLo();
+  uint64_t H = SR.getHi();
 
   // The L value defines the lower bounds which is typically zero for C/C++. The
   // H value is the upper bounds.  Values are 64 bit.  H - L + 1 is the size
@@ -1137,8 +1168,8 @@ void CompileUnit::constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy)
     return;
   }
   if (L)
-    addSInt(DW_Subrange, dwarf::DW_AT_lower_bound, 0, L);
-  addSInt(DW_Subrange, dwarf::DW_AT_upper_bound, 0, H);
+    addUInt(DW_Subrange, dwarf::DW_AT_lower_bound, 0, L);
+  addUInt(DW_Subrange, dwarf::DW_AT_upper_bound, 0, H);
   Buffer.addChild(DW_Subrange);
 }
 

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MipsMCTargetDesc.h"
 #include "MipsMCAsmInfo.h"
+#include "MipsMCTargetDesc.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/MC/MCCodeGenInfo.h"
@@ -63,11 +63,12 @@ static MCAsmInfo *createMipsMCAsmInfo(const Target &T, StringRef TT) {
 }
 
 static MCCodeGenInfo *createMipsMCCodeGenInfo(StringRef TT, Reloc::Model RM,
-                                              CodeModel::Model CM) {
+                                              CodeModel::Model CM,
+                                              CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
   if (RM == Reloc::Default)
     RM = Reloc::PIC_;
-  X->InitMCCodeGenInfo(RM, CM);
+  X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 
@@ -139,6 +140,9 @@ extern "C" void LLVMInitializeMipsTargetMC() {
   TargetRegistry::RegisterMCAsmBackend(TheMipselTarget, createMipsAsmBackend);
   TargetRegistry::RegisterMCAsmBackend(TheMips64Target, createMipsAsmBackend);
   TargetRegistry::RegisterMCAsmBackend(TheMips64elTarget, createMipsAsmBackend);
+
+  TargetRegistry::RegisterMCCodeEmitter(TheMipsTarget, createMipsMCCodeEmitter);
+  TargetRegistry::RegisterMCCodeEmitter(TheMipselTarget, createMipsMCCodeEmitter);
 
   // Register the MC subtarget info.
   TargetRegistry::RegisterMCSubtargetInfo(TheMipsTarget,

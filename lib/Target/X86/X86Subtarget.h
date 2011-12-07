@@ -93,6 +93,9 @@ protected:
   /// HasFMA4 - Target has 4-operand fused multiply-add
   bool HasFMA4;
 
+  /// HasXOP - Target has XOP instructions
+  bool HasXOP;
+
   /// HasMOVBE - True if the processor has the MOVBE instruction.
   bool HasMOVBE;
 
@@ -190,10 +193,15 @@ public:
   bool hasAVX2() const { return HasAVX2; }
   bool hasXMM() const { return hasSSE1() || hasAVX(); }
   bool hasXMMInt() const { return hasSSE2() || hasAVX(); }
+  bool hasSSE3orAVX() const { return hasSSE3() || hasAVX(); }
+  bool hasSSSE3orAVX() const { return hasSSSE3() || hasAVX(); }
+  bool hasSSE41orAVX() const { return hasSSE41() || hasAVX(); }
+  bool hasSSE42orAVX() const { return hasSSE42() || hasAVX(); }
   bool hasAES() const { return HasAES; }
   bool hasCLMUL() const { return HasCLMUL; }
   bool hasFMA3() const { return HasFMA3; }
   bool hasFMA4() const { return HasFMA4; }
+  bool hasXOP() const { return HasXOP; }
   bool hasMOVBE() const { return HasMOVBE; }
   bool hasRDRAND() const { return HasRDRAND; }
   bool hasF16C() const { return HasF16C; }

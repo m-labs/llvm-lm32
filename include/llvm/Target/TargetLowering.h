@@ -94,7 +94,7 @@ public:
     Custom      // Use the LowerOperation hook to implement custom lowering.
   };
 
-  /// LegalizeAction - This enum indicates whether a types are legal for a
+  /// LegalizeTypeAction - This enum indicates whether a types are legal for a
   /// target, and if not, what action should be used to make them valid.
   enum LegalizeTypeAction {
     TypeLegal,           // The target natively supports this type.
@@ -520,8 +520,19 @@ public:
   /// AllowUnknown is true, this will return MVT::Other for types with no EVT
   /// counterpart (e.g. structs), otherwise it will assert.
   EVT getValueType(Type *Ty, bool AllowUnknown = false) const {
-    EVT VT = EVT::getEVT(Ty, AllowUnknown);
-    return VT == MVT::iPTR ? PointerTy : VT;
+    // Lower scalar pointers to native pointer types.
+    if (Ty->isPointerTy()) return PointerTy;
+
+    if (Ty->isVectorTy()) {
+      VectorType *VTy = cast<VectorType>(Ty);
+      Type *Elm = VTy->getElementType();
+      // Lower vectors of pointers to native pointer types.
+      if (Elm->isPointerTy()) 
+        Elm = EVT(PointerTy).getTypeForEVT(Ty->getContext());
+      return EVT::getVectorVT(Ty->getContext(), EVT::getEVT(Elm, false),
+                       VTy->getNumElements());
+    }
+    return EVT::getEVT(Ty, AllowUnknown);
   }
 
   /// getByValTypeAlignment - Return the desired alignment for ByVal aggregate
@@ -1595,9 +1606,9 @@ public:
   //
   SDValue BuildExactSDIV(SDValue Op1, SDValue Op2, DebugLoc dl,
                          SelectionDAG &DAG) const;
-  SDValue BuildSDIV(SDNode *N, SelectionDAG &DAG,
+  SDValue BuildSDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
                       std::vector<SDNode*>* Created) const;
-  SDValue BuildUDIV(SDNode *N, SelectionDAG &DAG,
+  SDValue BuildUDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
                       std::vector<SDNode*>* Created) const;
 
 

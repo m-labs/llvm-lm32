@@ -9,6 +9,7 @@ add_llvm_library(LLVMCodeGen
   CodePlacementOpt.cpp
   CriticalAntiDepBreaker.cpp
   DeadMachineInstructionElim.cpp
+  DFAPacketizer.cpp
   DwarfEHPrepare.cpp
   EdgeBundles.cpp
   ELFCodeEmitter.cpp
@@ -70,7 +71,6 @@ add_llvm_library(LLVMCodeGen
   RegAllocBasic.cpp
   RegAllocFast.cpp
   RegAllocGreedy.cpp
-  RegAllocLinearScan.cpp
   RegAllocPBQP.cpp
   RegisterClassInfo.cpp
   RegisterCoalescer.cpp
@@ -88,7 +88,6 @@ add_llvm_library(LLVMCodeGen
   Spiller.cpp
   SpillPlacement.cpp
   SplitKit.cpp
-  Splitter.cpp
   StackProtector.cpp
   StackSlotColoring.cpp
   StrongPHIElimination.cpp
@@ -98,17 +97,6 @@ add_llvm_library(LLVMCodeGen
   TwoAddressInstructionPass.cpp
   UnreachableBlockElim.cpp
   VirtRegMap.cpp
-  VirtRegRewriter.cpp
-  )
-
-add_llvm_library_dependencies(LLVMCodeGen
-  LLVMAnalysis
-  LLVMCore
-  LLVMMC
-  LLVMScalarOpts
-  LLVMSupport
-  LLVMTarget
-  LLVMTransformUtils
   )
 
 add_subdirectory(SelectionDAG)

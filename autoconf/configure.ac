@@ -416,6 +416,18 @@ dnl=== SECTION 3: Command line arguments for the configure script.
 dnl===
 dnl===-----------------------------------------------------------------------===
 
+dnl --enable-libcpp : check whether or not to use libc++ on the command line
+AC_ARG_ENABLE(libcpp,
+              AS_HELP_STRING([--enable-libcpp],
+                             [Use libc++ if available (default is NO)]),,
+                             enableval=default)
+case "$enableval" in
+  yes) AC_SUBST(ENABLE_LIBCPP,[1]) ;;
+  no)  AC_SUBST(ENABLE_LIBCPP,[0]) ;;
+  default) AC_SUBST(ENABLE_LIBCPP,[0]);;
+  *) AC_MSG_ERROR([Invalid setting for --enable-libcpp. Use "yes" or "no"]) ;;
+esac
+
 dnl --enable-optimized : check whether they want to do an optimized build:
 AC_ARG_ENABLE(optimized, AS_HELP_STRING(
  --enable-optimized,[Compile with optimizations enabled (default is NO)]),,enableval=$optimize)
@@ -528,12 +540,13 @@ AC_ARG_ENABLE(threads,
                              [Use threads if available (default is YES)]),,
                              enableval=default)
 case "$enableval" in
-  yes) AC_SUBST(ENABLE_THREADS,[1]) ;;
-  no)  AC_SUBST(ENABLE_THREADS,[0]) ;;
-  default) AC_SUBST(ENABLE_THREADS,[1]) ;;
+  yes) AC_SUBST(LLVM_ENABLE_THREADS,[1]) ;;
+  no)  AC_SUBST(LLVM_ENABLE_THREADS,[0]) ;;
+  default) AC_SUBST(LLVM_ENABLE_THREADS,[1]) ;;
   *) AC_MSG_ERROR([Invalid setting for --enable-threads. Use "yes" or "no"]) ;;
 esac
-AC_DEFINE_UNQUOTED([ENABLE_THREADS],$ENABLE_THREADS,[Define if threads enabled])
+AC_DEFINE_UNQUOTED([LLVM_ENABLE_THREADS],$LLVM_ENABLE_THREADS,
+                   [Define if threads enabled])
 
 dnl Allow disablement of pthread.h
 AC_ARG_ENABLE(pthreads,
@@ -876,6 +889,12 @@ AC_ARG_ENABLE(libffi,AS_HELP_STRING(
   esac],
   llvm_cv_enable_libffi=no)
 
+AC_ARG_WITH(internal-prefix,
+  AS_HELP_STRING([--with-internal-prefix],
+    [Installation directory for internal files]),,
+    withval="")
+AC_SUBST(INTERNAL_PREFIX,[$withval])
+
 dnl===-----------------------------------------------------------------------===
 dnl===
 dnl=== SECTION 4: Check for programs we need and that they are the right version
@@ -1136,7 +1155,7 @@ AC_SEARCH_LIBS(mallinfo,malloc,AC_DEFINE([HAVE_MALLINFO],[1],
 
 dnl pthread locking functions are optional - but llvm will not be thread-safe
 dnl without locks.
-if test "$ENABLE_THREADS" -eq 1 && test "$ENABLE_PTHREADS" -eq 1 ; then
+if test "$LLVM_ENABLE_THREADS" -eq 1 && test "$ENABLE_PTHREADS" -eq 1 ; then
   AC_CHECK_LIB(pthread, pthread_mutex_init)
   AC_SEARCH_LIBS(pthread_mutex_lock,pthread,
                  AC_DEFINE([HAVE_PTHREAD_MUTEX_LOCK],[1],
@@ -1227,7 +1246,7 @@ AC_CHECK_HEADERS([sys/mman.h sys/param.h sys/resource.h sys/time.h sys/uio.h])
 AC_CHECK_HEADERS([sys/types.h sys/ioctl.h malloc/malloc.h mach/mach.h])
 AC_CHECK_HEADERS([valgrind/valgrind.h])
 AC_CHECK_HEADERS([fenv.h])
-if test "$ENABLE_THREADS" -eq 1 && test "$ENABLE_PTHREADS" -eq 1 ; then
+if test "$LLVM_ENABLE_THREADS" -eq 1 && test "$ENABLE_PTHREADS" -eq 1 ; then
   AC_CHECK_HEADERS(pthread.h,
                    AC_SUBST(HAVE_PTHREAD, 1),
                    AC_SUBST(HAVE_PTHREAD, 0))
@@ -1285,7 +1304,7 @@ AC_CHECK_FUNCS([backtrace ceilf floorf roundf rintf nearbyintf getcwd ])
 AC_CHECK_FUNCS([powf fmodf strtof round ])
 AC_CHECK_FUNCS([getpagesize getrusage getrlimit setrlimit gettimeofday ])
 AC_CHECK_FUNCS([isatty mkdtemp mkstemp ])
-AC_CHECK_FUNCS([mktemp posix_spawn realpath sbrk setrlimit strdup ])
+AC_CHECK_FUNCS([mktemp posix_spawn pread realpath sbrk setrlimit strdup ])
 AC_CHECK_FUNCS([strerror strerror_r setenv ])
 AC_CHECK_FUNCS([strtoll strtoq sysconf malloc_zone_statistics ])
 AC_CHECK_FUNCS([setjmp longjmp sigsetjmp siglongjmp writev])
@@ -1562,9 +1581,6 @@ AC_CONFIG_FILES([docs/doxygen.cfg])
 if test -f ${srcdir}/tools/clang/README.txt; then
   AC_CONFIG_FILES([tools/clang/docs/doxygen.cfg])
 fi
-
-dnl Do the first stage of configuration for llvm-config.in.
-AC_CONFIG_FILES([tools/llvm-config/llvm-config.in])
 
 dnl OCaml findlib META file
 AC_CONFIG_FILES([bindings/ocaml/llvm/META.llvm])
