@@ -53,7 +53,7 @@ Do "make check" to run the LLVM tests:
 
 After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
 
-(cd $TOPDIR/build ; make TESTSUITE=CodeGen/mico32 check)
+(cd $TOPDIR/build ; make TESTSUITE=CodeGen/Mico32 check)
 --------------------
 
 
