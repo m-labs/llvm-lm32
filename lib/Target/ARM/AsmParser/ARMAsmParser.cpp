@@ -611,6 +611,14 @@ public:
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 32;
   }
+  bool isImm0_63() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= 0 && Value < 64;
+  }
   bool isImm8() const {
     if (Kind != k_Immediate)
       return false;
@@ -749,6 +757,14 @@ public:
     int64_t Value = CE->getValue();
     return ARM_AM::getSOImmVal(~Value) != -1;
   }
+  bool isARMSOImmNeg() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return ARM_AM::getSOImmVal(-Value) != -1;
+  }
   bool isT2SOImm() const {
     if (Kind != k_Immediate)
       return false;
@@ -764,6 +780,14 @@ public:
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getT2SOImmVal(~Value) != -1;
+  }
+  bool isT2SOImmNeg() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return ARM_AM::getT2SOImmVal(-Value) != -1;
   }
   bool isSetEndImm() const {
     if (Kind != k_Immediate)
@@ -1321,12 +1345,28 @@ public:
     Inst.addOperand(MCOperand::CreateImm(~CE->getValue()));
   }
 
+  void addT2SOImmNegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    // The operand is actually a t2_so_imm, but we have its
+    // negation in the assembly source, so twiddle it here.
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    Inst.addOperand(MCOperand::CreateImm(-CE->getValue()));
+  }
+
   void addARMSOImmNotOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     // The operand is actually a so_imm, but we have its bitwise
     // negation in the assembly source, so twiddle it here.
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     Inst.addOperand(MCOperand::CreateImm(~CE->getValue()));
+  }
+
+  void addARMSOImmNegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    // The operand is actually a so_imm, but we have its
+    // negation in the assembly source, so twiddle it here.
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    Inst.addOperand(MCOperand::CreateImm(-CE->getValue()));
   }
 
   void addMemBarrierOptOperands(MCInst &Inst, unsigned N) const {
@@ -2108,8 +2148,6 @@ int ARMAsmParser::tryParseRegister() {
   const AsmToken &Tok = Parser.getTok();
   if (Tok.isNot(AsmToken::Identifier)) return -1;
 
-  // FIXME: Validate register for the current architecture; we have to do
-  // validation later, so maybe there is no need for this here.
   std::string lowerCase = Tok.getString().lower();
   unsigned RegNum = MatchRegisterName(lowerCase);
   if (!RegNum) {
@@ -2118,6 +2156,22 @@ int ARMAsmParser::tryParseRegister() {
       .Case("r14", ARM::LR)
       .Case("r15", ARM::PC)
       .Case("ip", ARM::R12)
+      // Additional register name aliases for 'gas' compatibility.
+      .Case("a1", ARM::R0)
+      .Case("a2", ARM::R1)
+      .Case("a3", ARM::R2)
+      .Case("a4", ARM::R3)
+      .Case("v1", ARM::R4)
+      .Case("v2", ARM::R5)
+      .Case("v3", ARM::R6)
+      .Case("v4", ARM::R7)
+      .Case("v5", ARM::R8)
+      .Case("v6", ARM::R9)
+      .Case("v7", ARM::R10)
+      .Case("v8", ARM::R11)
+      .Case("sb", ARM::R9)
+      .Case("sl", ARM::R10)
+      .Case("fp", ARM::R11)
       .Default(0);
   }
   if (!RegNum) return -1;
@@ -2140,6 +2194,7 @@ int ARMAsmParser::tryParseShiftRegister(
 
   std::string lowerCase = Tok.getString().lower();
   ARM_AM::ShiftOpc ShiftTy = StringSwitch<ARM_AM::ShiftOpc>(lowerCase)
+      .Case("asl", ARM_AM::lsl)
       .Case("lsl", ARM_AM::lsl)
       .Case("lsr", ARM_AM::lsr)
       .Case("asr", ARM_AM::asr)
@@ -3901,7 +3956,8 @@ bool ARMAsmParser::parseMemRegOffsetShift(ARM_AM::ShiftOpc &St,
   if (Tok.isNot(AsmToken::Identifier))
     return true;
   StringRef ShiftName = Tok.getString();
-  if (ShiftName == "lsl" || ShiftName == "LSL")
+  if (ShiftName == "lsl" || ShiftName == "LSL" ||
+      ShiftName == "asl" || ShiftName == "ASL")
     St = ARM_AM::lsl;
   else if (ShiftName == "lsr" || ShiftName == "LSR")
     St = ARM_AM::lsr;
@@ -4201,7 +4257,8 @@ StringRef ARMAsmParser::splitMnemonic(StringRef Mnemonic,
         Mnemonic == "mrs" || Mnemonic == "smmls" || Mnemonic == "vabs" ||
         Mnemonic == "vcls" || Mnemonic == "vmls" || Mnemonic == "vmrs" ||
         Mnemonic == "vnmls" || Mnemonic == "vqabs" || Mnemonic == "vrecps" ||
-        Mnemonic == "vrsqrts" || Mnemonic == "srs" ||
+        Mnemonic == "vrsqrts" || Mnemonic == "srs" || Mnemonic == "flds" ||
+        Mnemonic == "fmrs" ||
         (Mnemonic == "movs" && isThumb()))) {
     Mnemonic = Mnemonic.slice(0, Mnemonic.size() - 1);
     CarrySetting = true;

@@ -153,6 +153,7 @@ Lforward:
         add r4, r5, r6, asr #5
         add r4, r5, r6, ror #5
         add r6, r7, r8, lsl r9
+        add r4, r4, r3, asl r9
         add r6, r7, r8, lsr r9
         add r6, r7, r8, asr r9
         add r6, r7, r8, ror r9
@@ -172,6 +173,9 @@ Lforward:
         add r6, r7, ror r9
         add r4, r5, rrx
 
+	add r0, #-4
+	add r4, r5, #-21
+
 @ CHECK: add	r4, r5, #61440          @ encoding: [0x0f,0x4a,0x85,0xe2]
 @ CHECK: add	r4, r5, r6              @ encoding: [0x06,0x40,0x85,0xe0]
 @ CHECK: add	r4, r5, r6, lsl #5      @ encoding: [0x86,0x42,0x85,0xe0]
@@ -180,11 +184,11 @@ Lforward:
 @ CHECK: add	r4, r5, r6, asr #5      @ encoding: [0xc6,0x42,0x85,0xe0]
 @ CHECK: add	r4, r5, r6, ror #5      @ encoding: [0xe6,0x42,0x85,0xe0]
 @ CHECK: add	r6, r7, r8, lsl r9      @ encoding: [0x18,0x69,0x87,0xe0]
+@ CHECK: add	r4, r4, r3, lsl r9      @ encoding: [0x13,0x49,0x84,0xe0]
 @ CHECK: add	r6, r7, r8, lsr r9      @ encoding: [0x38,0x69,0x87,0xe0]
 @ CHECK: add	r6, r7, r8, asr r9      @ encoding: [0x58,0x69,0x87,0xe0]
 @ CHECK: add	r6, r7, r8, ror r9      @ encoding: [0x78,0x69,0x87,0xe0]
 @ CHECK: add	r4, r5, r6, rrx         @ encoding: [0x66,0x40,0x85,0xe0]
-
 
 @ CHECK: add	r5, r5, #61440          @ encoding: [0x0f,0x5a,0x85,0xe2]
 @ CHECK: add	r4, r4, r5              @ encoding: [0x05,0x40,0x84,0xe0]
@@ -198,6 +202,9 @@ Lforward:
 @ CHECK: add	r6, r6, r7, asr r9      @ encoding: [0x57,0x69,0x86,0xe0]
 @ CHECK: add	r6, r6, r7, ror r9      @ encoding: [0x77,0x69,0x86,0xe0]
 @ CHECK: add	r4, r4, r5, rrx         @ encoding: [0x65,0x40,0x84,0xe0]
+
+@ CHECK: sub	r0, r0, #4              @ encoding: [0x04,0x00,0x40,0xe2]
+@ CHECK: sub	r4, r5, #21             @ encoding: [0x15,0x40,0x45,0xe2]
 
 
 @------------------------------------------------------------------------------

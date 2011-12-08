@@ -201,11 +201,12 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Stream.EnterSubblock(bitc::TYPE_BLOCK_ID_NEW, 4 /*count from # abbrevs */);
   SmallVector<uint64_t, 64> TypeVals;
 
+  uint64_t NumBits = Log2_32_Ceil(VE.getTypes().size()+1);
+
   // Abbrev for TYPE_CODE_POINTER.
   BitCodeAbbrev *Abbv = new BitCodeAbbrev();
   Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_POINTER));
-  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
-                            Log2_32_Ceil(VE.getTypes().size()+1)));
+  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
   Abbv->Add(BitCodeAbbrevOp(0));  // Addrspace = 0
   unsigned PtrAbbrev = Stream.EmitAbbrev(Abbv);
 
@@ -214,8 +215,8 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_FUNCTION));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // isvararg
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
-  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
-                            Log2_32_Ceil(VE.getTypes().size()+1)));
+  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
+
   unsigned FunctionAbbrev = Stream.EmitAbbrev(Abbv);
 
   // Abbrev for TYPE_CODE_STRUCT_ANON.
@@ -223,8 +224,8 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_STRUCT_ANON));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
-  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
-                            Log2_32_Ceil(VE.getTypes().size()+1)));
+  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
+
   unsigned StructAnonAbbrev = Stream.EmitAbbrev(Abbv);
 
   // Abbrev for TYPE_CODE_STRUCT_NAME.
@@ -239,16 +240,16 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_STRUCT_NAMED));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));  // ispacked
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
-  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
-                            Log2_32_Ceil(VE.getTypes().size()+1)));
+  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
+
   unsigned StructNamedAbbrev = Stream.EmitAbbrev(Abbv);
   
   // Abbrev for TYPE_CODE_ARRAY.
   Abbv = new BitCodeAbbrev();
   Abbv->Add(BitCodeAbbrevOp(bitc::TYPE_CODE_ARRAY));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // size
-  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
-                            Log2_32_Ceil(VE.getTypes().size()+1)));
+  Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, NumBits));
+
   unsigned ArrayAbbrev = Stream.EmitAbbrev(Abbv);
 
   // Emit an entry count so the reader can reserve space.
@@ -504,8 +505,8 @@ static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
 
   // Emit the function proto information.
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
-    // FUNCTION:  [type, callingconv, isproto, paramattr,
-    //             linkage, alignment, section, visibility, gc, unnamed_addr]
+    // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
+    //             section, visibility, gc, unnamed_addr]
     Vals.push_back(VE.getTypeID(F->getType()));
     Vals.push_back(F->getCallingConv());
     Vals.push_back(F->isDeclaration());
@@ -525,6 +526,7 @@ static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
   // Emit the alias information.
   for (Module::const_alias_iterator AI = M->alias_begin(), E = M->alias_end();
        AI != E; ++AI) {
+    // ALIAS: [alias type, aliasee val#, linkage, visibility]
     Vals.push_back(VE.getTypeID(AI->getType()));
     Vals.push_back(VE.getValueID(AI->getAliasee()));
     Vals.push_back(getEncodedLinkage(AI));
@@ -1578,17 +1580,99 @@ static void WriteBlockInfo(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Stream.ExitBlock();
 }
 
+// Sort the Users based on the order in which the reader parses the bitcode 
+// file.
+static bool bitcodereader_order(const User *lhs, const User *rhs) {
+  // TODO: Implement.
+  return true;
+}
+
+static void WriteUseList(const Value *V, const ValueEnumerator &VE,
+                         BitstreamWriter &Stream) {
+
+  // One or zero uses can't get out of order.
+  if (V->use_empty() || V->hasNUses(1))
+    return;
+
+  // Make a copy of the in-memory use-list for sorting.
+  unsigned UseListSize = std::distance(V->use_begin(), V->use_end());
+  SmallVector<const User*, 8> UseList;
+  UseList.reserve(UseListSize);
+  for (Value::const_use_iterator I = V->use_begin(), E = V->use_end();
+       I != E; ++I) {
+    const User *U = *I;
+    UseList.push_back(U);
+  }
+
+  // Sort the copy based on the order read by the BitcodeReader.
+  std::sort(UseList.begin(), UseList.end(), bitcodereader_order);
+
+  // TODO: Generate a diff between the BitcodeWriter in-memory use-list and the
+  // sorted list (i.e., the expected BitcodeReader in-memory use-list).
+
+  // TODO: Emit the USELIST_CODE_ENTRYs.
+}
+
+static void WriteFunctionUseList(const Function *F, ValueEnumerator &VE,
+                                 BitstreamWriter &Stream) {
+  VE.incorporateFunction(*F);
+
+  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
+       AI != AE; ++AI)
+    WriteUseList(AI, VE, Stream);
+  for (Function::const_iterator BB = F->begin(), FE = F->end(); BB != FE;
+       ++BB) {
+    WriteUseList(BB, VE, Stream);
+    for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE;
+         ++II) {
+      WriteUseList(II, VE, Stream);
+      for (User::const_op_iterator OI = II->op_begin(), E = II->op_end();
+           OI != E; ++OI) {
+        if ((isa<Constant>(*OI) && !isa<GlobalValue>(*OI)) ||
+            isa<InlineAsm>(*OI))
+          WriteUseList(*OI, VE, Stream);
+      }
+    }
+  }
+  VE.purgeFunction();
+}
+
 // Emit use-lists.
 static void WriteModuleUseLists(const Module *M, ValueEnumerator &VE,
                                 BitstreamWriter &Stream) {
   Stream.EnterSubblock(bitc::USELIST_BLOCK_ID, 3);
 
-  // Emit a bogus record for testing purposes.
-  SmallVector<uint64_t, 64> Record;
-  Record.push_back(0);
-  Stream.EmitRecord(bitc::USELIST_CODE_ENTRY, Record);
+  // XXX: this modifies the module, but in a way that should never change the
+  // behavior of any pass or codegen in LLVM. The problem is that GVs may
+  // contain entries in the use_list that do not exist in the Module and are
+  // not stored in the .bc file.
+  for (Module::const_global_iterator I = M->global_begin(), E = M->global_end();
+       I != E; ++I)
+    I->removeDeadConstantUsers();
+  
+  // Write the global variables.
+  for (Module::const_global_iterator GI = M->global_begin(), 
+         GE = M->global_end(); GI != GE; ++GI) {
+    WriteUseList(GI, VE, Stream);
 
-  // TODO: Tons.
+    // Write the global variable initializers.
+    if (GI->hasInitializer())
+      WriteUseList(GI->getInitializer(), VE, Stream);
+  }
+
+  // Write the functions.
+  for (Module::const_iterator FI = M->begin(), FE = M->end(); FI != FE; ++FI) {
+    WriteUseList(FI, VE, Stream);
+    if (!FI->isDeclaration())
+      WriteFunctionUseList(FI, VE, Stream);
+  }
+
+  // Write the aliases.
+  for (Module::const_alias_iterator AI = M->alias_begin(), AE = M->alias_end();
+       AI != AE; ++AI) {
+    WriteUseList(AI, VE, Stream);
+    WriteUseList(AI->getAliasee(), VE, Stream);
+  }
 
   Stream.ExitBlock();
 }

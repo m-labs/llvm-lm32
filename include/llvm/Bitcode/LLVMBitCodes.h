@@ -61,10 +61,10 @@ namespace bitc {
     MODULE_CODE_GLOBALVAR   = 7,
 
     // FUNCTION:  [type, callingconv, isproto, linkage, paramattrs, alignment,
-    //             section, visibility]
+    //             section, visibility, gc, unnamed_addr]
     MODULE_CODE_FUNCTION    = 8,
 
-    // ALIAS: [alias type, aliasee val#, linkage]
+    // ALIAS: [alias type, aliasee val#, linkage, visibility]
     MODULE_CODE_ALIAS       = 9,
 
     /// MODULE_CODE_PURGEVALS: [numvals]
@@ -90,7 +90,9 @@ namespace bitc {
     TYPE_CODE_OPAQUE   =  6,    // OPAQUE
     TYPE_CODE_INTEGER  =  7,    // INTEGER: [width]
     TYPE_CODE_POINTER  =  8,    // POINTER: [pointee type]
-    TYPE_CODE_FUNCTION_OLD = 9, // FUNCTION: [vararg, attrid, retty, paramty x N]
+
+    TYPE_CODE_FUNCTION_OLD = 9, // FUNCTION: [vararg, attrid, retty,
+                                //            paramty x N]
     
     // Code #10 is unused.
     
