@@ -32,8 +32,10 @@ extern "C" void LLVMInitializeMico32Target() {
 Mico32TargetMachine::
 Mico32TargetMachine(const Target &T, StringRef TT,
                     StringRef CPU, StringRef FS,
-                    Reloc::Model RM, CodeModel::Model CM)
-  : LLVMTargetMachine(T, TT, CPU, FS, RM, CM),
+                    const TargetOptions &Options,
+                    Reloc::Model RM, CodeModel::Model CM,
+                    CodeGenOpt::Level OL)
+  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
     Subtarget(TT, CPU, FS),
 //  DataLayout("E-p:32:32:32-i8:8:8-i16:16:16"),
 //    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32"),
@@ -54,8 +56,7 @@ Mico32TargetMachine(const Target &T, StringRef TT,
 
 // Install an instruction selector pass using
 // the ISelDag to generate Mico32 code.
-bool Mico32TargetMachine::addInstSelector(PassManagerBase &PM,
-                                          llvm::CodeGenOpt::Level OptLevel) {
+bool Mico32TargetMachine::addInstSelector(PassManagerBase &PM) {
   PM.add(createMico32ISelDag(*this));
   return false;
 }

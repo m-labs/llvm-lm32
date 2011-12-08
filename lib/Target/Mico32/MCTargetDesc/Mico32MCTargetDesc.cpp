@@ -64,13 +64,14 @@ static MCAsmInfo *createMico32MCAsmInfo(const Target &T, StringRef TT) {
 }
 
 static MCCodeGenInfo *createMico32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
-                                               CodeModel::Model CM) {
+                                                CodeModel::Model CM,
+                                                CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
   if (RM == Reloc::Default)  
     RM = Reloc::Static;
   if (CM == CodeModel::Default)
     CM = CodeModel::Small;
-  X->InitMCCodeGenInfo(RM, CM);
+  X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 

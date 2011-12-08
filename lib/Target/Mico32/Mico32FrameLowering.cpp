@@ -85,7 +85,7 @@ determineFrameLayout(MachineFunction &MF) const {
 ///
 bool Mico32FrameLowering::
 hasFP(const MachineFunction &MF) const {
-  return DisableFramePointerElim(MF) || MF.getFrameInfo()->hasVarSizedObjects();
+  return MF.getTarget().Options.DisableFramePointerElim(MF) || MF.getFrameInfo()->hasVarSizedObjects();
 }
 
 

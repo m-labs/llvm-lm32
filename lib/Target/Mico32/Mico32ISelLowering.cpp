@@ -776,7 +776,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy());
       SDValue lod = DAG.getLoad(VA.getValVT(), dl, Chain,
                                    FIN, MachinePointerInfo::getFixedStack(FI),
-                                   false, false, 0);
+                                   false, false, false, 0);
     // SelectionDAGLegalize::LegalizeOp(SDValue Op), in the ISD::Load case
     // there's a test for "if (LD->getAlignment() < ABIAlignment){".  When the
     // MERGE_VALUES node is processed it causes the load to get reprocessed.
