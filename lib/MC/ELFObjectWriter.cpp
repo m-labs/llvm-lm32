@@ -1742,14 +1742,26 @@ unsigned X86ELFObjectWriter::GetRelocType(const MCValue &Target,
     }
   } else {
     if (IsPCRel) {
-      switch (Modifier) {
-      default:
-        llvm_unreachable("Unimplemented");
-      case MCSymbolRefExpr::VK_None:
-        Type = ELF::R_386_PC32;
+      switch ((unsigned)Fixup.getKind()) {
+      default: llvm_unreachable("invalid fixup kind!");
+
+      case X86::reloc_global_offset_table:
+        Type = ELF::R_386_GOTPC;
         break;
-      case MCSymbolRefExpr::VK_PLT:
-        Type = ELF::R_386_PLT32;
+
+      case X86::reloc_signed_4byte:
+      case FK_PCRel_4:
+      case FK_Data_4:
+        switch (Modifier) {
+        default:
+          llvm_unreachable("Unimplemented");
+        case MCSymbolRefExpr::VK_None:
+          Type = ELF::R_386_PC32;
+          break;
+        case MCSymbolRefExpr::VK_PLT:
+          Type = ELF::R_386_PLT32;
+          break;
+        }
         break;
       }
     } else {
@@ -1839,7 +1851,8 @@ const MCSymbol *MipsELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
   assert(Target.getSymA() && "SymA cannot be 0.");
   const MCSymbol &Sym = Target.getSymA()->getSymbol();
   
-  if (Sym.getSection().getKind().isMergeable1ByteCString())
+  if (Sym.getSection().getKind().isMergeableCString() ||
+      Sym.getSection().getKind().isMergeableConst())
     return &Sym;
 
   return NULL;
@@ -1902,4 +1915,3 @@ unsigned MipsELFObjectWriter::GetRelocType(const MCValue &Target,
 
   return Type;
 }
-

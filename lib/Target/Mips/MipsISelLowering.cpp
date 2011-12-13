@@ -54,9 +54,6 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case MipsISD::Hi:                return "MipsISD::Hi";
   case MipsISD::Lo:                return "MipsISD::Lo";
   case MipsISD::GPRel:             return "MipsISD::GPRel";
-  case MipsISD::TlsGd:             return "MipsISD::TlsGd";
-  case MipsISD::TprelHi:           return "MipsISD::TprelHi";
-  case MipsISD::TprelLo:           return "MipsISD::TprelLo";
   case MipsISD::ThreadPointer:     return "MipsISD::ThreadPointer";
   case MipsISD::Ret:               return "MipsISD::Ret";
   case MipsISD::FPBrcond:          return "MipsISD::FPBrcond";
@@ -72,7 +69,7 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case MipsISD::DivRemU:           return "MipsISD::DivRemU";
   case MipsISD::BuildPairF64:      return "MipsISD::BuildPairF64";
   case MipsISD::ExtractElementF64: return "MipsISD::ExtractElementF64";
-  case MipsISD::WrapperPIC:        return "MipsISD::WrapperPIC";
+  case MipsISD::Wrapper:           return "MipsISD::Wrapper";
   case MipsISD::DynAlloc:          return "MipsISD::DynAlloc";
   case MipsISD::Sync:              return "MipsISD::Sync";
   case MipsISD::Ext:               return "MipsISD::Ext";
@@ -129,6 +126,7 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::BlockAddress,       MVT::i32,   Custom);
   setOperationAction(ISD::BlockAddress,       MVT::i64,   Custom);
   setOperationAction(ISD::GlobalTLSAddress,   MVT::i32,   Custom);
+  setOperationAction(ISD::GlobalTLSAddress,   MVT::i64,   Custom);
   setOperationAction(ISD::JumpTable,          MVT::i32,   Custom);
   setOperationAction(ISD::JumpTable,          MVT::i64,   Custom);
   setOperationAction(ISD::ConstantPool,       MVT::i32,   Custom);
@@ -158,6 +156,10 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1,    Expand);
   setOperationAction(ISD::CTPOP,             MVT::i32,   Expand);
   setOperationAction(ISD::CTTZ,              MVT::i32,   Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF,   MVT::i32,   Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF,   MVT::i64,   Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF,   MVT::i32,   Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF,   MVT::i64,   Expand);
   setOperationAction(ISD::ROTL,              MVT::i32,   Expand);
   setOperationAction(ISD::ROTL,              MVT::i64,   Expand);
 
@@ -1490,7 +1492,7 @@ SDValue MipsTargetLowering::LowerGlobalAddress(SDValue Op,
                      (HasGotOfst ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT_DISP) :
                      (HasGotOfst ? MipsII::MO_GOT : MipsII::MO_GOT16);
   SDValue GA = DAG.getTargetGlobalAddress(GV, dl, ValTy, 0, GotFlag);
-  GA = DAG.getNode(MipsISD::WrapperPIC, dl, ValTy, GA);
+  GA = DAG.getNode(MipsISD::Wrapper, dl, ValTy, GA);
   SDValue ResNode = DAG.getLoad(ValTy, dl,
                                 DAG.getEntryNode(), GA, MachinePointerInfo(),
                                 false, false, false, 0);
@@ -1526,7 +1528,7 @@ SDValue MipsTargetLowering::LowerBlockAddress(SDValue Op,
   unsigned GOTFlag = IsN64 ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT;
   unsigned OFSTFlag = IsN64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
   SDValue BAGOTOffset = DAG.getBlockAddress(BA, ValTy, true, GOTFlag);
-  BAGOTOffset = DAG.getNode(MipsISD::WrapperPIC, dl, ValTy, BAGOTOffset);
+  BAGOTOffset = DAG.getNode(MipsISD::Wrapper, dl, ValTy, BAGOTOffset);
   SDValue BALOOffset = DAG.getBlockAddress(BA, ValTy, true, OFSTFlag);
   SDValue Load = DAG.getLoad(ValTy, dl,
                              DAG.getEntryNode(), BAGOTOffset,
@@ -1549,23 +1551,24 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
 
   if (getTargetMachine().getRelocationModel() == Reloc::PIC_) {
     // General Dynamic TLS Model
-    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32,
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, PtrVT,
                                              0, MipsII::MO_TLSGD);
-    SDValue Tlsgd = DAG.getNode(MipsISD::TlsGd, dl, MVT::i32, TGA);
-    SDValue GP = DAG.getRegister(Mips::GP, MVT::i32);
-    SDValue Argument = DAG.getNode(ISD::ADD, dl, MVT::i32, GP, Tlsgd);
+    SDValue Argument = DAG.getNode(MipsISD::Wrapper, dl, PtrVT, TGA);
+    unsigned PtrSize = PtrVT.getSizeInBits();
+    IntegerType *PtrTy = Type::getIntNTy(*DAG.getContext(), PtrSize);
+
+    SDValue TlsGetAddr = DAG.getExternalSymbol("__tls_get_addr", PtrVT);
 
     ArgListTy Args;
     ArgListEntry Entry;
     Entry.Node = Argument;
-    Entry.Ty = (Type *) Type::getInt32Ty(*DAG.getContext());
+    Entry.Ty = PtrTy;
     Args.push_back(Entry);
+    
     std::pair<SDValue, SDValue> CallResult =
-        LowerCallTo(DAG.getEntryNode(),
-                    (Type *) Type::getInt32Ty(*DAG.getContext()),
-                    false, false, false, false, 0, CallingConv::C, false, true,
-                    DAG.getExternalSymbol("__tls_get_addr", PtrVT), Args, DAG,
-                    dl);
+      LowerCallTo(DAG.getEntryNode(), PtrTy,
+                  false, false, false, false, 0, CallingConv::C, false, true,
+                  TlsGetAddr, Args, DAG, dl);
 
     return CallResult.first;
   }
@@ -1573,21 +1576,21 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const
   SDValue Offset;
   if (GV->isDeclaration()) {
     // Initial Exec TLS Model
-    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+    SDValue TGA = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
                                              MipsII::MO_GOTTPREL);
-    Offset = DAG.getLoad(MVT::i32, dl,
+    TGA = DAG.getNode(MipsISD::Wrapper, dl, PtrVT, TGA);
+    Offset = DAG.getLoad(PtrVT, dl,
                          DAG.getEntryNode(), TGA, MachinePointerInfo(),
                          false, false, false, 0);
   } else {
     // Local Exec TLS Model
-    SDVTList VTs = DAG.getVTList(MVT::i32);
-    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+    SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
                                                MipsII::MO_TPREL_HI);
-    SDValue TGALo = DAG.getTargetGlobalAddress(GV, dl, MVT::i32, 0,
+    SDValue TGALo = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
                                                MipsII::MO_TPREL_LO);
-    SDValue Hi = DAG.getNode(MipsISD::TprelHi, dl, VTs, &TGAHi, 1);
-    SDValue Lo = DAG.getNode(MipsISD::TprelLo, dl, MVT::i32, TGALo);
-    Offset = DAG.getNode(ISD::ADD, dl, MVT::i32, Hi, Lo);
+    SDValue Hi = DAG.getNode(MipsISD::Hi, dl, PtrVT, TGAHi);
+    SDValue Lo = DAG.getNode(MipsISD::Lo, dl, PtrVT, TGALo);
+    Offset = DAG.getNode(ISD::ADD, dl, PtrVT, Hi, Lo);
   }
 
   SDValue ThreadPointer = DAG.getNode(MipsISD::ThreadPointer, dl, PtrVT);
@@ -1612,7 +1615,7 @@ LowerJumpTable(SDValue Op, SelectionDAG &DAG) const
     unsigned GOTFlag = IsN64 ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT;
     unsigned OfstFlag = IsN64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
     JTI = DAG.getTargetJumpTable(JT->getIndex(), PtrVT, GOTFlag);
-    JTI = DAG.getNode(MipsISD::WrapperPIC, dl, PtrVT, JTI);
+    JTI = DAG.getNode(MipsISD::Wrapper, dl, PtrVT, JTI);
     HiPart = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), JTI,
                          MachinePointerInfo(), false, false, false, 0);
     JTILo = DAG.getTargetJumpTable(JT->getIndex(), PtrVT, OfstFlag);
@@ -1655,7 +1658,7 @@ LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
     unsigned OFSTFlag = IsN64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
     SDValue CP = DAG.getTargetConstantPool(C, ValTy, N->getAlignment(),
                                            N->getOffset(), GOTFlag);
-    CP = DAG.getNode(MipsISD::WrapperPIC, dl, ValTy, CP);
+    CP = DAG.getNode(MipsISD::Wrapper, dl, ValTy, CP);
     SDValue Load = DAG.getLoad(ValTy, dl, DAG.getEntryNode(),
                                CP, MachinePointerInfo::getConstantPool(),
                                false, false, false, 0);
@@ -2334,7 +2337,7 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
   // node so that legalize doesn't hack it.
   unsigned char OpFlag;
   bool IsPICCall = (IsN64 || IsPIC); // true if calls are translated to jalr $25
-  bool LoadSymAddr = false;
+  bool GlobalOrExternal = false;
   SDValue CalleeLo;
 
   if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee)) {
@@ -2351,7 +2354,7 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
                                           getPointerTy(), 0, OpFlag);
     }
 
-    LoadSymAddr = true;
+    GlobalOrExternal = true;
   }
   else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
     if (IsN64 || (!IsO32 && IsPIC))
@@ -2362,16 +2365,16 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
       OpFlag = MipsII::MO_GOT_CALL;
     Callee = DAG.getTargetExternalSymbol(S->getSymbol(),
                                          getPointerTy(), OpFlag);
-    LoadSymAddr = true;
+    GlobalOrExternal = true;
   }
 
   SDValue InFlag;
 
   // Create nodes that load address of callee and copy it to T9
   if (IsPICCall) {
-    if (LoadSymAddr) {
+    if (GlobalOrExternal) {
       // Load callee address
-      Callee = DAG.getNode(MipsISD::WrapperPIC, dl, getPointerTy(), Callee);
+      Callee = DAG.getNode(MipsISD::Wrapper, dl, getPointerTy(), Callee);
       SDValue LoadValue = DAG.getLoad(getPointerTy(), dl, DAG.getEntryNode(),
                                       Callee, MachinePointerInfo::getGOT(),
                                       false, false, false, 0);
@@ -2383,7 +2386,11 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
       } else
         Callee = LoadValue;
     }
+  }
 
+  // T9 should contain the address of the callee function if 
+  // -reloction-model=pic or it is an indirect call.
+  if (IsPICCall || !GlobalOrExternal) {
     // copy to T9
     unsigned T9Reg = IsN64 ? Mips::T9_64 : Mips::T9;
     Chain = DAG.getCopyToReg(Chain, dl, T9Reg, Callee, SDValue(0, 0));

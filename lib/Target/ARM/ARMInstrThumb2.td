@@ -1334,7 +1334,7 @@ def t2STRDi8 : T2Ii8s4<1, 0, 0, (outs),
 
 let mayStore = 1, neverHasSideEffects = 1 in {
 def t2STR_PRE  : T2Ipreldst<0, 0b10, 0, 1, (outs GPRnopc:$Rn_wb),
-                            (ins rGPR:$Rt, t2addrmode_imm8:$addr),
+                            (ins GPRnopc:$Rt, t2addrmode_imm8:$addr),
                             AddrModeT2_i8, IndexModePre, IIC_iStore_iu,
                             "str", "\t$Rt, $addr!",
                             "$addr.base = $Rn_wb,@earlyclobber $Rn_wb", []> {
@@ -1358,13 +1358,13 @@ def t2STRB_PRE  : T2Ipreldst<0, 0b00, 0, 1, (outs GPRnopc:$Rn_wb),
 } // mayStore = 1, neverHasSideEffects = 1
 
 def t2STR_POST : T2Ipostldst<0, 0b10, 0, 0, (outs GPRnopc:$Rn_wb),
-                            (ins rGPR:$Rt, addr_offset_none:$Rn,
+                            (ins GPRnopc:$Rt, addr_offset_none:$Rn,
                                  t2am_imm8_offset:$offset),
                             AddrModeT2_i8, IndexModePost, IIC_iStore_iu,
                           "str", "\t$Rt, $Rn$offset",
                           "$Rn = $Rn_wb,@earlyclobber $Rn_wb",
              [(set GPRnopc:$Rn_wb,
-                  (post_store rGPR:$Rt, addr_offset_none:$Rn,
+                  (post_store GPRnopc:$Rt, addr_offset_none:$Rn,
                               t2am_imm8_offset:$offset))]>;
 
 def t2STRH_POST : T2Ipostldst<0, 0b01, 0, 0, (outs GPRnopc:$Rn_wb),
@@ -4097,6 +4097,19 @@ def : t2InstAlias<"sxth${p} $Rd, $Rm$rot",
 // for isel.
 def : t2InstAlias<"mov${p} $Rd, $imm",
                   (t2MVNi rGPR:$Rd, t2_so_imm_not:$imm, pred:$p, zero_reg)>;
+// Same for AND <--> BIC
+def : t2InstAlias<"bic${s}${p} $Rd, $Rn, $imm",
+                  (t2ANDri rGPR:$Rd, rGPR:$Rn, so_imm_not:$imm,
+                           pred:$p, cc_out:$s)>;
+def : t2InstAlias<"bic${s}${p} $Rdn, $imm",
+                  (t2ANDri rGPR:$Rdn, rGPR:$Rdn, so_imm_not:$imm,
+                           pred:$p, cc_out:$s)>;
+def : t2InstAlias<"and${s}${p} $Rd, $Rn, $imm",
+                  (t2BICri rGPR:$Rd, rGPR:$Rn, so_imm_not:$imm,
+                           pred:$p, cc_out:$s)>;
+def : t2InstAlias<"and${s}${p} $Rdn, $imm",
+                  (t2BICri rGPR:$Rdn, rGPR:$Rdn, so_imm_not:$imm,
+                           pred:$p, cc_out:$s)>;
 // Likewise, "add Rd, so_imm_neg" -> sub
 def : t2InstAlias<"add${s}${p} $Rd, $Rn, $imm",
                   (t2SUBri GPRnopc:$Rd, GPRnopc:$Rn, t2_so_imm_neg:$imm,
@@ -4109,3 +4122,7 @@ def : t2InstAlias<"add${s}${p} $Rd, $imm",
 // Wide 'mul' encoding can be specified with only two operands.
 def : t2InstAlias<"mul${p} $Rn, $Rm",
                   (t2MUL rGPR:$Rn, rGPR:$Rm, rGPR:$Rn, pred:$p)>;
+
+// "neg" is and alias for "rsb rd, rn, #0"
+def : t2InstAlias<"neg${s}${p} $Rd, $Rm",
+                  (t2RSBri rGPR:$Rd, rGPR:$Rm, 0, pred:$p, cc_out:$s)>;

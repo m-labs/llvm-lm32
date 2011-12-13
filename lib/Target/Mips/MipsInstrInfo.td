@@ -107,7 +107,7 @@ def MipsDivRemU   : SDNode<"MipsISD::DivRemU", SDT_MipsDivRem,
 //  movn  %got(d)($gp), %got(c)($gp), $4
 // This instruction is illegal since movn can take only register operands.
 
-def MipsWrapperPIC    : SDNode<"MipsISD::WrapperPIC",  SDTIntUnaryOp>;
+def MipsWrapper    : SDNode<"MipsISD::Wrapper",  SDTIntUnaryOp>;
 
 // Pointer to dynamically allocated stack area.
 def MipsDynAlloc  : SDNode<"MipsISD::DynAlloc", SDT_MipsDynAlloc,
@@ -132,6 +132,8 @@ def NotMips64    : Predicate<"!Subtarget.hasMips64()">;
 def HasMips64r2  : Predicate<"Subtarget.hasMips64r2()">;
 def IsN64       : Predicate<"Subtarget.isABI_N64()">;
 def NotN64      : Predicate<"!Subtarget.isABI_N64()">;
+def RelocStatic : Predicate<"TM.getRelocationModel() == Reloc::Static">;
+def RelocPIC    : Predicate<"TM.getRelocationModel() == Reloc::PIC_">;
 
 //===----------------------------------------------------------------------===//
 // Mips Operand, Complex Patterns and Transformations Definitions.
@@ -477,6 +479,17 @@ class SetCC_I<bits<6> op, string instr_asm, PatFrag cond_op, Operand Od,
      [(set CPURegs:$rt, (cond_op RC:$rs, imm_type:$imm16))],
      IIAlu>;
 
+// Jump
+class JumpFJ<bits<6> op, string instr_asm>:
+  FJ<op, (outs), (ins jmptarget:$target),
+     !strconcat(instr_asm, "\t$target"), [(br bb:$target)], IIBranch> {
+  let isBranch=1;
+  let isTerminator=1;
+  let isBarrier=1;
+  let hasDelaySlot = 1;
+  let Predicates = [RelocStatic];  
+}
+
 // Unconditional branch
 class UncondBranch<bits<6> op, string instr_asm>:
   BranchBase<op, (outs), (ins brtarget:$imm16),
@@ -487,6 +500,7 @@ class UncondBranch<bits<6> op, string instr_asm>:
   let isTerminator = 1;
   let isBarrier = 1;
   let hasDelaySlot = 1;
+  let Predicates = [RelocPIC];  
 }
 
 let isBranch=1, isTerminator=1, isBarrier=1, rd=0, hasDelaySlot = 1,
@@ -832,6 +846,7 @@ def SC    : SCBase<0x38, "sc", CPURegs, mem>, Requires<[NotN64]>;
 def SC_P8 : SCBase<0x38, "sc", CPURegs, mem64>, Requires<[IsN64]>;
 
 /// Jump and Branch Instructions
+def J       : JumpFJ<0x02, "j">;
 def JR      : JumpFR<0x00, 0x08, "jr", CPURegs>;
 def JAL     : JumpLink<0x03, "jal">;
 def JALR    : JumpLinkReg<0x00, 0x09, "jalr">;
@@ -942,11 +957,13 @@ def : Pat<(MipsHi tglobaladdr:$in), (LUi tglobaladdr:$in)>;
 def : Pat<(MipsHi tblockaddress:$in), (LUi tblockaddress:$in)>;
 def : Pat<(MipsHi tjumptable:$in), (LUi tjumptable:$in)>;
 def : Pat<(MipsHi tconstpool:$in), (LUi tconstpool:$in)>;
+def : Pat<(MipsHi tglobaltlsaddr:$in), (LUi tglobaltlsaddr:$in)>;
 
 def : Pat<(MipsLo tglobaladdr:$in), (ADDiu ZERO, tglobaladdr:$in)>;
 def : Pat<(MipsLo tblockaddress:$in), (ADDiu ZERO, tblockaddress:$in)>;
 def : Pat<(MipsLo tjumptable:$in), (ADDiu ZERO, tjumptable:$in)>;
 def : Pat<(MipsLo tconstpool:$in), (ADDiu ZERO, tconstpool:$in)>;
+def : Pat<(MipsLo tglobaltlsaddr:$in), (ADDiu ZERO, tglobaltlsaddr:$in)>;
 
 def : Pat<(add CPURegs:$hi, (MipsLo tglobaladdr:$lo)),
           (ADDiu CPURegs:$hi, tglobaladdr:$lo)>;
@@ -956,6 +973,8 @@ def : Pat<(add CPURegs:$hi, (MipsLo tjumptable:$lo)),
           (ADDiu CPURegs:$hi, tjumptable:$lo)>;
 def : Pat<(add CPURegs:$hi, (MipsLo tconstpool:$lo)),
           (ADDiu CPURegs:$hi, tconstpool:$lo)>;
+def : Pat<(add CPURegs:$hi, (MipsLo tglobaltlsaddr:$lo)),
+          (ADDiu CPURegs:$hi, tglobaltlsaddr:$lo)>;
 
 // gp_rel relocs
 def : Pat<(add CPURegs:$gp, (MipsGPRel tglobaladdr:$in)),
@@ -963,26 +982,17 @@ def : Pat<(add CPURegs:$gp, (MipsGPRel tglobaladdr:$in)),
 def : Pat<(add CPURegs:$gp, (MipsGPRel tconstpool:$in)),
           (ADDiu CPURegs:$gp, tconstpool:$in)>;
 
-// tlsgd
-def : Pat<(add CPURegs:$gp, (MipsTlsGd tglobaltlsaddr:$in)),
-          (ADDiu CPURegs:$gp, tglobaltlsaddr:$in)>;
-
-// tprel hi/lo
-def : Pat<(MipsTprelHi tglobaltlsaddr:$in), (LUi tglobaltlsaddr:$in)>;
-def : Pat<(MipsTprelLo tglobaltlsaddr:$in), (ADDiu ZERO, tglobaltlsaddr:$in)>;
-def : Pat<(add CPURegs:$hi, (MipsTprelLo tglobaltlsaddr:$lo)),
-          (ADDiu CPURegs:$hi, tglobaltlsaddr:$lo)>;
-
 // wrapper_pic
-class WrapperPICPat<SDNode node, Instruction ADDiuOp, Register GPReg>:
-      Pat<(MipsWrapperPIC node:$in),
+class WrapperPat<SDNode node, Instruction ADDiuOp, Register GPReg>:
+      Pat<(MipsWrapper node:$in),
           (ADDiuOp GPReg, node:$in)>;
 
-def : WrapperPICPat<tglobaladdr, ADDiu, GP>;
-def : WrapperPICPat<tconstpool, ADDiu, GP>;
-def : WrapperPICPat<texternalsym, ADDiu, GP>;
-def : WrapperPICPat<tblockaddress, ADDiu, GP>;
-def : WrapperPICPat<tjumptable, ADDiu, GP>;
+def : WrapperPat<tglobaladdr, ADDiu, GP>;
+def : WrapperPat<tconstpool, ADDiu, GP>;
+def : WrapperPat<texternalsym, ADDiu, GP>;
+def : WrapperPat<tblockaddress, ADDiu, GP>;
+def : WrapperPat<tjumptable, ADDiu, GP>;
+def : WrapperPat<tglobaltlsaddr, ADDiu, GP>;
 
 // Mips does not have "not", so we expand our way
 def : Pat<(not CPURegs:$in),

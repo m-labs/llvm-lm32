@@ -42,6 +42,13 @@ class ComponentInfo(object):
         self.parent_instance = None
         self.children = []
 
+        # The original source path.
+        self._source_path = None
+
+        # A flag to mark "special" components which have some amount of magic
+        # handling (generally based on command line options).
+        self._is_special_group = False
+
     def set_parent_instance(self, parent):
         assert parent.name == self.parent, "Unexpected parent!"
         self.parent_instance = parent
@@ -194,7 +201,7 @@ class LibraryGroupComponentInfo(ComponentInfo):
         print >>result, 'type = %s' % self.type_name
         print >>result, 'name = %s' % self.name
         print >>result, 'parent = %s' % self.parent
-        if self.required_libraries:
+        if self.required_libraries and not self._is_special_group:
             print >>result, 'required_libraries = %s' % ' '.join(
                 self.required_libraries)
         if self.add_to_library_groups:
@@ -374,6 +381,16 @@ def load_from_path(path, subpath):
     parser = ConfigParser.RawConfigParser()
     parser.read(path)
 
+    # Extract the common section.
+    if parser.has_section("common"):
+        common = IniFormatParser(parser.items("common"))
+        parser.remove_section("common")
+    else:
+        common = IniFormatParser({})
+
+    return common, _read_components_from_parser(parser, path, subpath)
+
+def _read_components_from_parser(parser, path, subpath):
     # We load each section which starts with 'component' as a distinct component
     # description (so multiple components can be described in one file).
     for section in parser.sections():
@@ -407,4 +424,5 @@ def load_from_path(path, subpath):
             fatal("unable to load component %r in %r: %s" % (
                     section, path, e.message))
 
+        info._source_path = path
         yield info

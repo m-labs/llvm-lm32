@@ -103,6 +103,13 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
   // from FP_ROUND:  that rounds to nearest, this rounds to zero.
   setOperationAction(ISD::FP_ROUND_INREG, MVT::ppcf128, Custom);
 
+  // We do not currently implment this libm ops for PowerPC.
+  setOperationAction(ISD::FFLOOR, MVT::ppcf128, Expand);
+  setOperationAction(ISD::FCEIL,  MVT::ppcf128, Expand);
+  setOperationAction(ISD::FTRUNC, MVT::ppcf128, Expand);
+  setOperationAction(ISD::FRINT,  MVT::ppcf128, Expand);
+  setOperationAction(ISD::FNEARBYINT, MVT::ppcf128, Expand);
+
   // PowerPC has no SREM/UREM instructions
   setOperationAction(ISD::SREM, MVT::i32, Expand);
   setOperationAction(ISD::UREM, MVT::i32, Expand);
@@ -146,9 +153,13 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
   setOperationAction(ISD::BSWAP, MVT::i32  , Expand);
   setOperationAction(ISD::CTPOP, MVT::i32  , Expand);
   setOperationAction(ISD::CTTZ , MVT::i32  , Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i32, Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i32, Expand);
   setOperationAction(ISD::BSWAP, MVT::i64  , Expand);
   setOperationAction(ISD::CTPOP, MVT::i64  , Expand);
   setOperationAction(ISD::CTTZ , MVT::i64  , Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i64, Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i64, Expand);
 
   // PowerPC does not have ROTR
   setOperationAction(ISD::ROTR, MVT::i32   , Expand);
@@ -332,7 +343,9 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
       setOperationAction(ISD::FPOW, VT, Expand);
       setOperationAction(ISD::CTPOP, VT, Expand);
       setOperationAction(ISD::CTLZ, VT, Expand);
+      setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Expand);
       setOperationAction(ISD::CTTZ, VT, Expand);
+      setOperationAction(ISD::CTTZ_ZERO_UNDEF, VT, Expand);
     }
 
     // We can custom expand all VECTOR_SHUFFLEs to VPERM, others we can handle

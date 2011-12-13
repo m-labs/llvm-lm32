@@ -163,6 +163,8 @@ struct AddressSanitizer : public ModulePass {
 
  private:
 
+  void appendToPreinitArray(Module &M, Function *F);
+
   uint64_t getAllocaSizeInBytes(AllocaInst *AI) {
     Type *Ty = AI->getAllocatedType();
     uint64_t SizeInBytes = TD->getTypeStoreSizeInBits(Ty) / 8;
@@ -563,6 +565,17 @@ bool AddressSanitizer::insertGlobalRedzones(Module &M) {
   return true;
 }
 
+// .preinit_array is something that hapens before all other inits.
+// On systems where .preinit_array is honored, we will call __asan_init early.
+void AddressSanitizer::appendToPreinitArray(Module &M, Function *F) {
+  IRBuilder<> IRB(M.getContext());
+  GlobalVariable *Var =
+      new GlobalVariable(M, PointerType::getUnqual(F->getFunctionType()),
+                         false, GlobalValue::PrivateLinkage,
+                         F, "__asan_preinit_private");
+  Var->setSection(".preinit_array");
+}
+
 // virtual
 bool AddressSanitizer::runOnModule(Module &M) {
   // Initialize the private fields. No one has accessed them before.
@@ -633,6 +646,9 @@ bool AddressSanitizer::runOnModule(Module &M) {
   }
 
   appendToGlobalCtors(M, AsanCtorFunction, 1 /*high priority*/);
+
+  if (M.getTargetTriple().find("linux") != std::string::npos)
+    appendToPreinitArray(M, AsanInitFunction);
 
   return Res;
 }
@@ -963,15 +979,23 @@ BlackList::BlackList(const std::string &Path) {
   for (size_t i = 0, numLines = Lines.size(); i < numLines; i++) {
     if (Lines[i].startswith(kFunPrefix)) {
       std::string ThisFunc = Lines[i].substr(strlen(kFunPrefix));
-      if (Fun.size()) {
-        Fun += "|";
-      }
+      std::string ThisFuncRE;
       // add ThisFunc replacing * with .*
       for (size_t j = 0, n = ThisFunc.size(); j < n; j++) {
         if (ThisFunc[j] == '*')
-          Fun += '.';
-        Fun += ThisFunc[j];
+          ThisFuncRE += '.';
+        ThisFuncRE += ThisFunc[j];
       }
+      // Check that the regexp is valid.
+      Regex CheckRE(ThisFuncRE);
+      std::string Error;
+      if (!CheckRE.isValid(Error))
+        report_fatal_error("malformed blacklist regex: " + ThisFunc +
+                           ": " + Error);
+      // Append to the final regexp.
+      if (Fun.size())
+        Fun += "|";
+      Fun += ThisFuncRE;
     }
   }
   if (Fun.size()) {

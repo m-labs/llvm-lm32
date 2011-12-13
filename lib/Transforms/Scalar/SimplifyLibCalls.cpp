@@ -999,7 +999,7 @@ struct FFSOpt : public LibCallOptimization {
     Type *ArgType = Op->getType();
     Value *F = Intrinsic::getDeclaration(Callee->getParent(),
                                          Intrinsic::cttz, ArgType);
-    Value *V = B.CreateCall(F, Op, "cttz");
+    Value *V = B.CreateCall2(F, Op, B.getFalse(), "cttz");
     V = B.CreateAdd(V, ConstantInt::get(V->getType(), 1));
     V = B.CreateIntCast(V, B.getInt32Ty(), false);
 
@@ -1293,7 +1293,8 @@ struct FWriteOpt : public LibCallOptimization {
       return ConstantInt::get(CI->getType(), 0);
 
     // If this is writing one byte, turn it into fputc.
-    if (Bytes == 1) {  // fwrite(S,1,1,F) -> fputc(S[0],F)
+    // This optimisation is only valid, if the return value is unused.
+    if (Bytes == 1 && CI->use_empty()) {  // fwrite(S,1,1,F) -> fputc(S[0],F)
       Value *Char = B.CreateLoad(CastToCStr(CI->getArgOperand(0), B), "char");
       EmitFPutC(Char, CI->getArgOperand(3), B, TD);
       return ConstantInt::get(CI->getType(), 1);

@@ -72,6 +72,7 @@ set(LLVM_ALL_TARGETS
   CBackend
   CellSPU
   CppBackend
+  Hexagon
   Mips
   MBlaze
   Mico32
@@ -90,7 +91,7 @@ if( MSVC )
   set(LLVM_TARGETS_TO_BUILD X86
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 else( MSVC )
-  set(LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS}
+  set(LLVM_TARGETS_TO_BUILD "all"
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 endif( MSVC )
 
@@ -165,8 +166,8 @@ if (MSVC OR XCODE)
 endif()
 set(LLVM_LIT_ARGS "${LIT_ARGS_DEFAULT}" CACHE STRING "Default options for lit")
 
-# On Win32/Cygwin, provide an option to specify the path to the GnuWin32 tools.
-if( WIN32 AND CYGWIN )
+# On Win32 hosts, provide an option to specify the path to the GnuWin32 tools.
+if( WIN32 AND NOT CYGWIN )
   set(LLVM_LIT_TOOLS_DIR "" CACHE PATH "Path to GnuWin32 tools")
 endif()
 

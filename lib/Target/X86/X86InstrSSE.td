@@ -561,6 +561,16 @@ let Predicates = [HasAVX] in {
                       (EXTRACT_SUBREG (v4i32 VR128:$src), sub_ss))>;
   def : Pat<(v2f64 (X86vzmovl (v2f64 (scalar_to_vector FR64:$src)))),
             (VMOVSDrr (v2f64 (V_SET0)), FR64:$src)>;
+
+  // Move low f32 and clear high bits.
+  def : Pat<(v8f32 (X86vzmovl (v8f32 VR256:$src))),
+            (SUBREG_TO_REG (i32 0),
+              (VMOVSSrr (v4f32 (V_SET0)),
+                        (EXTRACT_SUBREG (v8f32 VR256:$src), sub_ss)), sub_xmm)>;
+  def : Pat<(v8i32 (X86vzmovl (v8i32 VR256:$src))),
+            (SUBREG_TO_REG (i32 0),
+              (VMOVSSrr (v4i32 (V_SET0)),
+                        (EXTRACT_SUBREG (v8i32 VR256:$src), sub_ss)), sub_xmm)>;
   }
 
   let AddedComplexity = 20 in {
@@ -588,6 +598,9 @@ let Predicates = [HasAVX] in {
 
   // Represent the same patterns above but in the form they appear for
   // 256-bit types
+  def : Pat<(v8i32 (X86vzmovl (insert_subvector undef,
+                   (v4i32 (scalar_to_vector (loadi32 addr:$src))), (i32 0)))),
+            (SUBREG_TO_REG (i32 0), (VMOVSSrm addr:$src), sub_ss)>;
   def : Pat<(v8f32 (X86vzmovl (insert_subvector undef,
                    (v4f32 (scalar_to_vector (loadf32 addr:$src))), (i32 0)))),
             (SUBREG_TO_REG (i32 0), (VMOVSSrm addr:$src), sub_ss)>;
@@ -605,6 +618,12 @@ let Predicates = [HasAVX] in {
             (SUBREG_TO_REG (i64 0),
                            (v2f64 (VMOVSDrr (v2f64 (V_SET0)), FR64:$src)),
                            sub_xmm)>;
+
+  // Move low f64 and clear high bits.
+  def : Pat<(v4f64 (X86vzmovl (v4f64 VR256:$src))),
+            (SUBREG_TO_REG (i32 0),
+              (VMOVSDrr (v2f64 (V_SET0)),
+                        (EXTRACT_SUBREG (v4f64 VR256:$src), sub_sd)), sub_xmm)>;
 
   // Extract and store.
   def : Pat<(store (f32 (vector_extract (v4f32 VR128:$src), (iPTR 0))),
@@ -626,6 +645,16 @@ let Predicates = [HasAVX] in {
             (VMOVSSrr (v4f32 VR128:$src1),
                       (EXTRACT_SUBREG (v4f32 VR128:$src2), sub_ss))>;
 
+  // 256-bit variants
+  def : Pat<(v8i32 (X86Movsd VR256:$src1, VR256:$src2)),
+            (SUBREG_TO_REG (i32 0),
+                (VMOVSSrr (EXTRACT_SUBREG (v8i32 VR256:$src1), sub_ss),
+                          (EXTRACT_SUBREG (v8i32 VR256:$src2), sub_ss)), sub_xmm)>;
+  def : Pat<(v8f32 (X86Movsd VR256:$src1, VR256:$src2)),
+            (SUBREG_TO_REG (i32 0),
+                (VMOVSSrr (EXTRACT_SUBREG (v8f32 VR256:$src1), sub_ss),
+                          (EXTRACT_SUBREG (v8f32 VR256:$src2), sub_ss)), sub_xmm)>;
+
   // Shuffle with VMOVSD
   def : Pat<(v2f64 (X86Movsd VR128:$src1, (scalar_to_vector FR64:$src2))),
             (VMOVSDrr VR128:$src1, FR64:$src2)>;
@@ -641,6 +670,17 @@ let Predicates = [HasAVX] in {
   def : Pat<(v4i32 (X86Movsd VR128:$src1, VR128:$src2)),
             (VMOVSDrr VR128:$src1, (EXTRACT_SUBREG (v4i32 VR128:$src2),
                                                    sub_sd))>;
+
+  // 256-bit variants
+  def : Pat<(v4i64 (X86Movsd VR256:$src1, VR256:$src2)),
+            (SUBREG_TO_REG (i32 0),
+                (VMOVSDrr (EXTRACT_SUBREG (v4i64 VR256:$src1), sub_sd),
+                          (EXTRACT_SUBREG (v4i64 VR256:$src2), sub_sd)), sub_xmm)>;
+  def : Pat<(v4f64 (X86Movsd VR256:$src1, VR256:$src2)),
+            (SUBREG_TO_REG (i32 0),
+                (VMOVSDrr (EXTRACT_SUBREG (v4f64 VR256:$src1), sub_sd),
+                          (EXTRACT_SUBREG (v4f64 VR256:$src2), sub_sd)), sub_xmm)>;
+
 
   // FIXME: Instead of a X86Movlps there should be a X86Movsd here, the problem
   // is during lowering, where it's not possible to recognize the fold cause
@@ -755,6 +795,19 @@ let isCodeGenOnly = 1 in {
                             (ins VR256:$src),
                             "movupd\t{$src, $dst|$dst, $src}", []>, VEX;
 }
+
+let Predicates = [HasAVX] in {
+def : Pat<(v8i32 (X86vzmovl
+                        (insert_subvector undef, (v4i32 VR128:$src), (i32 0)))),
+          (SUBREG_TO_REG (i32 0), (VMOVAPSrr VR128:$src), sub_xmm)>;
+def : Pat<(v8f32 (X86vzmovl
+                        (insert_subvector undef, (v4f32 VR128:$src), (i32 0)))),
+          (SUBREG_TO_REG (i32 0), (VMOVAPSrr VR128:$src), sub_xmm)>;
+def : Pat<(v4f64 (X86vzmovl
+                        (insert_subvector undef, (v2f64 VR128:$src), (i32 0)))),
+          (SUBREG_TO_REG (i32 0), (VMOVAPSrr VR128:$src), sub_xmm)>;
+}
+
 
 def : Pat<(int_x86_avx_loadu_ps_256 addr:$src), (VMOVUPSYrm addr:$src)>;
 def : Pat<(int_x86_avx_storeu_ps_256 addr:$dst, VR256:$src),
@@ -5999,8 +6052,18 @@ multiclass sse41_fp_binop_rm<bits<8> opcss, bits<8> opcsd,
                             Intrinsic F32Int,
                             Intrinsic F64Int, bit Is2Addr = 1> {
 let ExeDomain = GenericDomain in {
-  // Intrinsic operation, reg.
+  // Operation, reg.
   def SSr : SS4AIi8<opcss, MRMSrcReg,
+      (outs FR32:$dst), (ins FR32:$src1, FR32:$src2, i32i8imm:$src3),
+      !if(Is2Addr,
+          !strconcat(OpcodeStr,
+              "ss\t{$src3, $src2, $dst|$dst, $src2, $src3}"),
+          !strconcat(OpcodeStr,
+              "ss\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}")),
+      []>, OpSize;
+
+  // Intrinsic operation, reg.
+  def SSr_Int : SS4AIi8<opcss, MRMSrcReg,
         (outs VR128:$dst), (ins VR128:$src1, VR128:$src2, i32i8imm:$src3),
         !if(Is2Addr,
             !strconcat(OpcodeStr,
@@ -6022,8 +6085,18 @@ let ExeDomain = GenericDomain in {
              (F32Int VR128:$src1, sse_load_f32:$src2, imm:$src3))]>,
         OpSize;
 
-  // Intrinsic operation, reg.
+  // Operation, reg.
   def SDr : SS4AIi8<opcsd, MRMSrcReg,
+        (outs FR64:$dst), (ins FR64:$src1, FR64:$src2, i32i8imm:$src3),
+        !if(Is2Addr,
+            !strconcat(OpcodeStr,
+                "sd\t{$src3, $src2, $dst|$dst, $src2, $src3}"),
+            !strconcat(OpcodeStr,
+                "sd\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}")),
+        []>, OpSize;
+
+  // Intrinsic operation, reg.
+  def SDr_Int : SS4AIi8<opcsd, MRMSrcReg,
         (outs VR128:$dst), (ins VR128:$src1, VR128:$src2, i32i8imm:$src3),
         !if(Is2Addr,
             !strconcat(OpcodeStr,
@@ -6061,6 +6134,27 @@ let Predicates = [HasAVX] in {
   defm VROUND  : sse41_fp_binop_rm<0x0A, 0x0B, "vround",
                                   int_x86_sse41_round_ss,
                                   int_x86_sse41_round_sd, 0>, VEX_4V, VEX_LIG;
+
+  def : Pat<(ffloor FR32:$src),
+            (VROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x1))>;
+  def : Pat<(f64 (ffloor FR64:$src)),
+            (VROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x1))>;
+  def : Pat<(f32 (fnearbyint FR32:$src)),
+            (VROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0xC))>;
+  def : Pat<(f64 (fnearbyint FR64:$src)),
+            (VROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0xC))>;
+  def : Pat<(f32 (fceil FR32:$src)),
+            (VROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x2))>;
+  def : Pat<(f64 (fceil FR64:$src)),
+            (VROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x2))>;
+  def : Pat<(f32 (frint FR32:$src)),
+            (VROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x4))>;
+  def : Pat<(f64 (frint FR64:$src)),
+            (VROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x4))>;
+  def : Pat<(f32 (ftrunc FR32:$src)),
+            (VROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x3))>;
+  def : Pat<(f64 (ftrunc FR64:$src)),
+            (VROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x3))>;
 }
 
 defm ROUND  : sse41_fp_unop_rm<0x08, 0x09, "round", f128mem, VR128,
@@ -6069,6 +6163,27 @@ defm ROUND  : sse41_fp_unop_rm<0x08, 0x09, "round", f128mem, VR128,
 let Constraints = "$src1 = $dst" in
 defm ROUND  : sse41_fp_binop_rm<0x0A, 0x0B, "round",
                                int_x86_sse41_round_ss, int_x86_sse41_round_sd>;
+
+def : Pat<(ffloor FR32:$src),
+          (ROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x1))>;
+def : Pat<(f64 (ffloor FR64:$src)),
+          (ROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x1))>;
+def : Pat<(f32 (fnearbyint FR32:$src)),
+          (ROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0xC))>;
+def : Pat<(f64 (fnearbyint FR64:$src)),
+          (ROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0xC))>;
+def : Pat<(f32 (fceil FR32:$src)),
+          (ROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x2))>;
+def : Pat<(f64 (fceil FR64:$src)),
+          (ROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x2))>;
+def : Pat<(f32 (frint FR32:$src)),
+          (ROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x4))>;
+def : Pat<(f64 (frint FR64:$src)),
+          (ROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x4))>;
+def : Pat<(f32 (ftrunc FR32:$src)),
+          (ROUNDSSr (f32 (IMPLICIT_DEF)), FR32:$src, (i32 0x3))>;
+def : Pat<(f64 (ftrunc FR64:$src)),
+          (ROUNDSDr (f64 (IMPLICIT_DEF)), FR64:$src, (i32 0x3))>;
 
 //===----------------------------------------------------------------------===//
 // SSE4.1 - Packed Bit Test

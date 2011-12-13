@@ -577,16 +577,26 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   setOperationAction(ISD::ConstantFP, MVT::f80, Expand);
 
   // These library functions default to expand.
-  setOperationAction(ISD::FLOG , MVT::f64, Expand);
-  setOperationAction(ISD::FLOG2, MVT::f64, Expand);
-  setOperationAction(ISD::FLOG10,MVT::f64, Expand);
-  setOperationAction(ISD::FEXP , MVT::f64, Expand);
-  setOperationAction(ISD::FEXP2, MVT::f64, Expand);
-  setOperationAction(ISD::FLOG , MVT::f32, Expand);
-  setOperationAction(ISD::FLOG2, MVT::f32, Expand);
-  setOperationAction(ISD::FLOG10,MVT::f32, Expand);
-  setOperationAction(ISD::FEXP , MVT::f32, Expand);
-  setOperationAction(ISD::FEXP2, MVT::f32, Expand);
+  setOperationAction(ISD::FLOG ,  MVT::f64, Expand);
+  setOperationAction(ISD::FLOG2,  MVT::f64, Expand);
+  setOperationAction(ISD::FLOG10, MVT::f64, Expand);
+  setOperationAction(ISD::FEXP ,  MVT::f64, Expand);
+  setOperationAction(ISD::FEXP2,  MVT::f64, Expand);
+  setOperationAction(ISD::FFLOOR, MVT::f64, Expand);
+  setOperationAction(ISD::FNEARBYINT, MVT::f64, Expand);
+  setOperationAction(ISD::FCEIL,  MVT::f64, Expand);
+  setOperationAction(ISD::FRINT,  MVT::f64, Expand);
+  setOperationAction(ISD::FTRUNC, MVT::f64, Expand);
+  setOperationAction(ISD::FLOG ,  MVT::f32, Expand);
+  setOperationAction(ISD::FLOG2,  MVT::f32, Expand);
+  setOperationAction(ISD::FLOG10, MVT::f32, Expand);
+  setOperationAction(ISD::FEXP ,  MVT::f32, Expand);
+  setOperationAction(ISD::FEXP2,  MVT::f32, Expand);
+  setOperationAction(ISD::FFLOOR, MVT::f32, Expand);
+  setOperationAction(ISD::FNEARBYINT, MVT::f32, Expand);
+  setOperationAction(ISD::FCEIL,  MVT::f32, Expand);
+  setOperationAction(ISD::FRINT,  MVT::f32, Expand);
+  setOperationAction(ISD::FTRUNC, MVT::f32, Expand);
 
   // Default ISD::TRAP to expand (which turns it into abort).
   setOperationAction(ISD::TRAP, MVT::Other, Expand);
@@ -1473,9 +1483,8 @@ bool TargetLowering::SimplifyDemandedBits(SDValue Op,
       if (InOp.getNode()->getOpcode() == ISD::ANY_EXTEND) {
         SDValue InnerOp = InOp.getNode()->getOperand(0);
         EVT InnerVT = InnerOp.getValueType();
-        if ((APInt::getHighBitsSet(BitWidth,
-                                   BitWidth - InnerVT.getSizeInBits()) &
-               DemandedMask) == 0 &&
+        unsigned InnerBits = InnerVT.getSizeInBits();
+        if (ShAmt < InnerBits && NewMask.lshr(InnerBits) == 0 &&
             isTypeDesirableForOp(ISD::SHL, InnerVT)) {
           EVT ShTy = getShiftAmountTy(InnerVT);
           if (!APInt(BitWidth, ShAmt).isIntN(ShTy.getSizeInBits()))
@@ -1545,7 +1554,7 @@ bool TargetLowering::SimplifyDemandedBits(SDValue Op,
     // always convert this into a logical shr, even if the shift amount is
     // variable.  The low bit of the shift cannot be an input sign bit unless
     // the shift amount is >= the size of the datatype, which is undefined.
-    if (DemandedMask == 1)
+    if (NewMask == 1)
       return TLO.CombineTo(Op,
                            TLO.DAG.getNode(ISD::SRL, dl, Op.getValueType(),
                                            Op.getOperand(0), Op.getOperand(1)));

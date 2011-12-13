@@ -643,6 +643,38 @@ public:
     int64_t Value = CE->getValue();
     return Value == 32;
   }
+  bool isShrImm8() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value > 0 && Value <= 8;
+  }
+  bool isShrImm16() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value > 0 && Value <= 16;
+  }
+  bool isShrImm32() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value > 0 && Value <= 32;
+  }
+  bool isShrImm64() const {
+    if (Kind != k_Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value > 0 && Value <= 64;
+  }
   bool isImm1_7() const {
     if (Kind != k_Immediate)
       return false;
@@ -2223,7 +2255,8 @@ int ARMAsmParser::tryParseShiftRegister(
     ShiftReg = SrcReg;
   } else {
     // Figure out if this is shifted by a constant or a register (for non-RRX).
-    if (Parser.getTok().is(AsmToken::Hash)) {
+    if (Parser.getTok().is(AsmToken::Hash) ||
+        Parser.getTok().is(AsmToken::Dollar)) {
       Parser.Lex(); // Eat hash.
       SMLoc ImmLoc = Parser.getTok().getLoc();
       const MCExpr *ShiftExpr = 0;
@@ -2596,6 +2629,7 @@ parseRegisterList(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     Parser.Lex(); // Eat the comma.
     RegLoc = Parser.getTok().getLoc();
     int OldReg = Reg;
+    const AsmToken RegTok = Parser.getTok();
     Reg = tryParseRegister();
     if (Reg == -1)
       return Error(RegLoc, "register expected");
@@ -2609,8 +2643,13 @@ parseRegisterList(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     if (!RC->contains(Reg))
       return Error(RegLoc, "invalid register in register list");
     // List must be monotonically increasing.
-    if (getARMRegisterNumbering(Reg) <= getARMRegisterNumbering(OldReg))
+    if (getARMRegisterNumbering(Reg) < getARMRegisterNumbering(OldReg))
       return Error(RegLoc, "register list not in ascending order");
+    if (getARMRegisterNumbering(Reg) == getARMRegisterNumbering(OldReg)) {
+      Warning(RegLoc, "duplicated register (" + RegTok.getString() +
+              ") in register list");
+      continue;
+    }
     // VFP register lists must also be contiguous.
     // It's OK to use the enumeration values directly here rather, as the
     // VFP register classes have the enum sorted properly.
@@ -3052,7 +3091,8 @@ parsePKHImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands, StringRef Op,
   Parser.Lex(); // Eat shift type token.
 
   // There must be a '#' and a shift amount.
-  if (Parser.getTok().isNot(AsmToken::Hash)) {
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar)) {
     Error(Parser.getTok().getLoc(), "'#' expected");
     return MatchOperand_ParseFail;
   }
@@ -3130,7 +3170,8 @@ parseShifterImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   Parser.Lex(); // Eat the operator.
 
   // A '#' and a shift amount.
-  if (Parser.getTok().isNot(AsmToken::Hash)) {
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar)) {
     Error(Parser.getTok().getLoc(), "'#' expected");
     return MatchOperand_ParseFail;
   }
@@ -3190,7 +3231,8 @@ parseRotImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   Parser.Lex(); // Eat the operator.
 
   // A '#' and a rotate amount.
-  if (Parser.getTok().isNot(AsmToken::Hash)) {
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar)) {
     Error(Parser.getTok().getLoc(), "'#' expected");
     return MatchOperand_ParseFail;
   }
@@ -3227,7 +3269,8 @@ ARMAsmParser::OperandMatchResultTy ARMAsmParser::
 parseBitfield(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   SMLoc S = Parser.getTok().getLoc();
   // The bitfield descriptor is really two operands, the LSB and the width.
-  if (Parser.getTok().isNot(AsmToken::Hash)) {
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar)) {
     Error(Parser.getTok().getLoc(), "'#' expected");
     return MatchOperand_ParseFail;
   }
@@ -3259,7 +3302,8 @@ parseBitfield(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
     return MatchOperand_ParseFail;
   }
   Parser.Lex(); // Eat hash token.
-  if (Parser.getTok().isNot(AsmToken::Hash)) {
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar)) {
     Error(Parser.getTok().getLoc(), "'#' expected");
     return MatchOperand_ParseFail;
   }
@@ -3353,7 +3397,8 @@ parseAM3Offset(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   SMLoc S = Tok.getLoc();
 
   // Do immediates first, as we always parse those if we have a '#'.
-  if (Parser.getTok().is(AsmToken::Hash)) {
+  if (Parser.getTok().is(AsmToken::Hash) ||
+      Parser.getTok().is(AsmToken::Dollar)) {
     Parser.Lex(); // Eat the '#'.
     // Explicitly look for a '-', as we need to encode negative zero
     // differently.
@@ -3857,8 +3902,9 @@ parseMemory(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // offset. Be friendly and also accept a plain integer (without a leading
   // hash) for gas compatibility.
   if (Parser.getTok().is(AsmToken::Hash) ||
+      Parser.getTok().is(AsmToken::Dollar) ||
       Parser.getTok().is(AsmToken::Integer)) {
-    if (Parser.getTok().is(AsmToken::Hash))
+    if (Parser.getTok().isNot(AsmToken::Integer))
       Parser.Lex(); // Eat the '#'.
     E = Parser.getTok().getLoc();
 
@@ -3977,7 +4023,8 @@ bool ARMAsmParser::parseMemRegOffsetShift(ARM_AM::ShiftOpc &St,
     Loc = Parser.getTok().getLoc();
     // A '#' and a shift amount.
     const AsmToken &HashTok = Parser.getTok();
-    if (HashTok.isNot(AsmToken::Hash))
+    if (HashTok.isNot(AsmToken::Hash) &&
+        HashTok.isNot(AsmToken::Dollar))
       return Error(HashTok.getLoc(), "'#' expected");
     Parser.Lex(); // Eat hash token.
 
@@ -4006,7 +4053,8 @@ ARMAsmParser::OperandMatchResultTy ARMAsmParser::
 parseFPImm(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   SMLoc S = Parser.getTok().getLoc();
 
-  if (Parser.getTok().isNot(AsmToken::Hash))
+  if (Parser.getTok().isNot(AsmToken::Hash) &&
+      Parser.getTok().isNot(AsmToken::Dollar))
     return MatchOperand_NoMatch;
 
   // Disambiguate the VMOV forms that can accept an FP immediate.
@@ -4119,6 +4167,7 @@ bool ARMAsmParser::parseOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands,
     return parseMemory(Operands);
   case AsmToken::LCurly:
     return parseRegisterList(Operands);
+  case AsmToken::Dollar:
   case AsmToken::Hash: {
     // #42 -> immediate.
     // TODO: ":lower16:" and ":upper16:" modifiers after # before immediate
@@ -4258,7 +4307,8 @@ StringRef ARMAsmParser::splitMnemonic(StringRef Mnemonic,
         Mnemonic == "vcls" || Mnemonic == "vmls" || Mnemonic == "vmrs" ||
         Mnemonic == "vnmls" || Mnemonic == "vqabs" || Mnemonic == "vrecps" ||
         Mnemonic == "vrsqrts" || Mnemonic == "srs" || Mnemonic == "flds" ||
-        Mnemonic == "fmrs" ||
+        Mnemonic == "fmrs" || Mnemonic == "fsqrts" || Mnemonic == "fsubs" ||
+        Mnemonic == "fsts" ||
         (Mnemonic == "movs" && isThumb()))) {
     Mnemonic = Mnemonic.slice(0, Mnemonic.size() - 1);
     CarrySetting = true;
@@ -4474,9 +4524,18 @@ static bool doesIgnoreDataTypeSuffix(StringRef Mnemonic, StringRef DT) {
   return Mnemonic.startswith("vldm") || Mnemonic.startswith("vstm");
 }
 
+static void applyMnemonicAliases(StringRef &Mnemonic, unsigned Features);
 /// Parse an arm instruction mnemonic followed by its operands.
 bool ARMAsmParser::ParseInstruction(StringRef Name, SMLoc NameLoc,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
+  // Apply mnemonic aliases before doing anything else, as the destination
+  // mnemnonic may include suffices and we want to handle them normally.
+  // The generic tblgen'erated code does this later, at the start of
+  // MatchInstructionImpl(), but that's too late for aliases that include
+  // any sort of suffix.
+  unsigned AvailableFeatures = getAvailableFeatures();
+  applyMnemonicAliases(Name, AvailableFeatures);
+
   // Create the leading tokens for the mnemonic, split by '.' characters.
   size_t Start = 0, Next = Name.find('.');
   StringRef Mnemonic = Name.slice(Start, Next);
@@ -4668,12 +4727,21 @@ bool ARMAsmParser::ParseInstruction(StringRef Name, SMLoc NameLoc,
     }
   }
   // Similarly, the Thumb1 "RSB" instruction has a literal "#0" on the
-  // end. Convert it to a token here.
+  // end. Convert it to a token here. Take care not to convert those
+  // that should hit the Thumb2 encoding.
   if (Mnemonic == "rsb" && isThumb() && Operands.size() == 6 &&
+      static_cast<ARMOperand*>(Operands[3])->isReg() &&
+      static_cast<ARMOperand*>(Operands[4])->isReg() &&
       static_cast<ARMOperand*>(Operands[5])->isImm()) {
     ARMOperand *Op = static_cast<ARMOperand*>(Operands[5]);
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Op->getImm());
-    if (CE && CE->getValue() == 0) {
+    if (CE && CE->getValue() == 0 &&
+        (isThumbOne() ||
+         // The cc_out operand matches the IT block.
+         ((inITBlock() != CarrySetting) &&
+         // Neither register operand is a high register.
+         (isARMLowRegister(static_cast<ARMOperand*>(Operands[3])->getReg()) &&
+          isARMLowRegister(static_cast<ARMOperand*>(Operands[4])->getReg()))))){
       Operands.erase(Operands.begin() + 5);
       Operands.push_back(ARMOperand::CreateToken("#0", Op->getStartLoc()));
       delete Op;

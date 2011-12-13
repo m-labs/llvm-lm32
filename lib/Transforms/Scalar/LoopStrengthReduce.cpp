@@ -1405,7 +1405,6 @@ class LSRInstance {
 
   LSRUse *FindUseWithSimilarFormula(const Formula &F, const LSRUse &OrigLU);
 
-public:
   void InsertInitialFormula(const SCEV *S, LSRUse &LU, size_t LUIdx);
   void InsertSupplementalFormula(const SCEV *S, LSRUse &LU, size_t LUIdx);
   void CountRegisters(const Formula &F, size_t LUIdx);
@@ -1466,6 +1465,7 @@ public:
   void ImplementSolution(const SmallVectorImpl<const Formula *> &Solution,
                          Pass *P);
 
+public:
   LSRInstance(const TargetLowering *tli, Loop *l, Pass *P);
 
   bool getChanged() const { return Changed; }
@@ -2061,7 +2061,8 @@ void LSRInstance::CollectInterestingTypesAndFactors() {
     do {
       const SCEV *S = Worklist.pop_back_val();
       if (const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(S)) {
-        Strides.insert(AR->getStepRecurrence(SE));
+        if (EnableNested || AR->getLoop() == L)
+          Strides.insert(AR->getStepRecurrence(SE));
         Worklist.push_back(AR->getStart());
       } else if (const SCEVAddExpr *Add = dyn_cast<SCEVAddExpr>(S)) {
         Worklist.append(Add->op_begin(), Add->op_end());

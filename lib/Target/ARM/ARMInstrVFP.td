@@ -1160,16 +1160,54 @@ def FCONSTS : VFPAI<(outs SPR:$Sd), (ins vfp_f32imm:$imm),
 //===----------------------------------------------------------------------===//
 // Assembler aliases.
 //
-
 // A few mnemnoic aliases for pre-unifixed syntax. We don't guarantee to
 // support them all, but supporting at least some of the basics is
 // good to be friendly.
-def : MnemonicAlias<"flds", "vldr">;
-def : MnemonicAlias<"fldd", "vldr">;
-def : MnemonicAlias<"fmrs", "vmov">;
-def : MnemonicAlias<"fmsr", "vmov">;
+def : VFP2MnemonicAlias<"flds", "vldr">;
+def : VFP2MnemonicAlias<"fldd", "vldr">;
+def : VFP2MnemonicAlias<"fmrs", "vmov">;
+def : VFP2MnemonicAlias<"fmsr", "vmov">;
+def : VFP2MnemonicAlias<"fsqrts", "vsqrt">;
+def : VFP2MnemonicAlias<"fsqrtd", "vsqrt">;
+def : VFP2MnemonicAlias<"fadds", "vadd.f32">;
+def : VFP2MnemonicAlias<"faddd", "vadd.f64">;
+def : VFP2MnemonicAlias<"fmrdd", "vmov">;
+def : VFP2MnemonicAlias<"fmrds", "vmov">;
+def : VFP2MnemonicAlias<"fmrrd", "vmov">;
+def : VFP2MnemonicAlias<"fmdrr", "vmov">;
+def : VFP2MnemonicAlias<"fmuld", "vmul.f64">;
+def : VFP2MnemonicAlias<"fnegs", "vneg.f32">;
+def : VFP2MnemonicAlias<"fnegd", "vneg.f64">;
+def : VFP2MnemonicAlias<"ftosizd", "vcvt.s32.f64">;
+def : VFP2MnemonicAlias<"ftosid", "vcvtr.s32.f64">;
+def : VFP2MnemonicAlias<"ftosizs", "vcvt.s32.f32">;
+def : VFP2MnemonicAlias<"ftosis", "vcvtr.s32.f32">;
+def : VFP2MnemonicAlias<"ftouizd", "vcvt.u32.f64">;
+def : VFP2MnemonicAlias<"ftouid", "vcvtr.u32.f64">;
+def : VFP2MnemonicAlias<"ftouizs", "vcvt.u32.f32">;
+def : VFP2MnemonicAlias<"ftouis", "vcvtr.u32.f32">;
+def : VFP2MnemonicAlias<"fsitod", "vcvt.f64.s32">;
+def : VFP2MnemonicAlias<"fsitos", "vcvt.f32.s32">;
+def : VFP2MnemonicAlias<"fuitod", "vcvt.f64.u32">;
+def : VFP2MnemonicAlias<"fuitos", "vcvt.f32.u32">;
+def : VFP2MnemonicAlias<"fsts", "vstr">;
+def : VFP2MnemonicAlias<"fstd", "vstr">;
+def : VFP2MnemonicAlias<"fmacd", "vmla.f64">;
+def : VFP2MnemonicAlias<"fmacs", "vmla.f32">;
 
 def : VFP2InstAlias<"fmstat${p}", (FMSTAT pred:$p)>;
+def : VFP2InstAlias<"fadds${p} $Sd, $Sn, $Sm",
+                    (VADDS SPR:$Sd, SPR:$Sn, SPR:$Sm, pred:$p)>;
+def : VFP2InstAlias<"faddd${p} $Dd, $Dn, $Dm",
+                    (VADDD DPR:$Dd, DPR:$Dn, DPR:$Dm, pred:$p)>;
+def : VFP2InstAlias<"fsubs${p} $Sd, $Sn, $Sm",
+                    (VSUBS SPR:$Sd, SPR:$Sn, SPR:$Sm, pred:$p)>;
+def : VFP2InstAlias<"fsubd${p} $Dd, $Dn, $Dm",
+                    (VSUBD DPR:$Dd, DPR:$Dn, DPR:$Dm, pred:$p)>;
+
+// No need for the size suffix on VSQRT. It's implied by the register classes.
+def : VFP2InstAlias<"vsqrt${p} $Sd, $Sm", (VSQRTS SPR:$Sd, SPR:$Sm, pred:$p)>;
+def : VFP2InstAlias<"vsqrt${p} $Dd, $Dm", (VSQRTD DPR:$Dd, DPR:$Dm, pred:$p)>;
 
 // VLDR/VSTR accept an optional type suffix.
 def : VFP2InstAlias<"vldr${p}.32 $Sd, $addr",

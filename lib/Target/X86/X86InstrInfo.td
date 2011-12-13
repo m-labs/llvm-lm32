@@ -476,13 +476,12 @@ def HasAVX2      : Predicate<"Subtarget->hasAVX2()">;
 def HasXMM       : Predicate<"Subtarget->hasXMM()">;
 def HasXMMInt    : Predicate<"Subtarget->hasXMMInt()">;
 
-def HasSSE1orAVX : Predicate<"Subtarget->hasSSE1orAVX()">;
-
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;
 def HasCLMUL     : Predicate<"Subtarget->hasCLMUL()">;
 def HasFMA3      : Predicate<"Subtarget->hasFMA3()">;
 def HasFMA4      : Predicate<"Subtarget->hasFMA4()">;
+def HasXOP       : Predicate<"Subtarget->hasXOP()">;
 def HasMOVBE     : Predicate<"Subtarget->hasMOVBE()">;
 def HasRDRAND    : Predicate<"Subtarget->hasRDRAND()">;
 def HasF16C      : Predicate<"Subtarget->hasF16C()">;
@@ -1504,6 +1503,9 @@ include "X86InstrFragmentsSIMD.td"
 
 // FMA - Fused Multiply-Add support (requires FMA)
 include "X86InstrFMA.td"
+
+// XOP
+include "X86InstrXOP.td"
 
 // SSE, MMX and 3DNow! vector support.
 include "X86InstrSSE.td"

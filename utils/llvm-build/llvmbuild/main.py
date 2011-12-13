@@ -1,3 +1,4 @@
+import StringIO
 import os
 import sys
 
@@ -63,31 +64,25 @@ def make_install_dir(path):
 class LLVMProjectInfo(object):
     @staticmethod
     def load_infos_from_path(llvmbuild_source_root):
-        # FIXME: Implement a simple subpath file list cache, so we don't restat
-        # directories we have already traversed.
+        def recurse(subpath):
+            # Load the LLVMBuild file.
+            llvmbuild_path = os.path.join(llvmbuild_source_root + subpath,
+                                          'LLVMBuild.txt')
+            if not os.path.exists(llvmbuild_path):
+                fatal("missing LLVMBuild.txt file at: %r" % (llvmbuild_path,))
 
-        # First, discover all the LLVMBuild.txt files.
-        #
-        # FIXME: We would like to use followlinks=True here, but that isn't
-        # compatible with Python 2.4. Instead, we will either have to special
-        # case projects we would expect to possibly be linked to, or implement
-        # our own walk that can follow links. For now, it doesn't matter since
-        # we haven't picked up the LLVMBuild system in any other LLVM projects.
-        for dirpath,dirnames,filenames in os.walk(llvmbuild_source_root):
-            # If there is no LLVMBuild.txt file in a directory, we don't recurse
-            # past it. This is a simple way to prune our search, although it
-            # makes it easy for users to add LLVMBuild.txt files in places they
-            # won't be seen.
-            if 'LLVMBuild.txt' not in filenames:
-                del dirnames[:]
-                continue
-
-            # Otherwise, load the LLVMBuild file in this directory.
-            assert dirpath.startswith(llvmbuild_source_root)
-            subpath = '/' + dirpath[len(llvmbuild_source_root)+1:]
-            llvmbuild_path = os.path.join(dirpath, 'LLVMBuild.txt')
-            for info in componentinfo.load_from_path(llvmbuild_path, subpath):
+            # Parse the components from it.
+            common,info_iter = componentinfo.load_from_path(llvmbuild_path,
+                                                            subpath)
+            for info in info_iter:
                 yield info
+
+            # Recurse into the specified subdirectories.
+            for subdir in common.get_list("subdirectories"):
+                for item in recurse(os.path.join(subpath, subdir)):
+                    yield item
+
+        return recurse("/")
 
     @staticmethod
     def load_from_path(source_root, llvmbuild_source_root):
@@ -213,14 +208,45 @@ class LLVMProjectInfo(object):
 
             info_basedir[ci.subpath] = info_basedir.get(ci.subpath, []) + [ci]
 
+        # Compute the list of subdirectories to scan.
+        subpath_subdirs = {}
+        for ci in self.component_infos:
+            # Ignore root components.
+            if ci.subpath == '/':
+                continue
+
+            # Otherwise, append this subpath to the parent list.
+            parent_path = os.path.dirname(ci.subpath)
+            subpath_subdirs[parent_path] = parent_list = subpath_subdirs.get(
+                parent_path, set())
+            parent_list.add(os.path.basename(ci.subpath))
+
         # Generate the build files.
         for subpath, infos in info_basedir.items():
             # Order the components by name to have a canonical ordering.
             infos.sort(key = lambda ci: ci.name)
 
             # Format the components into llvmbuild fragments.
-            fragments = filter(None, [ci.get_llvmbuild_fragment()
-                                      for ci in infos])
+            fragments = []
+
+            # Add the common fragments.
+            subdirectories = subpath_subdirs.get(subpath)
+            if subdirectories:
+                fragment = """\
+subdirectories = %s
+""" % (" ".join(sorted(subdirectories)),)
+                fragments.append(("common", fragment))
+
+            # Add the component fragments.
+            num_common_fragments = len(fragments)
+            for ci in infos:
+                fragment = ci.get_llvmbuild_fragment()
+                if fragment is None:
+                    continue
+
+                name = "component_%d" % (len(fragments) - num_common_fragments)
+                fragments.append((name, fragment))
+
             if not fragments:
                 continue
 
@@ -231,7 +257,22 @@ class LLVMProjectInfo(object):
             if not os.path.exists(directory_path):
                 os.makedirs(directory_path)
 
-            # Create the LLVMBuild file.
+            # In an effort to preserve comments (which aren't parsed), read in
+            # the original file and extract the comments. We only know how to
+            # associate comments that prefix a section name.
+            f = open(infos[0]._source_path)
+            comments_map = {}
+            comment_block = ""
+            for ln in f:
+                if ln.startswith(';'):
+                    comment_block += ln
+                elif ln.startswith('[') and ln.endswith(']\n'):
+                    comments_map[ln[1:-2]] = comment_block
+                else:
+                    comment_block = ""
+            f.close()
+
+            # Create the LLVMBuild fil[e.
             file_path = os.path.join(directory_path, 'LLVMBuild.txt')
             f = open(file_path, "w")
 
@@ -259,10 +300,16 @@ class LLVMProjectInfo(object):
 ;===------------------------------------------------------------------------===;
 """ % header_string
 
-            for i,fragment in enumerate(fragments):
-                print >>f, '[component_%d]' % i
+            # Write out each fragment.each component fragment.
+            for name,fragment in fragments:
+                comment = comments_map.get(name)
+                if comment is not None:
+                    f.write(comment)
+                print >>f, "[%s]" % name
                 f.write(fragment)
-                print >>f
+                if fragment is not fragments[-1][1]:
+                    print >>f
+
             f.close()
 
     def write_library_table(self, output_path):
@@ -645,6 +692,7 @@ def add_magic_target_components(parser, project, opts):
             fatal("special component %r must have empty %r list" % (
                     name, 'add_to_library_groups'))
 
+        info._is_special_group = True
         return info
 
     info_map = dict((ci.name, ci) for ci in project.component_infos)

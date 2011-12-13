@@ -40,7 +40,21 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
 
   switch (Name[0]) {
   default: break;
-  // SOMEDAY: Add some.
+  case 'c': {
+    if (Name.startswith("ctlz.") && F->arg_size() == 1) {
+      F->setName(Name + ".old");
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::ctlz,
+                                        F->arg_begin()->getType());
+      return true;
+    }
+    if (Name.startswith("cttz.") && F->arg_size() == 1) {
+      F->setName(Name + ".old");
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::cttz,
+                                        F->arg_begin()->getType());
+      return true;
+    }
+    break;
+  }
   }
 
   //  This may not belong here. This function is effectively being overloaded 
@@ -71,16 +85,27 @@ bool llvm::UpgradeGlobalVariable(GlobalVariable *GV) {
 // upgraded intrinsic. All argument and return casting must be provided in 
 // order to seamlessly integrate with existing context.
 void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
-  Function *F = CI->getCalledFunction();
+  assert(CI->getCalledFunction() && "Intrinsic call is not direct?");
+  if (!NewFn) return;
 
-  assert(F && "CallInst has no function associated with it.");
+  LLVMContext &C = CI->getContext();
+  IRBuilder<> Builder(C);
+  Builder.SetInsertPoint(CI->getParent(), CI);
 
-  if (NewFn) return;
-  
-  if (F->getName() == "llvm.something eventually") {
-    // UPGRADE HERE.
-  } else {
+  switch (NewFn->getIntrinsicID()) {
+  default:
     llvm_unreachable("Unknown function for CallInst upgrade.");
+
+  case Intrinsic::ctlz:
+  case Intrinsic::cttz:
+    assert(CI->getNumArgOperands() == 1 &&
+           "Mismatch between function args and call args");
+    StringRef Name = CI->getName();
+    CI->setName(Name + ".old");
+    CI->replaceAllUsesWith(Builder.CreateCall2(NewFn, CI->getArgOperand(0),
+                                               Builder.getFalse(), Name));
+    CI->eraseFromParent();
+    return;
   }
 }
 

@@ -15,6 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
+[common]
+subdirectories = MCTargetDesc TargetInfo
+
 [component_0]
 type = TargetGroup
 name = XCore
@@ -27,4 +30,3 @@ name = XCoreCodeGen
 parent = XCore
 required_libraries = AsmPrinter CodeGen Core MC SelectionDAG Support Target XCoreDesc XCoreInfo
 add_to_library_groups = XCore
-

@@ -15,6 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
+[common]
+subdirectories = MCTargetDesc TargetInfo
+
 [component_0]
 type = TargetGroup
 name = CellSPU
@@ -27,4 +30,3 @@ name = CellSPUCodeGen
 parent = CellSPU
 required_libraries = AsmPrinter CellSPUDesc CellSPUInfo CodeGen Core MC SelectionDAG Support Target
 add_to_library_groups = CellSPU
-
