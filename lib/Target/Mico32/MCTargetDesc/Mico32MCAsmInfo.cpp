@@ -24,6 +24,10 @@ Mico32MCAsmInfo::Mico32MCAsmInfo(const Target &T, StringRef TT)
   PrivateGlobalPrefix         = ".L";
   GPRel32Directive            = "\t.gpword\t";
 
+  // Uses '.section' before '.bss' directive
+  UsesELFSectionDirectiveForBSS = true;
+
+
 #if 0
 // These are from Monarch.
   // Monarch supports emission of Dwarf debugging information.
