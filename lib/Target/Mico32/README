@@ -59,6 +59,8 @@ After the inital "make check" (which does some initial DejaGnu configuration) yo
 
 Test Results:
 
+****An additional test is failing as of 12/8/2011.  The failure may be related to recent DataLayout changes (a0:32:32 to a0:8:8).  This should be debugged. ***
+
 ********************
 Testing Time: 17.58s
 ********************
@@ -146,6 +148,9 @@ TABLE 1
 
 Stack Realignment
 Stack realignment occurs when an object on the stack frame has a higher alignment than the default 4 byte alignment.  Extra space will be allocated in the frame to allow the frame objects to be aligned to the requested alignment.  The function prologue will force the stack pointer to the requested alignment by adding code to mask the low order bits.  The frame pointer is set as usual pointing to the first used word in the frame but it's alignment will not be adjusted.  The offset of the frame pointer to the stack pointer will be unknown at this point. Vararg parameters and incoming parameters will be accessed through the FP, the SP will be used for all other stack frame accesses. The current implementation limits the size of the call frame.  The offset from the SP to the top of the local workspace is limited to a 16 bit signed immediate (-32768). A framepointer is required since the SP is restored from the FP in the function prologue.
+
+http://groups.google.com/group/llvm-dev/browse_thread/thread/537afe9317752e87/d85486c583ba3f27?show_docid=d85486c583ba3f27
+"stack alignment and backend" in mailing list.
 
 Stack Pointer Bias
 There is a nospbias option available. The default Mico32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
