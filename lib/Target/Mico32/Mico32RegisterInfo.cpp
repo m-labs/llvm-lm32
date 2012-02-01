@@ -136,9 +136,9 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
   bool useFP = TFI->hasFP(MF);
 
-  // SP points to the top of stack (possibly biased), FP points to the
-  // callee save registers at top of the frame (the last used stack location
-  // prior to entering the function).
+  // SP points to the top of stack (possibly biased to first free location), 
+  // FP points to the callee save registers at top of the frame (the last 
+  // used stack location prior to entering the function).
   unsigned FPRegToUse = Mico32::RSP;
   if (useFP) {
     FPRegToUse = Mico32::RFP;
