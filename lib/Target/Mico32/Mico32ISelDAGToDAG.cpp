@@ -103,9 +103,12 @@ private:
 ///
 bool Mico32DAGToDAGISel::
 SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset) {
+//   errs() << "value type: " <<  Addr.getValueType().getEVTString();
+  bool FP = hasFP(MF);
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
     Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i32);
     Offset = CurDAG->getTargetConstant(0, MVT::i32);
+//   errs() << "base result value type: " <<  Base.getValueType().getEVTString();
     return true;
   }
   if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
@@ -127,6 +130,7 @@ SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset) {
           Base = Addr.getOperand(0);
         }
         Offset = CurDAG->getTargetConstant(CN->getZExtValue(), MVT::i32);
+//     errs() << "base result value type: " <<  Base.getValueType().getEVTString();
         return true;
       }
     }
@@ -154,6 +158,7 @@ SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset) {
   }
   Base = Addr;
   Offset = CurDAG->getTargetConstant(0, MVT::i32);
+//   errs() << "base result value type: " <<  Base.getValueType().getEVTString();
   return true;
 }
 
@@ -172,6 +177,7 @@ assert(0 && "getGlobalBaseReg() not supported.");
 
 /// Select instructions not customized! Used for
 /// expanded, promoted and normal instructions
+/// from MBlaze:
 SDNode* Mico32DAGToDAGISel::Select(SDNode *Node) {
 //FIXME: not ported to MICO32
   unsigned Opcode = Node->getOpcode();
@@ -202,6 +208,7 @@ SDNode* Mico32DAGToDAGISel::Select(SDNode *Node) {
         SDValue imm = CurDAG->getTargetConstant(0, MVT::i32);
         int FI = dyn_cast<FrameIndexSDNode>(Node)->getIndex();
         EVT VT = Node->getValueType(0);
+//   errs() << "ISD::FrameIndex value type: " <<  VT.getEVTString() << "/n";
         SDValue TFI = CurDAG->getTargetFrameIndex(FI, VT);
         unsigned Opc = Mico32::ADDI;
         if (Node->hasOneUse())
