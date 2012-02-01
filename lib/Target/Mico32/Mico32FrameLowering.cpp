@@ -149,6 +149,10 @@ emitPrologue(MachineFunction &MF) const {
       MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
       BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
 
+  DEBUG(dbgs() << "\nFunction: "
+               << MF.getFunction()->getName() << " SP Frame debug location\n");
+  DEBUG(dbgs() << "Moving VirtFP: \n");
+  DEBUG(dbgs() << "VirtualFP = VirtFP[" << FrameSize << "]\n");
       // Generate DW_CFA_def_cfa_offset for SP.
       MachineLocation SPDst(MachineLocation::VirtualFP);
       MachineLocation SPSrc(MachineLocation::VirtualFP, FrameSize);
@@ -168,6 +172,10 @@ emitPrologue(MachineFunction &MF) const {
         MCSymbol *SaveLRLabel = MMI->getContext().CreateTempSymbol();
         BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
                 .addSym(SaveLRLabel);
+  DEBUG(dbgs() << "\nFunction: "
+               << MF.getFunction()->getName() << " LR Frame debug location\n");
+  DEBUG(dbgs() << "Moving %RRA (link register): \n");
+  DEBUG(dbgs() << "VirtualFP[FPSpillOffset] = VirtFP[" << LRSpillOffset << "]\n");
         MachineLocation CSDst(MachineLocation::VirtualFP, LRSpillOffset);
         MachineLocation CSSrc(Mico32::RRA);
         MMI->getFrameMoves().push_back(MachineMove(SaveLRLabel, CSDst, CSSrc));
@@ -186,6 +194,11 @@ emitPrologue(MachineFunction &MF) const {
       // RFP is live-in. It is killed at the spill.
       MBB.addLiveIn(Mico32::RFP);
       if (emitFrameMoves) {
+             DEBUG(dbgs() << "\nFunction: "
+               << MF.getFunction()->getName() << " FP Frame debug location\n");
+  DEBUG(dbgs() << "Moving FPreg:              : "
+               << ((FP) ? "FP" : "SP") << " to \n");
+  DEBUG(dbgs() << "VirtualFP[FPSpillOffset] = VirtFP[" << FPSpillOffset << "]\n");
         MCSymbol *SaveRFPLabel = MMI->getContext().CreateTempSymbol();
         BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
                 .addSym(SaveRFPLabel);
