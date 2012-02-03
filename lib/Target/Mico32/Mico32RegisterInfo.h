@@ -61,6 +61,12 @@ struct Mico32RegisterInfo : public Mico32GenRegisterInfo {
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
                            int SPAdj, RegScavenger *RS = NULL) const;
 
+  // Handle cases where the stack must be aligned more than the default
+  // alignment.
+  bool needsStackRealignment(const MachineFunction &MF) const;
+  bool canRealignStack(const MachineFunction &MF) const;
+
+
   /// Debug information queries.
   unsigned getRARegister() const;
   unsigned getFrameRegister(const MachineFunction &MF) const;

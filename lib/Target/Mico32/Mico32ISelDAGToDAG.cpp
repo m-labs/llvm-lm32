@@ -104,7 +104,6 @@ private:
 bool Mico32DAGToDAGISel::
 SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset) {
 //   errs() << "value type: " <<  Addr.getValueType().getEVTString();
-  bool FP = hasFP(MF);
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
     Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i32);
     Offset = CurDAG->getTargetConstant(0, MVT::i32);

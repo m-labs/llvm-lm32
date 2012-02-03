@@ -81,11 +81,17 @@ determineFrameLayout(MachineFunction &MF) const {
 /// hasFP - Return true if the specified function should have a dedicated frame
 /// pointer register.  This is true if the stacksize > 0 and either the 
 /// function has variable sized allocas or frame pointer elimination 
-/// is disabled.
+/// is disabled or stack alignment is less than requested alignment.
 ///
 bool Mico32FrameLowering::
 hasFP(const MachineFunction &MF) const {
-  return MF.getTarget().Options.DisableFramePointerElim(MF) || MF.getFrameInfo()->hasVarSizedObjects();
+  const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+
+  return (MF.getTarget().Options.DisableFramePointerElim(MF) || 
+           RegInfo->needsStackRealignment(MF) ||
+           MF.getFrameInfo()->hasVarSizedObjects() ||
+           MFI->isFrameAddressTaken());
 }
 
 
@@ -111,6 +117,9 @@ emitPrologue(MachineFunction &MF) const {
   assert(MFrmInf->getMaxCallFrameSize()%4 == 0 && "Misaligned call frame size");
 
   bool FP = hasFP(MF);
+  bool needsRealignment =
+           MF.getTarget().getRegisterInfo()->needsStackRealignment(MF);
+
 
   // Get the frame size.
   int FrameSize = MFrmInf->getStackSize();

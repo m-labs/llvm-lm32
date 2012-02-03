@@ -222,6 +222,52 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
 }
 
 
+//===----------------------------------------------------------------------===//
+// Stack Frame Processing methods
+//===----------------------------------------------------------------------===//
+
+// copied from X86.  Arm supports stack realignment too.
+// Note RealignStack is set by realign-stack option, true by default.
+bool Mico32RegisterInfo::
+canRealignStack(const MachineFunction &MF) const {
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  return (MF.getTarget().Options.RealignStack &&
+          !MFI->hasVarSizedObjects());
+}
+
+// copied from X86.  Arm supports stack realignment too.
+bool Mico32RegisterInfo::
+needsStackRealignment(const MachineFunction &MF) const {
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  const Function *F = MF.getFunction();
+  unsigned StackAlign = MF.getTarget().getFrameLowering()->getStackAlignment();
+  DEBUG(if (!(MFI->getMaxAlignment() <= StackAlign))
+             errs() << "\nError in function: "
+                    << MF.getFunction()->getName() << "\n");
+  assert((MFI->getMaxAlignment() <= StackAlign)  &&
+            "Unable to align stack to requested alignment.");
+  assert(((MFI->getMaxAlignment() <= StackAlign) || 
+            MF.getTarget().Options.RealignStack) && 
+            "Unable to align stack to requested alignment.");
+  bool requiresRealignment = ((MFI->getMaxAlignment() > StackAlign) ||
+                               F->hasFnAttr(Attribute::StackAlignment));
+
+  // FIXME: Currently we don't support stack realignment for functions with
+  //        variable-sized allocas.
+  // FIXME: It's more complicated than this...
+  if (0 && requiresRealignment && MFI->hasVarSizedObjects())
+    report_fatal_error(
+      "Stack realignment in presence of dynamic allocas is not supported");
+
+  // If we've requested that we force align the stack do so now.
+  // this is x86 specific.  Note that hasFP changes too if this is supported.
+//  if (ForceStackAlign)
+//    return canRealignStack(MF);
+
+  return requiresRealignment && canRealignStack(MF);
+}
+
+
 unsigned Mico32RegisterInfo::getRARegister() const {
   return Mico32::RRA;
 }
