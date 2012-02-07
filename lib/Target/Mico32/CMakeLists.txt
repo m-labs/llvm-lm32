@@ -1,15 +1,15 @@
 set(LLVM_TARGET_DEFINITIONS Mico32.td)
 
-llvm_tablegen(Mico32GenRegisterInfo.inc -gen-register-info)
-llvm_tablegen(Mico32GenInstrInfo.inc -gen-instr-info)
-llvm_tablegen(Mico32GenCodeEmitter.inc -gen-emitter)
-llvm_tablegen(Mico32GenAsmWriter.inc -gen-asm-writer)
-llvm_tablegen(Mico32GenAsmMatcher.inc -gen-asm-matcher)
-llvm_tablegen(Mico32GenDAGISel.inc -gen-dag-isel)
-llvm_tablegen(Mico32GenCallingConv.inc -gen-callingconv)
-llvm_tablegen(Mico32GenSubtargetInfo.inc -gen-subtarget)
-llvm_tablegen(Mico32GenIntrinsics.inc -gen-tgt-intrinsic)
-llvm_tablegen(Mico32GenEDInfo.inc -gen-enhanced-disassembly-info)
+tablegen(LLVM Mico32GenRegisterInfo.inc -gen-register-info)
+tablegen(LLVM Mico32GenInstrInfo.inc -gen-instr-info)
+tablegen(LLVM Mico32GenCodeEmitter.inc -gen-emitter)
+tablegen(LLVM Mico32GenAsmWriter.inc -gen-asm-writer)
+tablegen(LLVM Mico32GenAsmMatcher.inc -gen-asm-matcher)
+tablegen(LLVM Mico32GenDAGISel.inc -gen-dag-isel)
+tablegen(LLVM Mico32GenCallingConv.inc -gen-callingconv)
+tablegen(LLVM Mico32GenSubtargetInfo.inc -gen-subtarget)
+tablegen(LLVM Mico32GenIntrinsics.inc -gen-tgt-intrinsic)
+tablegen(LLVM Mico32GenEDInfo.inc -gen-enhanced-disassembly-info)
 add_public_tablegen_target(Mico32CommonTableGen)
 
 add_llvm_target(Mico32CodeGen
@@ -24,18 +24,6 @@ add_llvm_target(Mico32CodeGen
   Mico32Subtarget.cpp
   Mico32TargetMachine.cpp
   Mico32TargetObjectFile.cpp
-  )
-
-add_llvm_library_dependencies(LLVMMico32CodeGen
-  LLVMAsmPrinter
-  LLVMCodeGen
-  LLVMCore
-  LLVMMico32Desc
-  LLVMMico32Info
-  LLVMMC
-  LLVMSelectionDAG
-  LLVMSupport
-  LLVMTarget
   )
 
 add_subdirectory(TargetInfo)
