@@ -158,13 +158,16 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
-  setOperationAction(ISD::MEMBARRIER, MVT::Other, Expand);
-  setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Expand);
-  setOperationAction(ISD::FP_ROUND,   MVT::f32, Expand);
-  setOperationAction(ISD::FP_ROUND,   MVT::f64, Expand);
-  setOperationAction(ISD::CTPOP, MVT::i32, Expand);
-  setOperationAction(ISD::CTTZ , MVT::i32, Expand);
-  setOperationAction(ISD::CTLZ , MVT::i32, Expand);
+  setOperationAction(ISD::MEMBARRIER,         MVT::Other, Expand);
+  setOperationAction(ISD::ATOMIC_FENCE,       MVT::Other, Expand);
+  setOperationAction(ISD::FP_ROUND,           MVT::f32,   Expand);
+  setOperationAction(ISD::FP_ROUND,           MVT::f64,   Expand);
+  setOperationAction(ISD::CTPOP,              MVT::i32,   Expand);
+  setOperationAction(ISD::CTTZ,               MVT::i32,   Expand);
+  setOperationAction(ISD::CTLZ,               MVT::i32,   Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF,    MVT::i32,   Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF,    MVT::i32,   Expand);
+
 // FIXME: don't we have ROTL ROTR?
   setOperationAction(ISD::ROTL , MVT::i32, Expand);
   setOperationAction(ISD::ROTR , MVT::i32, Expand);
