@@ -30,8 +30,9 @@ mkdir $TOPDIR/build
 -------------------
 mkdir $TOPDIR/build
 
-(cd $TOPDIR/build ; ../llvm/configure --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
+(cd $TOPDIR/build ; ../llvm/configure CC=gcc CXX=g++ --enable-debug-runtime --prefix=/Users/jpbonn/Documents/mico32/install/)
 -------------------
+The "CC=gcc CXX=g++" may be required on systems with clang installed.
 
 3) Once configured build llvm and clang:
 -------------------
