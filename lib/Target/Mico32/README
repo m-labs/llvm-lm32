@@ -31,7 +31,7 @@ mkdir $TOPDIR/build
 
 (cd $TOPDIR/build ; ../llvm/configure CC=gcc CXX=g++ --enable-debug-runtime --prefix=$TOPDIR/install/)
 -------------------
-The "CC=gcc CXX=g++" may be required on systems with clang installed.
+The "CC=gcc CXX=g++" may be required on systems with clang installed. On OSX do not use these flags.
 
 3) Once configured build llvm and clang:
 -------------------
