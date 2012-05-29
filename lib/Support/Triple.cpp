@@ -128,6 +128,7 @@ const char *Triple::getEnvironmentTypeName(EnvironmentType Kind) {
   case GNUEABI: return "gnueabi";
   case EABI: return "eabi";
   case MachO: return "macho";
+  case ELF: return "elf";
   }
 
   return "<invalid>";
@@ -388,6 +389,8 @@ Triple::OSType Triple::ParseOS(StringRef OSName) {
 Triple::EnvironmentType Triple::ParseEnvironment(StringRef EnvironmentName) {
   if (EnvironmentName.startswith("eabi"))
     return EABI;
+  if (EnvironmentName.startswith("elf"))
+    return ELF;
   else if (EnvironmentName.startswith("gnueabi"))
     return GNUEABI;
   else if (EnvironmentName.startswith("gnu"))
