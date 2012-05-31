@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 
 @quant_coef = external global [6 x [4 x [4 x i32]]]		; <[6 x [4 x [4 x i32]]]*> [#uses=1]

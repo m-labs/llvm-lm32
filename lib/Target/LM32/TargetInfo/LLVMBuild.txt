@@ -1,4 +1,4 @@
-;===- ./lib/Target/Mico32/TargetInfo/LLVMBuild.txt -------------*- Conf -*--===;
+;===- ./lib/Target/LM32/TargetInfo/LLVMBuild.txt ---------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -17,8 +17,8 @@
 
 [component_0]
 type = Library
-name = Mico32Info
-parent = Mico32
+name = LM32Info
+parent = LM32
 required_libraries = MC Support Target
-add_to_library_groups = Mico32
+add_to_library_groups = LM32
 

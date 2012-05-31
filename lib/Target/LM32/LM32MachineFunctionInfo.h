@@ -1,4 +1,4 @@
-//=== Mico32MachineFuctionInfo.h - Mico32 machine function info -*- C++ -*-===//
+//=== LM32MachineFuctionInfo.h - LM32 machine function info -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares Mico32-specific per-machine-function information.
+// This file declares LM32-specific per-machine-function information.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32MACHINEFUNCTIONINFO_H
-#define MICO32MACHINEFUNCTIONINFO_H
+#ifndef LM32MACHINEFUNCTIONINFO_H
+#define LM32MACHINEFUNCTIONINFO_H
 
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -23,9 +23,9 @@ namespace llvm {
 // Forward declarations
 class Function;
 
-/// Mico32FunctionInfo - This class is derived from MachineFunction private
-/// Mico32 target-specific information for each MachineFunction.
-class Mico32FunctionInfo : public MachineFunctionInfo {
+/// LM32FunctionInfo - This class is derived from MachineFunction private
+/// LM32 target-specific information for each MachineFunction.
+class LM32FunctionInfo : public MachineFunctionInfo {
 private:
   bool UsesLR;
   int LRSpillSlot;
@@ -34,19 +34,19 @@ private:
   std::vector<std::pair<MCSymbol*, CalleeSavedInfo> > SpillLabels;
 
 public:
-  Mico32FunctionInfo() :
+  LM32FunctionInfo() :
     UsesLR(false),
     LRSpillSlot(0),
     FPSpillSlot(0),
     VarArgsFrameIndex(0) {}
   
-  explicit Mico32FunctionInfo(MachineFunction &MF) :
+  explicit LM32FunctionInfo(MachineFunction &MF) :
     UsesLR(false),
     LRSpillSlot(0),
     FPSpillSlot(0),
     VarArgsFrameIndex(0) {}
   
-  ~Mico32FunctionInfo() {}
+  ~LM32FunctionInfo() {}
   
   void setVarArgsFrameIndex(int idx) { VarArgsFrameIndex = idx; }
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
@@ -66,4 +66,4 @@ public:
 };
 } // End llvm namespace
 
-#endif // MICO32MACHINEFUNCTIONINFO_H
+#endif // LM32MACHINEFUNCTIONINFO_H

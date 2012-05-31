@@ -1,8 +1,8 @@
 ;test for ADDC and ADDE expansion
 ;
-; mico32 cannot return i128.  Should be labeled as sret.
+; lm32 cannot return i128.  Should be labeled as sret.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 define i128 @add128(i128 %x, i128 %y) {
 entry:

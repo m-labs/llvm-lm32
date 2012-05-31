@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; XFAIL: *
 
 define i128 @__mulvdi3(i128 %a, i128 %b) nounwind {

@@ -1,6 +1,6 @@
 ; Make sure this testcase codegens to the bic instruction
-; RUN: llvm-as < %s | llc -march=mico32
-; DONT: llvm-as < %s | llc -march=mico32 | grep {bic}
+; RUN: llvm-as < %s | llc -march=lm32
+; DONT: llvm-as < %s | llc -march=lm32 | grep {bic}
 
 define i64 @bar(i64 %x, i64 %y) {
 entry:

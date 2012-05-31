@@ -1,6 +1,6 @@
-; mico32 doesn't support directly returning two doubles.
+; lm32 doesn't support directly returning two doubles.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32
 ; PR3011

@@ -1,4 +1,4 @@
-//===- Mico32InstrInfo.td - Mico32 Instruction defs --------*- tablegen -*-===//
+//===- LM32InstrInfo.td - LM32 Instruction defs ------------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,47 +10,47 @@
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
 //===----------------------------------------------------------------------===//
-include "Mico32InstrFormats.td"
+include "LM32InstrFormats.td"
 
 //===----------------------------------------------------------------------===//
-// Mico32 type profiles
+// LM32 type profiles
 //===----------------------------------------------------------------------===//
 
-def SDT_Mico32CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>]>;
-def SDT_Mico32CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
+def SDT_LM32CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>]>;
+def SDT_LM32CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 
-// SDT_Mico32Call has no results, target address operand, ...
+// SDT_LM32Call has no results, target address operand, ...
 // -1 indicates variadic/arbitrary number of arguments.
-def SDT_Mico32Call : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
+def SDT_LM32Call : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
 
 //===----------------------------------------------------------------------===//
-// Mico32 specific nodes
+// LM32 specific nodes
 //===----------------------------------------------------------------------===//
 
-def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_Mico32CallSeqStart,
+def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_LM32CallSeqStart,
                            [SDNPHasChain, SDNPOutGlue]>;
 
-def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_Mico32CallSeqEnd,
+def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_LM32CallSeqEnd,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
-// A mico32 return instruction SDNode.
-def RetFlag       : SDNode<"Mico32ISD::RetFlag", SDTNone,
+// A lm32 return instruction SDNode.
+def RetFlag       : SDNode<"LM32ISD::RetFlag", SDTNone,
                            [SDNPHasChain, SDNPOptInGlue]>;
 
-def Mico32Call    : SDNode<"Mico32ISD::JmpLink", SDT_Mico32Call,
+def LM32Call    : SDNode<"LM32ISD::JmpLink", SDT_LM32Call,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
                             SDNPVariadic]>;
 
 // Hi and Lo nodes are used to handle global addresses. Used in 
-// Mico32ISelLowering to lower stuff like GlobalAddress, ExternalSymbol 
+// LM32ISelLowering to lower stuff like GlobalAddress, ExternalSymbol 
 // static model.
 // These are generated in LowerConstantPool and LowerGLobalAddress.
-def Mico32Hi    : SDNode<"Mico32ISD::Hi", SDTIntUnaryOp>;
-def Mico32Lo    : SDNode<"Mico32ISD::Lo", SDTIntUnaryOp>;
+def LM32Hi    : SDNode<"LM32ISD::Hi", SDTIntUnaryOp>;
+def LM32Lo    : SDNode<"LM32ISD::Lo", SDTIntUnaryOp>;
 
 
 //===----------------------------------------------------------------------===//
-// Mico32 Instruction Predicate Definitions.
+// LM32 Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
 def HasBarrel    : Predicate<"Subtarget.hasBarrel()">;
 //def NoBarrel     : Predicate<"!Subtarget.hasBarrel()">;
@@ -59,7 +59,7 @@ def HasSDIV      : Predicate<"Subtarget.hasSDIV()">;
 def HasMUL       : Predicate<"Subtarget.hasMUL()">;
 
 //===----------------------------------------------------------------------===//
-// Mico32 Operand, Complex Patterns and Transformations Definitions.
+// LM32 Operand, Complex Patterns and Transformations Definitions.
 //===----------------------------------------------------------------------===//
 
 
@@ -80,7 +80,7 @@ def immSExt26ShftOff : PatLeaf<(imm),
 
 
 // This is from MBlaze - need to see how it works.
-def Mico32MemAsmOperand : AsmOperandClass {
+def LM32MemAsmOperand : AsmOperandClass {
   let Name = "Mem";
   let SuperClasses = [];
 }
@@ -153,7 +153,7 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 
 
 // Addressing modes.
-// Note: SelectAddrRegImm is defined in Mico32ISelDAGToDAG.cpp.
+// Note: SelectAddrRegImm is defined in LM32ISelDAGToDAG.cpp.
 // See the maillist thread "Using frameindex in a pattern",
 // "ComplexPattern in child ISel nodes",
 //
@@ -181,7 +181,7 @@ def imm16ShiftedZExt : PatLeaf<(imm), [{
 // specified, 2 in this case, these 2 operands are then passed as the arguments
 // to the node using the ADDRri pattern.
 //
-// Mico32 Address Mode. SDNode frameindex could possibily be a match
+// LM32 Address Mode. SDNode frameindex could possibily be a match
 // since load and store instructions from stack used it.
 // From MBlaze:
 def ADDRri : ComplexPattern<i32, 2, "SelectAddrRegImm", [frameindex], []>;
@@ -191,13 +191,13 @@ def ADDRri : ComplexPattern<i32, 2, "SelectAddrRegImm", [frameindex], []>;
 def MEMri : Operand<i32> {
   let PrintMethod = "printMemOperand";
   let MIOperandInfo = (ops GPR, simm16);
-  let ParserMatchClass = Mico32MemAsmOperand;
+  let ParserMatchClass = LM32MemAsmOperand;
 }
 
 def MEMrr : Operand<i32> {
   let PrintMethod = "printMemOperand";
   let MIOperandInfo = (ops GPR, GPR);
-  let ParserMatchClass = Mico32MemAsmOperand;
+  let ParserMatchClass = LM32MemAsmOperand;
 }
 
 
@@ -208,10 +208,10 @@ def MEMrr : Operand<i32> {
 // This is a call frame create  pseudo opcode.
 // As stack alignment is always done with addiu, we need a 16-bit immediate
 let Defs = [RSP], Uses = [RSP] in {
-def ADJCALLSTACKDOWN : Mico32Pseudo<(outs), (ins simm16:$amt),
+def ADJCALLSTACKDOWN : LM32Pseudo<(outs), (ins simm16:$amt),
                                     "#ADJCALLSTACKDOWN $amt",
                                     [(callseq_start timm:$amt)]>;
-def ADJCALLSTACKUP   : Mico32Pseudo<(outs),
+def ADJCALLSTACKUP   : LM32Pseudo<(outs),
                                     (ins uimm16:$amt1, simm16:$amt2),
                                     "#ADJCALLSTACKUP $amt1",
                                     [(callseq_end timm:$amt1, timm:$amt2)]>;
@@ -333,14 +333,14 @@ let isCall=1,
                  "calli    $target", [], IICall>;
 
   def CALL : TBR<0x36, (outs), (ins GPR:$dst, variable_ops),
-                 "call     $dst", [(Mico32Call GPR:$dst)], IICall>;
+                 "call     $dst", [(LM32Call GPR:$dst)], IICall>;
 }
 
 // I think the linker should relax these as needed.
 // FIXME:  check it really does.
-def : Pat<(Mico32Call tglobaladdr:$addr), (CALLI tglobaladdr:$addr)>;
-def : Pat<(Mico32Call texternalsym:$addr), (CALLI texternalsym:$addr)>;
-def : Pat<(Mico32Call immSExt26ShftOff:$target),
+def : Pat<(LM32Call tglobaladdr:$addr), (CALLI tglobaladdr:$addr)>;
+def : Pat<(LM32Call texternalsym:$addr), (CALLI texternalsym:$addr)>;
+def : Pat<(LM32Call immSExt26ShftOff:$target),
             (CALLI (div4_xform immSExt26ShftOff:$target))>;
 
 
@@ -420,7 +420,7 @@ def : Pat<(brcond (seteq GPR:$lhs, 0), bb:$dst),
           (BE GPR:$lhs, R0, bb:$dst)>;
 
 //===----------------------------------------------------------------------===//
-// Mico32 arithmetic instructions
+// LM32 arithmetic instructions
 //===----------------------------------------------------------------------===//
 
 let isCommutable = 1, isAsCheapAsAMove = 1 in {
@@ -475,7 +475,7 @@ let Predicates=[HasSDIV] in {
 
 
 //===----------------------------------------------------------------------===//
-// Mico32 immediate mode arithmetic instructions
+// LM32 immediate mode arithmetic instructions
 //===----------------------------------------------------------------------===//
 
 let isAsCheapAsAMove = 1 in {
@@ -505,7 +505,7 @@ let Predicates=[HasMUL] in {
 }
 
 //===----------------------------------------------------------------------===//
-// Mico32 memory access instructions
+// LM32 memory access instructions
 //===----------------------------------------------------------------------===//
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
@@ -527,7 +527,7 @@ def : Pat<(extloadi16 ADDRri:$addr), (i32 (LHU ADDRri:$addr))>;
 
 
 //===----------------------------------------------------------------------===//
-// Mico32 comparison instructions
+// LM32 comparison instructions
 //===----------------------------------------------------------------------===//
 def CMPEI   : ArithFRIs<0x19, "cmpei   ", seteq, IICmp>;
 def CMPGI   : ArithFRIs<0x1a, "cmpgi   ", setgt, IICmp>;
@@ -552,7 +552,7 @@ def : Pat<(setule GPR:$L, GPR:$R), (CMPGEU  GPR:$R, GPR:$L)>;
 
 
 //===----------------------------------------------------------------------===//
-// Mico32 misc instructions
+// LM32 misc instructions
 //===----------------------------------------------------------------------===//
 
 def SEXTH : TSX<0x37, (outs GPR:$dst), (ins GPR:$b),
@@ -593,25 +593,25 @@ def : Pat<(i32 imm:$val),
           (ORI (ORHI R0, (HI16 imm:$val)), (LO16 imm:$val))>;
 
 // hi/lo relocs (from Mips and SPU)
-// ISel custom lowering generates (Mico32Hi tglobaladdr:$in) and
-// (Mico32Lo tglobaladdr:$in).  We further lower them here:
-def : Pat<(Mico32Hi tglobaladdr:$in), (ORHIsym R0, tglobaladdr:$in)>;
-def : Pat<(Mico32Lo tglobaladdr:$in), (ORIsym R0, tglobaladdr:$in)>;
-def : Pat<(add GPR:$hi, (Mico32Lo tglobaladdr:$lo)),
+// ISel custom lowering generates (LM32Hi tglobaladdr:$in) and
+// (LM32Lo tglobaladdr:$in).  We further lower them here:
+def : Pat<(LM32Hi tglobaladdr:$in), (ORHIsym R0, tglobaladdr:$in)>;
+def : Pat<(LM32Lo tglobaladdr:$in), (ORIsym R0, tglobaladdr:$in)>;
+def : Pat<(add GPR:$hi, (LM32Lo tglobaladdr:$lo)),
           (ADDIsym GPR:$hi, tglobaladdr:$lo)>;
 
-// ISel custom lowering generates (Mico32Hi tconstpool:$in) and
-// (Mico32Lo tconstpool:$in).  We further lower them here:
-def : Pat<(Mico32Hi tconstpool:$in), (ORHIsym R0, tconstpool:$in)>;
-def : Pat<(Mico32Lo tconstpool:$in), (ORIsym R0, tconstpool:$in)>;
-def : Pat<(add GPR:$hi, (Mico32Lo tconstpool:$lo)),
+// ISel custom lowering generates (LM32Hi tconstpool:$in) and
+// (LM32Lo tconstpool:$in).  We further lower them here:
+def : Pat<(LM32Hi tconstpool:$in), (ORHIsym R0, tconstpool:$in)>;
+def : Pat<(LM32Lo tconstpool:$in), (ORIsym R0, tconstpool:$in)>;
+def : Pat<(add GPR:$hi, (LM32Lo tconstpool:$lo)),
           (ADDIsym GPR:$hi, tconstpool:$lo)>;
 
-// ISel custom lowering generates (Mico32Hi tjumptable:$in) and
-// (Mico32Lo tjumptable:$in).  We further lower them here:
-def : Pat<(Mico32Hi tjumptable:$in), (ORHIsym R0, tjumptable:$in)>;
-def : Pat<(Mico32Lo tjumptable:$in), (ORIsym R0, tjumptable:$in)>;
-def : Pat<(add GPR:$hi, (Mico32Lo tjumptable:$lo)),
+// ISel custom lowering generates (LM32Hi tjumptable:$in) and
+// (LM32Lo tjumptable:$in).  We further lower them here:
+def : Pat<(LM32Hi tjumptable:$in), (ORHIsym R0, tjumptable:$in)>;
+def : Pat<(LM32Lo tjumptable:$in), (ORIsym R0, tjumptable:$in)>;
+def : Pat<(add GPR:$hi, (LM32Lo tjumptable:$lo)),
           (ADDIsym GPR:$hi, tjumptable:$lo)>;
 
 // A conditional move pattern.

@@ -1,4 +1,4 @@
-//====-- Mico32MCAsmInfo.h - Mico32 asm properties -------------*- C++ -*--===//
+//====-- LM32MCAsmInfo.h - LM32 asm properties -----------------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of the Mico32MCAsmInfo class.
+// This file contains the declaration of the LM32MCAsmInfo class.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32TARGETASMINFO_H
-#define MICO32TARGETASMINFO_H
+#ifndef LM32TARGETASMINFO_H
+#define LM32TARGETASMINFO_H
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -20,9 +20,9 @@
 namespace llvm {
   class Target;
 
-  class Mico32MCAsmInfo : public MCAsmInfo {
+  class LM32MCAsmInfo : public MCAsmInfo {
   public:
-    explicit Mico32MCAsmInfo(const Target &T, StringRef TT);
+    explicit LM32MCAsmInfo(const Target &T, StringRef TT);
   };
 
 

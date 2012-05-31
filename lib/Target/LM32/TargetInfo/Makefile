@@ -1,4 +1,4 @@
-##===- lib/Target/Mico32/TargetInfo/Makefile ---------------*- Makefile -*-===##
+##===- lib/Target/LM32/TargetInfo/Makefile -----------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,7 +7,7 @@
 #
 ##===----------------------------------------------------------------------===##
 LEVEL = ../../../..
-LIBRARYNAME = LLVMMico32Info
+LIBRARYNAME = LLVMLM32Info
 
 # Hack: we need to include 'main' target directory to grab private headers
 CPPFLAGS = -I$(PROJ_OBJ_DIR)/.. -I$(PROJ_SRC_DIR)/..

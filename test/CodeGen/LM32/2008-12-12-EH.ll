@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mtriple=powerpc-unknown-linux-gnu | grep ^.L_Z1fv.eh
 ; RUN: llvm-as < %s | llc  -march=ppc32 -mtriple=powerpc-apple-darwin9 | grep ^__Z1fv.eh

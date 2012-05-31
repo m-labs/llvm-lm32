@@ -1,9 +1,9 @@
 ; This should work.  For some reason the null doesn't
 ; get matched.  Works for Mips and Sparc which are similar.
 ; $ llvm-as null.ll -o null.bc
-; $ llc -march=mico32 -debug -view-sched-dags -view-legalize-types-dags null.bc > /tmp/ll
+; $ llc -march=lm32 -debug -view-sched-dags -view-legalize-types-dags null.bc > /tmp/ll
 ; This does work for constant "a".
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 
 	@a = constant i8 0

@@ -1,4 +1,4 @@
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as -o - %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
 ; RUN: llvm-as -o - %s | llc -march=cellspu -mattr=large_mem > %t2.s

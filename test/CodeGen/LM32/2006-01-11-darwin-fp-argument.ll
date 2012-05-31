@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32 | grep __adddf3
+; RUN: llvm-as < %s | llc -march=lm32 | grep __adddf3
 
 ; Dead argument should reserve an FP register.
 define double @bar(double %DEAD, double %X, double %Y) {

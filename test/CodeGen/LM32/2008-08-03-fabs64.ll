@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=mips -f -o %t
 ; RUN: grep {lui.*32767} %t | count 1

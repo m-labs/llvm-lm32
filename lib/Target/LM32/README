@@ -1,4 +1,4 @@
-This is the Lattice Mico32 backend.
+This is the Lattice LM32 backend.
 
 INSTALLATION
 
@@ -11,7 +11,7 @@ The general project layout will be:
     - build
     - install
 
-1) Check out the Mico32 LLVM port and clang from the GIT repository: 
+1) Check out the LM32 LLVM port and clang from the GIT repository: 
 ------------------
 cd $TOPDIR
 git clone git://github.com/milkymist/llvm-lm32.git llvm
@@ -38,14 +38,14 @@ The "CC=gcc CXX=g++" may be required on systems with clang installed. On OSX do 
 (cd $TOPDIR/build ; make install)
 -------------------
 
-4) (Optional) Build and install CompilerRT (Clang runtime support library).  The LM32 port is on GitHub: https://github.com/jpbonn/compiler-rt-mico32
+4) (Optional) Build and install CompilerRT (Clang runtime support library).  The LM32 port is on GitHub: https://github.com/jpbonn/compiler-rt-lm32
 
 
-LLVM MICO32 CODEGEN TESTS
+LLVM LM32 CODEGEN TESTS
 
 Run tests in a CMAKE configured environment:
 -------------------
-(cd $TOPDIR/build ; ./bin/llvm-lit -sv -j1 test/CodeGen/Mico32/)
+(cd $TOPDIR/build ; ./bin/llvm-lit -sv -j1 test/CodeGen/LM32/)
 -------------------
 
 Run tests in an autools configured environment:
@@ -55,7 +55,7 @@ Do "make check" to run the LLVM tests:
 
 After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
 
-(cd $TOPDIR/build ; make TESTSUITE=CodeGen/Mico32 check)
+(cd $TOPDIR/build ; make TESTSUITE=CodeGen/LM32 check)
 --------------------
 
 
@@ -67,8 +67,8 @@ Test Results:
 Testing Time: 17.58s
 ********************
 Failing Tests (2):
-    LLVM :: CodeGen/Mico32/2006-12-07-LargeAlloca.ll
-    LLVM :: CodeGen/Mico32/2007-04-03-PEIBug.ll
+    LLVM :: CodeGen/LM32/2006-12-07-LargeAlloca.ll
+    LLVM :: CodeGen/LM32/2007-04-03-PEIBug.ll
 
   Expected Passes    : 493
   Expected Failures  : 25
@@ -82,10 +82,10 @@ from GCC lm32.c
 Return values are returned in a register for all non-aggregate types (long double uses two registers for return value). Aggregate types 32bits or less are returned in a register.
 handled
 
-MICO32 ABI
+LM32 ABI
 (observed)
 
-This is intended to supplement the LatticeMico32 Processor Reference Manual (March 2010) description.
+This is intended to supplement the LM32 Processor Reference Manual (March 2010) description.
 
 The default stack alignment is 4 bytes. When parameters are placed on the stack a lexically earlier parameter resides at a lower address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
 
@@ -155,7 +155,7 @@ http://groups.google.com/group/llvm-dev/browse_thread/thread/537afe9317752e87/d8
 "stack alignment and backend" in mailing list.
 
 Stack Pointer Bias
-There is a nospbias option available. The default Mico32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
+There is a nospbias option available. The default LM32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
 
 GAS Relocatable Expression Modifiers
 http://sourceware.org/binutils/docs/as/LM32_002dModifiers.html#LM32_002dModifiers
@@ -165,7 +165,7 @@ lm32.c:lm32_function_arg()
 vararg parameters are passed on the stack.
 
 from bfd.h:
-/* Lattice Mico32 relocations.  */
+/* Lattice LM32 relocations.  */
   BFD_RELOC_LM32_CALL,
   BFD_RELOC_LM32_BRANCH,
   BFD_RELOC_LM32_16_GOT,

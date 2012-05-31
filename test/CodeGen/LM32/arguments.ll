@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -mtriple=arm-linux-gnueabi | \
 ; RUN:   grep {mov r0, r2} | count 1

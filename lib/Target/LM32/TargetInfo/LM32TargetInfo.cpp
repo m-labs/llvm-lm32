@@ -1,4 +1,4 @@
-//===-- Mico32TargetInfo.cpp - Mico32  Target Implementation ---------------===//
+//===-- LM32TargetInfo.cpp - LM32  Target Implementation ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32.h"
+#include "LM32.h"
 #include "llvm/Module.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-Target llvm::TheMico32Target;
+Target llvm::TheLM32Target;
 
-extern "C" void LLVMInitializeMico32TargetInfo() {
-  RegisterTarget<Triple::mico32> X(TheMico32Target, "mico32", "Mico32");
+extern "C" void LLVMInitializeLM32TargetInfo() {
+  RegisterTarget<Triple::lm32> X(TheLM32Target, "lm32", "LM32");
 }

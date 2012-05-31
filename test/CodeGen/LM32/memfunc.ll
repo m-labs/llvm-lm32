@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llc < %s -mtriple=armv7-apple-ios -o - | FileCheck %s
 ; RUN: llc < %s -mtriple=arm-none-eabi -o - | FileCheck --check-prefix=EABI %s

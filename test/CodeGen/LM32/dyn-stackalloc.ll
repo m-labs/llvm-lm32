@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llc < %s -mtriple=thumb-apple-darwin -disable-cgp-branch-opts -disable-post-ra | FileCheck %s
 ; RUN: llc < %s -mtriple=thumb-apple-darwin -disable-cgp-branch-opts -disable-post-ra -regalloc=basic | FileCheck %s

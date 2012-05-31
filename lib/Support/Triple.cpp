@@ -20,7 +20,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
 
   case arm:     return "arm";
   case cellspu: return "cellspu";
-  case mico32:  return "mico32";
+  case lm32:  return "lm32";
   case hexagon: return "hexagon";
   case mips:    return "mips";
   case mipsel:  return "mipsel";
@@ -59,7 +59,7 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case ppc64:
   case ppc:     return "ppc";
 
-  case mico32:  return "mico32";
+  case lm32:  return "lm32";
 
   case mblaze:  return "mblaze";
 
@@ -139,8 +139,8 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     return arm;
   if (Name == "cellspu")
     return cellspu;
-  if (Name == "mico32")
-    return mico32;
+  if (Name == "lm32")
+    return lm32;
   if (Name == "mips")
     return mips;
   if (Name == "mipsel")
@@ -296,8 +296,8 @@ Triple::ArchType Triple::ParseArch(StringRef ArchName) {
     return cellspu;
   else if (ArchName == "msp430")
     return msp430;
-  else if (ArchName == "mico32") 
-    return mico32;
+  else if (ArchName == "lm32") 
+    return lm32;
   else if (ArchName == "mips" || ArchName == "mipseb" ||
            ArchName == "mipsallegrex")
     return mips;

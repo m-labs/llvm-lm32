@@ -1,5 +1,5 @@
 ; RUN: llvm-as < %s | \
-; RUN:   llc -march=mico32
+; RUN:   llc -march=lm32
 ; END.
 ; R U N :   grep {vspltish v.*, 10}
 

@@ -1,5 +1,5 @@
 ; PR1296
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=x86 | grep {movl	\$1} | count 1
 

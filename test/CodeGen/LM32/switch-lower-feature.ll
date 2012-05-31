@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=x86 -o - | grep {\$7} | count 1
 ; RUN: llvm-as < %s | llc -march=x86 -o - | grep {\$6} | count 1

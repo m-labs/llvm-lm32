@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm -mattr=+v6,+vfp2 | grep fnmuld
 ; RUN: llvm-as < %s | llc -march=arm -mattr=+v6,+vfp2 -enable-sign-dependent-rounding-fp-math | grep fmul

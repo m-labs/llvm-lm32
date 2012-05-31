@@ -1,6 +1,6 @@
-; mico32 can only return <2 x i32> at most.
+; lm32 can only return <2 x i32> at most.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | grep vsldoi
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | not grep vor

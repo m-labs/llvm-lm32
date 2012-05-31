@@ -1,5 +1,5 @@
 ; This shouldn't crash
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 @.str_4 = external global [44 x i8]             ; <[44 x i8]*> [#uses=0]
 

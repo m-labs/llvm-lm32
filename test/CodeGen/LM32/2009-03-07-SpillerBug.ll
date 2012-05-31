@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llc < %s -mtriple=armv6-apple-darwin9 -mattr=+vfp2
 ; rdar://6653182

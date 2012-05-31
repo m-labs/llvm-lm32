@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 
 	%struct.attr_desc = type { i8*, %struct.attr_desc*, %struct.attr_value*, %struct.attr_value*, i32 }

@@ -1,5 +1,5 @@
 ; Should fold the ori into the lfs.
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 | grep lfs
 ; RUN: llvm-as < %s | llc -march=ppc32 | not grep ori

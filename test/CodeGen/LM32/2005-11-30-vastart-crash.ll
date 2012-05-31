@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 
 define void @bar(i32 %G, i32 %E, i32 %F, i32 %A, i32 %B, i32 %C, i32 %D, i8* %fmt, ...) {

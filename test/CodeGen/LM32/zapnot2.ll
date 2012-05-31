@@ -1,5 +1,5 @@
 ; Make sure this testcase codegens to the zapnot instruction
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=alpha | grep zapnot
 

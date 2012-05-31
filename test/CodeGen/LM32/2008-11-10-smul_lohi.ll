@@ -1,6 +1,6 @@
 ; i64 is not a leagel return type.  Should be labeled as sret.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 define i64 @__mulvdi3(i64 %a, i64 %b) nounwind {
 entry:

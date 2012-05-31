@@ -1,6 +1,6 @@
-; RUN: llvm-as < %s | llc -march=mico32
-; DONT: llvm-as < %s | llc -march=mico32 | not grep cmovlt
-; DONT: llvm-as < %s | llc -march=mico32 | grep cmoveq
+; RUN: llvm-as < %s | llc -march=lm32
+; DONT: llvm-as < %s | llc -march=lm32 | not grep cmovlt
+; DONT: llvm-as < %s | llc -march=lm32 | grep cmoveq
 
 define i64 @cmov_lt(i64 %a, i64 %c) {
 entry:

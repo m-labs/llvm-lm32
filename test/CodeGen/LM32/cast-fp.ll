@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc
 @a_fstr = internal constant [8 x i8] c"a = %f\0A\00"		; <[8 x i8]*> [#uses=1]

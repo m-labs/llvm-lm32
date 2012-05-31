@@ -1,7 +1,7 @@
-; mico32 supports retuning <2 x i32> at most.
+; lm32 supports retuning <2 x i32> at most.
 ; or_ops_pass.ll has supported versions of this test.
 ; XFAIL: *
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as -o - %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
 ; RUN: grep and    %t1.s | count 2

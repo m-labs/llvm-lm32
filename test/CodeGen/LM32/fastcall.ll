@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; Test fastcc works. Test from bug 2770.
 ; RUN: llvm-as < %s | llc -relocation-model=pic

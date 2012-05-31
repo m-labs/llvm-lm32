@@ -1,4 +1,4 @@
-//===-- Mico32TargetMachine.cpp - Define TargetMachine for Mico32 ---------===//
+//===-- LM32TargetMachine.cpp - Define TargetMachine for LM32 -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32.h"
-#include "Mico32TargetMachine.h"
+#include "LM32.h"
+#include "LM32TargetMachine.h"
 #include "llvm/PassManager.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/FormattedStream.h"
@@ -20,17 +20,17 @@
 using namespace llvm;
 
 
-extern "C" void LLVMInitializeMico32Target() {
+extern "C" void LLVMInitializeLM32Target() {
   // Register the target.
-  RegisterTargetMachine<Mico32TargetMachine> X(TheMico32Target);
+  RegisterTargetMachine<LM32TargetMachine> X(TheLM32Target);
 }
 
 ///
 /// Note: DataLayout is described in:
 /// http://www.llvm.org/docs/LangRef.html#datalayout
 ///
-Mico32TargetMachine::
-Mico32TargetMachine(const Target &T, StringRef TT,
+LM32TargetMachine::
+LM32TargetMachine(const Target &T, StringRef TT,
                     StringRef CPU, StringRef FS,
                     const TargetOptions &Options,
                     Reloc::Model RM, CodeModel::Model CM,
@@ -60,8 +60,8 @@ Mico32TargetMachine(const Target &T, StringRef TT,
 
 
 // Install an instruction selector pass using
-// the ISelDag to generate Mico32 code.
-bool Mico32TargetMachine::addInstSelector(PassManagerBase &PM) {
-  PM.add(createMico32ISelDag(*this));
+// the ISelDag to generate LM32 code.
+bool LM32TargetMachine::addInstSelector(PassManagerBase &PM) {
+  PM.add(createLM32ISelDag(*this));
   return false;
 }

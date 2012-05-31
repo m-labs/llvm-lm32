@@ -1,4 +1,4 @@
-##===- lib/Target/Mico32/Makefile --------------------------*- Makefile -*-===##
+##===- lib/Target/LM32/Makefile ----------------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -8,13 +8,13 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL = ../../..
-LIBRARYNAME = LLVMMico32CodeGen
-TARGET = Mico32
+LIBRARYNAME = LLVMLM32CodeGen
+TARGET = LM32
 
 # Make sure that tblgen is run, first thing.
-BUILT_SOURCES = Mico32GenRegisterInfo.inc Mico32GenInstrInfo.inc \
-                Mico32GenAsmWriter.inc Mico32GenDAGISel.inc \
-                Mico32GenCallingConv.inc Mico32GenSubtargetInfo.inc 
+BUILT_SOURCES = LM32GenRegisterInfo.inc LM32GenInstrInfo.inc \
+                LM32GenAsmWriter.inc LM32GenDAGISel.inc \
+                LM32GenCallingConv.inc LM32GenSubtargetInfo.inc 
 
 DIRS = TargetInfo MCTargetDesc
 

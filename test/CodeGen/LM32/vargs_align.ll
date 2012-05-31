@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm -mtriple=arm-linux-gnueabi | \
 ; RUN:   grep {add sp, sp, #16} | count 1

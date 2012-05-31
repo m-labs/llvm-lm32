@@ -1,7 +1,7 @@
-; mico32 supports returning <2 x i32> at most.
+; lm32 supports returning <2 x i32> at most.
 ; select_bits_pass.ll has passing versions of this test.
 ; XFAIL: *
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as -o - %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
 ; RUN: grep selb   %t1.s | count 56

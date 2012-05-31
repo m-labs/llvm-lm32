@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=mips -f -o %t
 ; RUN: grep {CPI\[01\]_\[01\]:} %t | count 2

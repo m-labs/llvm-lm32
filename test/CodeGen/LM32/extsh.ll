@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; This should turn into a single extsh
 ; RUN: llvm-as < %s | llc -march=ppc32 | grep extsh | count 1

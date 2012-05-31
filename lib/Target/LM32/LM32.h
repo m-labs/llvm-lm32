@@ -1,4 +1,4 @@
-//===-- Mico32.h - Top-level interface for Mico32 ---------------*- C++ -*-===//
+//===-- LM32.h - Top-level interface for LM32 -------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,33 +8,33 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains the entry points for global functions defined in
-// the LLVM Mico32 back-end.
+// the LLVM LM32 back-end.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TARGET_MICO32_H
-#define TARGET_MICO32_H
+#ifndef TARGET_LM32_H
+#define TARGET_LM32_H
 
-#include "MCTargetDesc/Mico32MCTargetDesc.h"
+#include "MCTargetDesc/LM32MCTargetDesc.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
-  class Mico32TargetMachine;
+  class LM32TargetMachine;
   class FunctionPass;
   class MachineCodeEmitter;
   class MCCodeEmitter;
   //class TargetAsmBackend;
   class formatted_raw_ostream;
 
-  MCCodeEmitter *createMico32MCCodeEmitter(const Target &,
+  MCCodeEmitter *createLM32MCCodeEmitter(const Target &,
                                            TargetMachine &TM,
                                            MCContext &Ctx);
 
-  //TargetAsmBackend *createMico32AsmBackend(const Target &, const std::string &);
+  //TargetAsmBackend *createLM32AsmBackend(const Target &, const std::string &);
 
-  FunctionPass *createMico32ISelDag(Mico32TargetMachine &TM);
+  FunctionPass *createLM32ISelDag(LM32TargetMachine &TM);
 
-  extern Target TheMico32Target;
+  extern Target TheLM32Target;
 } // end namespace llvm;
 
 #endif

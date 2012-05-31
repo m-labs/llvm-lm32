@@ -1,4 +1,4 @@
-//===- Mico32InstrInfo.cpp - Mico32 Instruction Information -----*- C++ -*-===//
+//===- LM32InstrInfo.cpp - LM32 Instruction Information ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,13 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the Mico32 implementation of the TargetInstrInfo class.
+// This file contains the LM32 implementation of the TargetInstrInfo class.
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32InstrInfo.h"
-#include "Mico32TargetMachine.h"
-#include "Mico32MachineFunctionInfo.h"
+#include "LM32InstrInfo.h"
+#include "LM32TargetMachine.h"
+#include "LM32MachineFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -22,12 +22,12 @@
 #include "llvm/Support/raw_ostream.h"
 
 #define GET_INSTRINFO_CTOR
-#include "Mico32GenInstrInfo.inc"
+#include "LM32GenInstrInfo.inc"
 
 using namespace llvm;
 
-Mico32InstrInfo::Mico32InstrInfo(Mico32TargetMachine &tm)
-  : Mico32GenInstrInfo(Mico32::ADJCALLSTACKDOWN, Mico32::ADJCALLSTACKUP),
+LM32InstrInfo::LM32InstrInfo(LM32TargetMachine &tm)
+  : LM32GenInstrInfo(LM32::ADJCALLSTACKDOWN, LM32::ADJCALLSTACKUP),
     TM(tm), RI(*TM.getSubtargetImpl(), *this) {}
 
 #if 0
@@ -43,9 +43,9 @@ static bool isZeroImm(const MachineOperand &op) {
 /// the destination along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than loading from the stack slot.
-unsigned Mico32InstrInfo::
+unsigned LM32InstrInfo::
 isLoadFromStackSlot(const MachineInstr *MI, int &FrameIndex) const {
-  if (MI->getOpcode() == Mico32::LWI) {
+  if (MI->getOpcode() == LM32::LWI) {
     if ((MI->getOperand(1).isFI()) && // is a stack slot
         (MI->getOperand(2).isImm()) &&  // the imm is zero
         (isZeroImm(MI->getOperand(2)))) {
@@ -62,9 +62,9 @@ isLoadFromStackSlot(const MachineInstr *MI, int &FrameIndex) const {
 /// the source reg along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than storing to the stack slot.
-unsigned Mico32InstrInfo::
+unsigned LM32InstrInfo::
 isStoreToStackSlot(const MachineInstr *MI, int &FrameIndex) const {
-  if (MI->getOpcode() == Mico32::SWI) {
+  if (MI->getOpcode() == LM32::SWI) {
     if ((MI->getOperand(1).isFI()) && // is a stack slot
         (MI->getOperand(2).isImm()) &&  // the imm is zero
         (isZeroImm(MI->getOperand(2)))) {
@@ -77,46 +77,46 @@ isStoreToStackSlot(const MachineInstr *MI, int &FrameIndex) const {
 
 /// insertNoop - If data hazard condition is found insert the target nop
 /// instruction.
-void Mico32InstrInfo::
+void LM32InstrInfo::
 insertNoop(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI) const {
   DebugLoc DL;
-  BuildMI(MBB, MI, DL, get(Mico32::NOP));
+  BuildMI(MBB, MI, DL, get(LM32::NOP));
 }
 #endif
 
-void Mico32InstrInfo::
+void LM32InstrInfo::
 copyPhysReg(MachineBasicBlock &MBB,
             MachineBasicBlock::iterator I, DebugLoc DL,
             unsigned DestReg, unsigned SrcReg,
             bool KillSrc) const {
-  llvm::BuildMI(MBB, I, DL, get(Mico32::ADD), DestReg)
-    .addReg(SrcReg, getKillRegState(KillSrc)).addReg(Mico32::R0);
+  llvm::BuildMI(MBB, I, DL, get(LM32::ADD), DestReg)
+    .addReg(SrcReg, getKillRegState(KillSrc)).addReg(LM32::R0);
 }
 
 
-void Mico32InstrInfo::
+void LM32InstrInfo::
 storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                     unsigned SrcReg, bool isKill, int FI,
                     const TargetRegisterClass *RC,
                     const TargetRegisterInfo *TRI) const {
-  assert(RC == Mico32::GPRRegisterClass && "Unknown register class.");
+  assert(RC == LM32::GPRRegisterClass && "Unknown register class.");
   DebugLoc DL;
   if (I != MBB.end()) DL = I->getDebugLoc();
 
-  BuildMI(MBB, I, DL, get(Mico32::SW)).addReg(SrcReg,getKillRegState(isKill))
+  BuildMI(MBB, I, DL, get(LM32::SW)).addReg(SrcReg,getKillRegState(isKill))
     .addFrameIndex(FI).addImm(0); 
 }
 
-void Mico32InstrInfo::
+void LM32InstrInfo::
 loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                      unsigned DestReg, int FI,
                      const TargetRegisterClass *RC,
                      const TargetRegisterInfo *TRI) const {
-  assert(RC == Mico32::GPRRegisterClass && "Unexpected register class.");
+  assert(RC == LM32::GPRRegisterClass && "Unexpected register class.");
   DebugLoc DL;
   if (I != MBB.end()) DL = I->getDebugLoc();
 
-  BuildMI(MBB, I, DL, get(Mico32::LW), DestReg).addFrameIndex(FI).addImm(0);
+  BuildMI(MBB, I, DL, get(LM32::LW), DestReg).addFrameIndex(FI).addImm(0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -124,9 +124,9 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
 //===----------------------------------------------------------------------===//
 
 // Modeled from PTX:
-MachineBasicBlock *Mico32InstrInfo::
+MachineBasicBlock *LM32InstrInfo::
 GetBranchTarget(const MachineInstr& inst) {
-  // The last explicit operand is the destiantion MBB in Mico32 branches.
+  // The last explicit operand is the destiantion MBB in LM32 branches.
   int NumOp = inst.getNumExplicitOperands();
   const MachineOperand& target = inst.getOperand(NumOp-1);
 
@@ -148,7 +148,7 @@ GetBranchTarget(const MachineInstr& inst) {
 //
 //  Note that Cond appears to be  only used by the target specific code.  The
 //  generic code just checks if Cond is empty or not.
-bool Mico32InstrInfo::
+bool LM32InstrInfo::
 AnalyzeBranch(MachineBasicBlock &MBB,
               MachineBasicBlock *&TBB,
               MachineBasicBlock *&FBB,
@@ -184,7 +184,7 @@ return true;
   // If there is only one terminator instruction, process it.
   unsigned LastOpc = LastInst->getOpcode();
   if (I == MBB.begin() || !isUnpredicatedTerminator(--I)) {
-    if (Mico32::isUncondBranchOpcode(LastOpc)) {
+    if (LM32::isUncondBranchOpcode(LastOpc)) {
   DEBUG(dbgs() << "AnalyzeBranch:one terminator instruction\n");
       TBB = LastInst->getOperand(0).getMBB();
   DEBUG(dbgs() << "AnalyzeBranch: instruction: " << *LastInst << "\n");
@@ -194,7 +194,7 @@ return true;
 
       return false;
     }
-    if (Mico32::isCondBranchOpcode(LastOpc)) {
+    if (LM32::isCondBranchOpcode(LastOpc)) {
       // Block ends with fall-through condbranch.
   DEBUG(dbgs() << "AnalyzeBranch:Block ends with fall-through condbranch\n");
   DEBUG(dbgs() << "AnalyzeBranch: instruction: " << *LastInst << "\n");
@@ -222,8 +222,8 @@ return true;
 
   // The block ends with both a conditional branch and an ensuing
   // unconditional branch. 
-  if (Mico32::isCondBranchOpcode(SecondLastInst->getOpcode()) &&
-      Mico32::isUncondBranchOpcode(LastInst->getOpcode())) {
+  if (LM32::isCondBranchOpcode(SecondLastInst->getOpcode()) &&
+      LM32::isUncondBranchOpcode(LastInst->getOpcode())) {
   DEBUG(dbgs() << "AnalyzeBranch:Conditional branch and ensuing unconditional\n");
     TBB = GetBranchTarget(*SecondLastInst);
     Cond.push_back(MachineOperand::CreateImm(SecondLastInst->getOpcode()));
@@ -244,8 +244,8 @@ return true;
 
   // If the block ends with two unconditional branches, handle it.
   // The second one is not executed, so remove it.
-  if (Mico32::isUncondBranchOpcode(SecondLastInst->getOpcode()) &&
-      Mico32::isUncondBranchOpcode(LastInst->getOpcode())) {
+  if (LM32::isUncondBranchOpcode(SecondLastInst->getOpcode()) &&
+      LM32::isUncondBranchOpcode(LastInst->getOpcode())) {
     TBB = GetBranchTarget(*SecondLastInst);
     I = LastInst;
     if (AllowModify)
@@ -266,7 +266,7 @@ return true;
 }
 
 
-unsigned Mico32InstrInfo::
+unsigned LM32InstrInfo::
 InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
              MachineBasicBlock *FBB,
              const SmallVectorImpl<MachineOperand> &Cond,
@@ -274,9 +274,9 @@ InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   // Shouldn't be a fall through.
   assert(TBB && "InsertBranch must not be told to insert a fallthrough");
   assert((Cond.size() == 2 || Cond.size() == 0) &&
-         "Mico32 branch conditions have two components!");
+         "LM32 branch conditions have two components!");
 
-  unsigned Opc = Mico32::BI;
+  unsigned Opc = LM32::BI;
   if (!Cond.empty())
     Opc = (unsigned)Cond[0].getImm();
 
@@ -294,11 +294,11 @@ InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   }
 
   BuildMI(&MBB, DL, get(Opc)).addReg(Cond[1].getReg()).addMBB(TBB);
-  BuildMI(&MBB, DL, get(Mico32::BI)).addMBB(FBB);
+  BuildMI(&MBB, DL, get(LM32::BI)).addMBB(FBB);
   return 2;
 }
 
-unsigned Mico32InstrInfo::
+unsigned LM32InstrInfo::
 RemoveBranch(MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator I = MBB.end();
   if (I == MBB.begin()) return 0;
@@ -309,8 +309,8 @@ RemoveBranch(MachineBasicBlock &MBB) const {
     --I;
   }
 
-  if (!Mico32::isUncondBranchOpcode(I->getOpcode()) &&
-      !Mico32::isCondBranchOpcode(I->getOpcode()))
+  if (!LM32::isUncondBranchOpcode(I->getOpcode()) &&
+      !LM32::isCondBranchOpcode(I->getOpcode()))
     return 0;
 
   // Remove the branch.
@@ -320,7 +320,7 @@ RemoveBranch(MachineBasicBlock &MBB) const {
 
   if (I == MBB.begin()) return 1;
   --I;
-  if (!Mico32::isCondBranchOpcode(I->getOpcode()))
+  if (!LM32::isCondBranchOpcode(I->getOpcode()))
     return 1;
 
   // Remove the branch.
@@ -328,17 +328,17 @@ RemoveBranch(MachineBasicBlock &MBB) const {
   return 2;
 }
 
-// Mico32 has be, bne, bg, bge, bgu, bgeu but not reverse conditions.  Can only
+// LM32 has be, bne, bg, bge, bgu, bgeu but not reverse conditions.  Can only
 // reverse be/bne.
-bool Mico32InstrInfo::
+bool LM32InstrInfo::
 ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
-  assert(Cond.size() == 2 && "Invalid Mico32 branch opcode!");
+  assert(Cond.size() == 2 && "Invalid LM32 branch opcode!");
   DEBUG(dbgs() << "ReverseBranchCondition: Cond: " << Cond[0].getImm() << "\n");
 
   switch (Cond[0].getImm()) {
     default:            return true;
-    case Mico32::BE:    Cond[0].setImm(Mico32::BNE); return false;
-    case Mico32::BNE:   Cond[0].setImm(Mico32::BE); return false;
+    case LM32::BE:    Cond[0].setImm(LM32::BNE); return false;
+    case LM32::BNE:   Cond[0].setImm(LM32::BE); return false;
   }
 }
 
@@ -350,10 +350,10 @@ ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
 /// getGlobalBaseReg - insert code into the entry mbb to materialize the PIC
 /// base register.  Return the virtual register that holds this value.
 ///
-unsigned Mico32InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
-//FIXME: not ported to Mico32
-  Mico32FunctionInfo *Mico32FI = MF->getInfo<Mico32FunctionInfo>();
-  unsigned GlobalBaseReg = Mico32FI->getGlobalBaseReg();
+unsigned LM32InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
+//FIXME: not ported to LM32
+  LM32FunctionInfo *LM32FI = MF->getInfo<LM32FunctionInfo>();
+  unsigned GlobalBaseReg = LM32FI->getGlobalBaseReg();
   if (GlobalBaseReg != 0)
     return GlobalBaseReg;
 
@@ -363,12 +363,12 @@ unsigned Mico32InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
   MachineRegisterInfo &RegInfo = MF->getRegInfo();
   const TargetInstrInfo *TII = MF->getTarget().getInstrInfo();
 
-  GlobalBaseReg = RegInfo.createVirtualRegister(Mico32::GPRRegisterClass);
+  GlobalBaseReg = RegInfo.createVirtualRegister(LM32::GPRRegisterClass);
   BuildMI(FirstMBB, MBBI, DebugLoc(), TII->get(TargetOpcode::COPY),
-          GlobalBaseReg).addReg(Mico32::R20);
-  RegInfo.addLiveIn(Mico32::R20);
+          GlobalBaseReg).addReg(LM32::R20);
+  RegInfo.addLiveIn(LM32::R20);
 
-  Mico32FI->setGlobalBaseReg(GlobalBaseReg);
+  LM32FI->setGlobalBaseReg(GlobalBaseReg);
   return GlobalBaseReg;
 }
 #endif

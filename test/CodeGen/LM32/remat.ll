@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin 
 ; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin -stats -info-output-file - | grep "Number of re-materialization" | grep 2

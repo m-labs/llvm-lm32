@@ -1,5 +1,5 @@
 ; Make sure this testcase does not use ctpop
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 | grep -i cntlzw
 

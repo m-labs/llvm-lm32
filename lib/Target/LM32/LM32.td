@@ -1,4 +1,4 @@
-//===- Mico32.td - Describe the Mico32 Target Machine ------*- tblgen -*-==//
+//===- LM32.td - Describe the LM32 Target Machine -------------*- tblgen -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-// This is the top level entry point for the Mico32 target.
+// This is the top level entry point for the LM32 target.
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -19,12 +19,12 @@ include "llvm/Target/Target.td"
 // Register File, Calling Conv, Instruction Descriptions
 //===----------------------------------------------------------------------===//
 
-include "Mico32RegisterInfo.td"
-include "Mico32Schedule.td"
-include "Mico32InstrInfo.td"
-include "Mico32CallingConv.td"
+include "LM32RegisterInfo.td"
+include "LM32Schedule.td"
+include "LM32InstrInfo.td"
+include "LM32CallingConv.td"
 
-def Mico32InstrInfo : InstrInfo;
+def LM32InstrInfo : InstrInfo;
 
 //===----------------------------------------------------------------------===//
 // Subtarget Features. 
@@ -51,17 +51,17 @@ def FeatureSPBias :
                    "SP points to last used 32 bit word on stack (not ABI compilant)">;
 
 //===----------------------------------------------------------------------===//
-// Mico32 supported processors.
+// LM32 supported processors.
 //===----------------------------------------------------------------------===//
 
-def : Processor< "mico32", Mico32Itineraries, []>;
+def : Processor< "lm32", LM32Itineraries, []>;
 
 
 //===----------------------------------------------------------------------===//
 // Use an MC assembly printer
 //===----------------------------------------------------------------------===//
 
-//def Mico32AsmWriter : AsmWriter {
+//def LM32AsmWriter : AsmWriter {
 //  string AsmWriterClassName  = "InstPrinter";
 //  bit isMCAsmWriter = 1;
 //}
@@ -70,8 +70,8 @@ def : Processor< "mico32", Mico32Itineraries, []>;
 // Target Declaration
 //===----------------------------------------------------------------------===//
 
-def Mico32 : Target {
-  let InstructionSet = Mico32InstrInfo;
-//  let AssemblyWriters = [Mico32AsmWriter];
+def LM32 : Target {
+  let InstructionSet = LM32InstrInfo;
+//  let AssemblyWriters = [LM32AsmWriter];
 }
 

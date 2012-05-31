@@ -1,4 +1,4 @@
-//===-- Mico32MCAsmInfo.cpp - Mico32 asm properties -------------------------===//
+//===-- LM32MCAsmInfo.cpp - LM32 asm properties ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declarations of the Mico32MCAsmInfo properties.
+// This file contains the declarations of the LM32MCAsmInfo properties.
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32MCAsmInfo.h"
+#include "LM32MCAsmInfo.h"
 using namespace llvm;
 
-Mico32MCAsmInfo::Mico32MCAsmInfo(const Target &T, StringRef TT)
+LM32MCAsmInfo::LM32MCAsmInfo(const Target &T, StringRef TT)
 {
   IsLittleEndian = false;
 // These are from MBlaze.

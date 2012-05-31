@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 	%struct..0anon = type { i32 }
 	%struct.rtx_def = type { i16, i8, i8, [1 x %struct..0anon] }

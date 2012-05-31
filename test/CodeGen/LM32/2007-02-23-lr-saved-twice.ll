@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 target datalayout = "e-p:32:32"
 target triple = "powerpc-apple-darwin8"

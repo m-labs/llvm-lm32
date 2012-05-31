@@ -1,4 +1,4 @@
-//===-- Mico32ISelLowering.h - Mico32 DAG Lowering Interface ----*- C++ -*-===//
+//===-- LM32ISelLowering.h - LM32 DAG Lowering Interface --------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,22 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the interfaces that Mico32 uses to lower LLVM code into a
+// This file defines the interfaces that LM32 uses to lower LLVM code into a
 // selection DAG.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef Mico32ISELLOWERING_H
-#define Mico32ISELLOWERING_H
+#ifndef LM32ISELLOWERING_H
+#define LM32ISELLOWERING_H
 
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
-#include "Mico32.h"
-#include "Mico32Subtarget.h"
+#include "LM32.h"
+#include "LM32Subtarget.h"
 
 namespace llvm {
-  namespace Mico32CC {
+  namespace LM32CC {
     enum CC {
       FIRST = 0,
       EQ,
@@ -45,7 +45,7 @@ namespace llvm {
       }
     }
 
-    inline static const char *Mico32CCToString(CC cc) {
+    inline static const char *LM32CCToString(CC cc) {
       switch (cc) {
       default: llvm_unreachable("Unknown condition code");
       case EQ: return "eq";
@@ -58,7 +58,7 @@ namespace llvm {
     }
   }
 
-  namespace Mico32ISD {
+  namespace LM32ISD {
     enum NodeType {
       // Start the numbering from where ISD NodeType finishes.
       FIRST_NUMBER = ISD::BUILTIN_OP_END,
@@ -92,9 +92,9 @@ namespace llvm {
   // TargetLowering Implementation
   //===--------------------------------------------------------------------===//
 
-  class Mico32TargetLowering : public TargetLowering  {
+  class LM32TargetLowering : public TargetLowering  {
   public:
-    explicit Mico32TargetLowering(Mico32TargetMachine &TM);
+    explicit LM32TargetLowering(LM32TargetMachine &TM);
 
     /// LowerOperation - Provide custom lowering hooks for some operations.
     virtual SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
@@ -109,7 +109,7 @@ namespace llvm {
     virtual unsigned getFunctionAlignment(const Function *F) const;
   private:
     // Subtarget Info
-    const Mico32Subtarget *Subtarget;
+    const LM32Subtarget *Subtarget;
 
 
     // Lower Operand helpers
@@ -191,4 +191,4 @@ namespace llvm {
   };
 }
 
-#endif // Mico32ISELLOWERING_H
+#endif // LM32ISELLOWERING_H

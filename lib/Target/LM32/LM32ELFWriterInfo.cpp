@@ -1,4 +1,4 @@
-//===-- Mico32ELFWriterInfo.cpp - ELF Writer Info for the Mico32 backend --===//
+//===-- LM32ELFWriterInfo.cpp - ELF Writer Info for the LM32 backend --===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements ELF writer information for the Mico32 backend.
+// This file implements ELF writer information for the LM32 backend.
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32ELFWriterInfo.h"
-#include "Mico32Relocations.h"
+#include "LM32ELFWriterInfo.h"
+#include "LM32Relocations.h"
 #include "llvm/Function.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -22,45 +22,45 @@
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
-//  Implementation of the Mico32ELFWriterInfo class
+//  Implementation of the LM32ELFWriterInfo class
 //===----------------------------------------------------------------------===//
 
-Mico32ELFWriterInfo::Mico32ELFWriterInfo(TargetMachine &TM)
+LM32ELFWriterInfo::LM32ELFWriterInfo(TargetMachine &TM)
   : TargetELFWriterInfo(TM.getTargetData()->getPointerSizeInBits() == 64,
                         TM.getTargetData()->isLittleEndian()) {
 }
 
-Mico32ELFWriterInfo::~Mico32ELFWriterInfo() {}
+LM32ELFWriterInfo::~LM32ELFWriterInfo() {}
 
-unsigned Mico32ELFWriterInfo::getRelocationType(unsigned MachineRelTy) const {
-llvm_unreachable("unknown mico32 relocation type");
+unsigned LM32ELFWriterInfo::getRelocationType(unsigned MachineRelTy) const {
+llvm_unreachable("unknown lm32 relocation type");
   switch (MachineRelTy) {
-  case Mico32::reloc_pcrel_word:
+  case LM32::reloc_pcrel_word:
     return ELF::R_MICROBLAZE_64_PCREL;
-  case Mico32::reloc_absolute_word:
+  case LM32::reloc_absolute_word:
     return ELF::R_MICROBLAZE_NONE;
   default:
-    llvm_unreachable("unknown mico32 machine relocation type");
+    llvm_unreachable("unknown lm32 machine relocation type");
   }
   return 0;
 }
 
-long int Mico32ELFWriterInfo::getDefaultAddendForRelTy(unsigned RelTy,
+long int LM32ELFWriterInfo::getDefaultAddendForRelTy(unsigned RelTy,
                                                     long int Modifier) const {
-llvm_unreachable("unknown mico32 relocation type");
+llvm_unreachable("unknown lm32 relocation type");
   switch (RelTy) {
   case ELF::R_MICROBLAZE_32_PCREL:
     return Modifier - 4;
   case ELF::R_MICROBLAZE_32:
     return Modifier;
   default:
-    llvm_unreachable("unknown mico32 relocation type");
+    llvm_unreachable("unknown lm32 relocation type");
   }
   return 0;
 }
 
-unsigned Mico32ELFWriterInfo::getRelocationTySize(unsigned RelTy) const {
-llvm_unreachable("unknown mico32 relocation type");
+unsigned LM32ELFWriterInfo::getRelocationTySize(unsigned RelTy) const {
+llvm_unreachable("unknown lm32 relocation type");
   // FIXME: Most of these sizes are guesses based on the name
   switch (RelTy) {
   case ELF::R_MICROBLAZE_32:
@@ -85,8 +85,8 @@ llvm_unreachable("unknown mico32 relocation type");
   return 0;
 }
 
-bool Mico32ELFWriterInfo::isPCRelativeRel(unsigned RelTy) const {
-llvm_unreachable("unknown mico32 relocation type");
+bool LM32ELFWriterInfo::isPCRelativeRel(unsigned RelTy) const {
+llvm_unreachable("unknown lm32 relocation type");
   // FIXME: Most of these are guesses based on the name
   switch (RelTy) {
   case ELF::R_MICROBLAZE_32_PCREL:
@@ -99,15 +99,15 @@ llvm_unreachable("unknown mico32 relocation type");
   return false;
 }
 
-unsigned Mico32ELFWriterInfo::getAbsoluteLabelMachineRelTy() const {
-llvm_unreachable("unknown mico32 relocation type");
-  return Mico32::reloc_absolute_word;
+unsigned LM32ELFWriterInfo::getAbsoluteLabelMachineRelTy() const {
+llvm_unreachable("unknown lm32 relocation type");
+  return LM32::reloc_absolute_word;
 }
 
-long int Mico32ELFWriterInfo::computeRelocation(unsigned SymOffset,
+long int LM32ELFWriterInfo::computeRelocation(unsigned SymOffset,
                                                 unsigned RelOffset,
                                                 unsigned RelTy) const {
-llvm_unreachable("unknown mico32 relocation type");
+llvm_unreachable("unknown lm32 relocation type");
   if (RelTy == ELF::R_MICROBLAZE_32_PCREL || ELF::R_MICROBLAZE_64_PCREL)
     return SymOffset - (RelOffset + 4);
   else

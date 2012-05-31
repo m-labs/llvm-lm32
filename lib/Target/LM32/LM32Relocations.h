@@ -1,4 +1,4 @@
-//===- Mico32Relocations.h - Mico32 Code Relocations ------------*- C++ -*-===//
+//===- LM32Relocations.h - LM32 Code Relocations ----------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,19 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the Mico32 target-specific relocation types.
+// This file defines the LM32 target-specific relocation types.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32RELOCATIONS_H
-#define MICO32RELOCATIONS_H
+#ifndef LM32RELOCATIONS_H
+#define LM32RELOCATIONS_H
 
 #include "llvm/CodeGen/MachineRelocation.h"
 
 namespace llvm {
-  namespace Mico32 {
+  namespace LM32 {
     enum RelocationType {
-//FIXME: these are from MBLAZE and are not ported to MICO32
+//FIXME: these are from MBLAZE and are not ported to LM32
       /// reloc_pcrel_word - PC relative relocation, add the relocated value to
       /// the value already in memory, after we adjust it for where the PC is.
       reloc_pcrel_word = 0,

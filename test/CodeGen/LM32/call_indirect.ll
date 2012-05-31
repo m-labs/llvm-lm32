@@ -1,5 +1,5 @@
-; RUN: llvm-as -o - %s | llc -march=mico32 > %t1.s
-; RUN: llvm-as -o - %s | llc -march=mico32 > %t2.s
+; RUN: llvm-as -o - %s | llc -march=lm32 > %t1.s
+; RUN: llvm-as -o - %s | llc -march=lm32 > %t2.s
 ; END.
 ; DONTR UN: grep bisl    %t1.s | count 7
 ; DONTRUN: grep ila     %t1.s | count 1

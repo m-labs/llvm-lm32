@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin | grep ldr | count 6
 ; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin | grep non_lazy_ptr

@@ -1,6 +1,6 @@
 ; This function should have exactly one call to fixdfdi, no more!
 
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN:    grep {bl .*fixdfdi} | count 1
 

@@ -1,6 +1,6 @@
 ; Test to make sure that the 'private' is used correctly.
 ;
-; RUN: llc -march=mico32 < %s > %t
+; RUN: llc -march=lm32 < %s > %t
 ; RUN: grep \\\.Lfoo: %t
 ; RUN: grep calli.*\\\.Lfoo %t
 ; RUN: grep \\\.Lbaz: %t

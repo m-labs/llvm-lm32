@@ -1,5 +1,5 @@
 ; All of these ands and shifts should be folded into rlwimi's
-; RUN: llvm-as < %s | llc -march=mico32 -o %t 
+; RUN: llvm-as < %s | llc -march=lm32 -o %t 
 ; 
 ; All of these ands and shifts should be folded into rlwimi's
 ; RUN: llc < %s -march=ppc32 -o %t

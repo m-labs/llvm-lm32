@@ -1,5 +1,5 @@
 ; This cannot be a stfiwx
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | grep stb
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | not grep stfiwx

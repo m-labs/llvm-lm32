@@ -1,4 +1,4 @@
-//===-- llvm/Target/Mico32TargetObjectFile.h - Mico32 Obj. Info -*- C++ -*-===//
+//===-- llvm/Target/LM32TargetObjectFile.h - LM32 Obj. Info -----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TARGET_MICO32_TARGETOBJECTFILE_H
-#define LLVM_TARGET_MICO32_TARGETOBJECTFILE_H
+#ifndef LLVM_TARGET_LM32_TARGETOBJECTFILE_H
+#define LLVM_TARGET_LM32_TARGETOBJECTFILE_H
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 
 namespace llvm {
 
-  class Mico32TargetObjectFile : public TargetLoweringObjectFileELF {
+  class LM32TargetObjectFile : public TargetLoweringObjectFileELF {
     const MCSection *SmallDataSection;
     const MCSection *SmallBSSSection;
   public:

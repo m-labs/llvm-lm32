@@ -1,4 +1,4 @@
-//===- Mico32RegisterInfo.cpp - Mico32 Register Information -== -*- C++ -*-===//
+//===- LM32RegisterInfo.cpp - LM32 Register Information -== -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,17 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the Mico32 implementation of the TargetRegisterInfo
+// This file contains the LM32 implementation of the TargetRegisterInfo
 // class.
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "mico32-frame-info"
+#define DEBUG_TYPE "lm32-frame-info"
 
-#include "Mico32.h"
-#include "Mico32Subtarget.h"
-#include "Mico32RegisterInfo.h"
-#include "Mico32MachineFunctionInfo.h"
+#include "LM32.h"
+#include "LM32Subtarget.h"
+#include "LM32RegisterInfo.h"
+#include "LM32MachineFunctionInfo.h"
 #include "llvm/Constants.h"
 #include "llvm/Type.h"
 #include "llvm/Function.h"
@@ -37,33 +37,33 @@
 #include "llvm/ADT/STLExtras.h"
 
 #define GET_REGINFO_TARGET_DESC
-#include "Mico32GenRegisterInfo.inc"
+#include "LM32GenRegisterInfo.inc"
 
 using namespace llvm;
 
-Mico32RegisterInfo::
-Mico32RegisterInfo(const Mico32Subtarget &ST, const TargetInstrInfo &tii)
-  : Mico32GenRegisterInfo(Mico32::RRA), Subtarget(ST), TII(tii) {}
+LM32RegisterInfo::
+LM32RegisterInfo(const LM32Subtarget &ST, const TargetInstrInfo &tii)
+  : LM32GenRegisterInfo(LM32::RRA), Subtarget(ST), TII(tii) {}
 
 
 //===----------------------------------------------------------------------===//
 // Callee Saved Registers methods
 //===----------------------------------------------------------------------===//
 
-/// Mico32 Callee Saved Registers
+/// LM32 Callee Saved Registers
 /// getCalleeSavedRegs - Return a null-terminated list of all of the
 /// callee saved registers on this target. The register should be in the
 /// order of desired callee-save stack frame offset. The first register is
 /// close to the incoming stack pointer if stack grows down, and vice versa.
 /// Copied from GCC lm32.h
-const unsigned* Mico32RegisterInfo::
+const unsigned* LM32RegisterInfo::
 getCalleeSavedRegs(const MachineFunction *MF) const {
-  // Mico32 callee-save register range is R11 - R28
+  // LM32 callee-save register range is R11 - R28
   static const unsigned CalleeSavedRegs[] = {
-    Mico32::R11, Mico32::R12, Mico32::R13, Mico32::R14,
-    Mico32::R15, Mico32::R16, Mico32::R17, Mico32::R18,
-    Mico32::R19, Mico32::R20, Mico32::R21, Mico32::R22,
-    Mico32::R23, Mico32::R24, Mico32::R25, 
+    LM32::R11, LM32::R12, LM32::R13, LM32::R14,
+    LM32::R15, LM32::R16, LM32::R17, LM32::R18,
+    LM32::R19, LM32::R20, LM32::R21, LM32::R22,
+    LM32::R23, LM32::R24, LM32::R25, 
     // R26 - R31 are reserved.
     0
   };
@@ -76,21 +76,21 @@ getCalleeSavedRegs(const MachineFunction *MF) const {
 /// and should be considered unavailable at all times, e.g. SP (R28). This is
 /// used by register scavenger to determine what registers are free.
 /// Copied from GCC lm32.h
-BitVector Mico32RegisterInfo::
+BitVector LM32RegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
-  Reserved.set(Mico32::R0);  // Always 0
-  Reserved.set(Mico32::RGP); // R26 - GP register
-  Reserved.set(Mico32::RFP); // R27 - Frame Pointer (GCC not fixed)
-  Reserved.set(Mico32::RSP); // R28 - Stack Pointer
-  Reserved.set(Mico32::RRA); // R29 - Return Address (GCC not fixed)
-  Reserved.set(Mico32::REA); // R30 - Exception Address
-  Reserved.set(Mico32::RBA); // R31 - Breakpoint Address
+  Reserved.set(LM32::R0);  // Always 0
+  Reserved.set(LM32::RGP); // R26 - GP register
+  Reserved.set(LM32::RFP); // R27 - Frame Pointer (GCC not fixed)
+  Reserved.set(LM32::RSP); // R28 - Stack Pointer
+  Reserved.set(LM32::RRA); // R29 - Return Address (GCC not fixed)
+  Reserved.set(LM32::REA); // R30 - Exception Address
+  Reserved.set(LM32::RBA); // R31 - Breakpoint Address
   return Reserved;
 }
 
 // This function eliminate ADJCALLSTACKDOWN/ADJCALLSTACKUP pseudo instructions
-void Mico32RegisterInfo::
+void LM32RegisterInfo::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
   // We're assuming a fixed call frame. hasReservedCallFrame==true
@@ -124,7 +124,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 /// frame index amongst most of the targets, hence the 
 /// MI.getOperand(i+1).getImm() added to the frame index. For most targets, 
 /// and specifically Monarch, this immediate value is zero.
-void Mico32RegisterInfo::
+void LM32RegisterInfo::
 eliminateFrameIndex(MachineBasicBlock::iterator II,
                     int SPAdj, RegScavenger *RS) const {
   assert(SPAdj == 0 && "Unexpected");
@@ -139,9 +139,9 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   // SP points to the top of stack (possibly biased to first free location), 
   // FP points to the callee save registers at top of the frame (the last 
   // used stack location prior to entering the function).
-  unsigned FPRegToUse = Mico32::RSP;
+  unsigned FPRegToUse = LM32::RSP;
   if (useFP) {
-    FPRegToUse = Mico32::RFP;
+    FPRegToUse = LM32::RFP;
   }
 
   // Find the frame index operand.
@@ -157,7 +157,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   assert(Offset%4 == 0 && "Object has misaligned stack offset");
 
   int StackSize = MF.getFrameInfo()->getStackSize();
-//  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
+//  LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
   
 #ifndef NDEBUG
   DEBUG(dbgs() << "\nFunction         : "
@@ -169,7 +169,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "StackSize          : " << StackSize << "\n");
   DEBUG(dbgs() << "AdjustedOffset     : " << Offset + StackSize << "\n");
   DEBUG(dbgs() << "FPreg              : "
-               << ((Mico32::RFP == FPRegToUse) ? "FP" : "SP") << "\n");
+               << ((LM32::RFP == FPRegToUse) ? "FP" : "SP") << "\n");
   DEBUG(dbgs() << "getImm()           : "
                <<  MI.getOperand(i + 1).getImm() << "\n");
   DEBUG(dbgs() << "isFixed            : "
@@ -228,7 +228,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
 
 // copied from X86.  Arm supports stack realignment too.
 // Note RealignStack is set by realign-stack option, true by default.
-bool Mico32RegisterInfo::
+bool LM32RegisterInfo::
 canRealignStack(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   return (MF.getTarget().Options.RealignStack &&
@@ -236,7 +236,7 @@ canRealignStack(const MachineFunction &MF) const {
 }
 
 // copied from X86.  Arm supports stack realignment too.
-bool Mico32RegisterInfo::
+bool LM32RegisterInfo::
 needsStackRealignment(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   const Function *F = MF.getFunction();
@@ -268,22 +268,22 @@ needsStackRealignment(const MachineFunction &MF) const {
 }
 
 
-unsigned Mico32RegisterInfo::getRARegister() const {
-  return Mico32::RRA;
+unsigned LM32RegisterInfo::getRARegister() const {
+  return LM32::RRA;
 }
 
-unsigned Mico32RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
+unsigned LM32RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
 
-  return TFI->hasFP(MF) ? Mico32::RFP : Mico32::RSP;
+  return TFI->hasFP(MF) ? LM32::RFP : LM32::RSP;
 }
 
-unsigned Mico32RegisterInfo::getEHExceptionRegister() const {
+unsigned LM32RegisterInfo::getEHExceptionRegister() const {
   llvm_unreachable("What is the exception register");
   return 0;
 }
 
-unsigned Mico32RegisterInfo::getEHHandlerRegister() const {
+unsigned LM32RegisterInfo::getEHHandlerRegister() const {
   llvm_unreachable("What is the exception handler register");
   return 0;
 }

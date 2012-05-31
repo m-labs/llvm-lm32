@@ -1,4 +1,4 @@
-; RUN: llvm-as -o - %s | llc -march=mico32 > %t1.s
+; RUN: llvm-as -o - %s | llc -march=lm32 > %t1.s
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
 ; RUN: grep lqa        %t1.s | count 13

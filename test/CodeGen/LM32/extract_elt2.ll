@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu > %t1.s
 ; RUN: grep shufb   %t1.s | count 39

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 define void @iterative_hash_host_wide_int() {
         %zero = alloca i32              ; <i32*> [#uses=2]

@@ -1,4 +1,4 @@
-//===-- Mico32FrameLowering.h - Frame info for Mico32 Target -----*- C++ -*-==//
+//===-- LM32FrameLowering.h - Frame info for LM32 Target ---------*- C++ -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,25 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains Mico32 frame information that doesn't fit anywhere else
+// This file contains LM32 frame information that doesn't fit anywhere else
 // cleanly...
 //
 // Based on XCore.
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32FRAMEINFO_H
-#define MICO32FRAMEINFO_H
+#ifndef LM32FRAMEINFO_H
+#define LM32FRAMEINFO_H
 
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
-  class Mico32Subtarget;
+  class LM32Subtarget;
 
-  class Mico32FrameLowering: public TargetFrameLowering {
-    const Mico32Subtarget &Subtarget;
+  class LM32FrameLowering: public TargetFrameLowering {
+    const LM32Subtarget &Subtarget;
   public:
-    Mico32FrameLowering(const Mico32Subtarget &subtarget);
+    LM32FrameLowering(const LM32Subtarget &subtarget);
 
     /// Determine the frame's layout
     void determineFrameLayout(MachineFunction &MF) const;
@@ -43,12 +43,12 @@ namespace llvm {
     /// immediately on entry to the current function. This eliminates the need for
     /// add/sub sp brackets around call sites. Returns true if the call frame is
     /// included as part of the stack frame.
-    /// Mico32 always reserves call frames. eliminateCallFramePseudoInstr() may
+    /// LM32 always reserves call frames. eliminateCallFramePseudoInstr() may
     /// need to change if this does.  See ARM for example.
     ///
     /// PEI::calculateFrameObjectOffsets() adds maxCallFrameSize if 
     /// hasReservedCallFrame() is true.  The stack alignment is set
-    /// in Mico32TargetMachine::Mico32TargetMachine().
+    /// in LM32TargetMachine::LM32TargetMachine().
     /// Some targets (e.g. SPU, PPC) add in the maxCallFrameSize to the
     /// stacksize manually due to special alignment requirements or other issues.
     bool hasReservedCallFrame(const MachineFunction &MF) const {
@@ -82,4 +82,4 @@ namespace llvm {
   };
 }
 
-#endif // MICO32FRAMEINFO_H
+#endif // LM32FRAMEINFO_H

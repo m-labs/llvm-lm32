@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 %struct.rtx_def = type { i8 }
 @str = external global [7 x i8]

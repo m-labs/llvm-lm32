@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 target datalayout = "e-p:32:32"
         %llvm.dbg.compile_unit.type = type { i32, {  }*, i32, i32, i8*, i8*, i8* }

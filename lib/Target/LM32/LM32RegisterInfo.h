@@ -1,4 +1,4 @@
-//===- Mico32RegisterInfo.h - Mico32 Register Information Impl --*- C++ -*-===//
+//===- LM32RegisterInfo.h - LM32 Register Information Impl --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,31 +7,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the Mico32 implementation of the TargetRegisterInfo
+// This file contains the LM32 implementation of the TargetRegisterInfo
 // class.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32REGISTERINFO_H
-#define MICO32REGISTERINFO_H
+#ifndef LM32REGISTERINFO_H
+#define LM32REGISTERINFO_H
 
-#include "Mico32.h"
+#include "LM32.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 #define GET_REGINFO_HEADER
-#include "Mico32GenRegisterInfo.inc"
+#include "LM32GenRegisterInfo.inc"
 
 
 namespace llvm {
-class Mico32Subtarget;
+class LM32Subtarget;
 class TargetInstrInfo;
 class Type;
 
-struct Mico32RegisterInfo : public Mico32GenRegisterInfo {
-  const Mico32Subtarget &Subtarget;
+struct LM32RegisterInfo : public LM32GenRegisterInfo {
+  const LM32Subtarget &Subtarget;
   const TargetInstrInfo &TII;
 
-  Mico32RegisterInfo(const Mico32Subtarget &Subtarget,
+  LM32RegisterInfo(const LM32Subtarget &Subtarget,
                      const TargetInstrInfo &tii);
 
   /// Code Generation virtual methods...

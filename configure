@@ -3880,7 +3880,7 @@ else
   sparc*-*)               llvm_cv_target_arch="Sparc" ;;
   powerpc*-*)             llvm_cv_target_arch="PowerPC" ;;
   arm*-*)                 llvm_cv_target_arch="ARM" ;;
-  mico32-*)               llvm_cv_target_arch="Mico32" ;;
+  lm32-*)               llvm_cv_target_arch="LM32" ;;
   mips-*)                 llvm_cv_target_arch="Mips" ;;
   xcore-*)                llvm_cv_target_arch="XCore" ;;
   msp430-*)               llvm_cv_target_arch="MSP430" ;;
@@ -5099,7 +5099,7 @@ else
  ;;
     ARM)         TARGET_HAS_JIT=1
  ;;
-    Mico32)      TARGET_HAS_JIT=0
+    LM32)      TARGET_HAS_JIT=0
  ;;
     Mips)        TARGET_HAS_JIT=1
  ;;
@@ -5297,7 +5297,7 @@ if test "$enableval" = host-only ; then
   enableval=host
 fi
 case "$enableval" in
-  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM Mico32 Mips CellSPU XCore MSP430 CBackend CppBackend MBlaze PTX Hexagon" ;;
+  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM LM32 Mips CellSPU XCore MSP430 CBackend CppBackend MBlaze PTX Hexagon" ;;
   *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
       case "$a_target" in
         x86)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
@@ -5305,7 +5305,7 @@ case "$enableval" in
         sparc)    TARGETS_TO_BUILD="Sparc $TARGETS_TO_BUILD" ;;
         powerpc)  TARGETS_TO_BUILD="PowerPC $TARGETS_TO_BUILD" ;;
         arm)      TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
-        mico32)   TARGETS_TO_BUILD="Mico32 $TARGETS_TO_BUILD" ;;
+        lm32)   TARGETS_TO_BUILD="LM32 $TARGETS_TO_BUILD" ;;
         mips)     TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
         spu)      TARGETS_TO_BUILD="CellSPU $TARGETS_TO_BUILD" ;;
         xcore)    TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
@@ -5321,7 +5321,7 @@ case "$enableval" in
             Sparc)       TARGETS_TO_BUILD="Sparc $TARGETS_TO_BUILD" ;;
             PowerPC)     TARGETS_TO_BUILD="PowerPC $TARGETS_TO_BUILD" ;;
             ARM)         TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
-            Mico32)      TARGETS_TO_BUILD="Mico32 $TARGETS_TO_BUILD" ;;
+            LM32)      TARGETS_TO_BUILD="LM32 $TARGETS_TO_BUILD" ;;
             Mips)        TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
             MBlaze)      TARGETS_TO_BUILD="MBlaze $TARGETS_TO_BUILD" ;;
             CellSPU|SPU) TARGETS_TO_BUILD="CellSPU $TARGETS_TO_BUILD" ;;

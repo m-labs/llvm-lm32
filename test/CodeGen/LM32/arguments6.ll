@@ -1,6 +1,6 @@
-; This should be sret on mico32.
+; This should be sret on lm32.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -mtriple=arm-linux-gnueabi
 ; RUN: llvm-as < %s | llc -mtriple=arm-apple-darwin

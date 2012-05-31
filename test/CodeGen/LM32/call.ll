@@ -1,4 +1,4 @@
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as -o - %s | llc -march=lm32
 ; END.
 ; DONTRUN: grep brsl    %t1.s | count 1
 ; DONTRUN: grep brasl   %t1.s | count 1

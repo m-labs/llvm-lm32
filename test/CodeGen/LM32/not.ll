@@ -1,5 +1,5 @@
 ; Make sure this testcase codegens to the ornot instruction
-; RUN: llvm-as < %s | llc -march=mico32 
+; RUN: llvm-as < %s | llc -march=lm32 
 
 define i64 @bar(i64 %x) {
 entry:

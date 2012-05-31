@@ -1,4 +1,4 @@
-;===- ./lib/Target/Mico32/LLVMBuild.txt ------------------------*- Conf -*--===;
+;===- ./lib/Target/LM32/LLVMBuild.txt --------------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -20,7 +20,7 @@ subdirectories = MCTargetDesc TargetInfo
 
 [component_0]
 type = TargetGroup
-name = Mico32
+name = LM32
 parent = Target
 has_asmparser = 1
 has_asmprinter = 1
@@ -28,8 +28,8 @@ has_disassembler = 1
 
 [component_1]
 type = Library
-name = Mico32CodeGen
-parent = Mico32
-required_libraries = CodeGen Core Mico32Desc Mico32Info MC SelectionDAG Support Target
-add_to_library_groups = Mico32
+name = LM32CodeGen
+parent = LM32
+required_libraries = CodeGen Core LM32Desc LM32Info MC SelectionDAG Support Target
+add_to_library_groups = LM32
 

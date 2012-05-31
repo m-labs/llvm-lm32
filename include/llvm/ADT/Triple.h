@@ -45,7 +45,7 @@ public:
 
     arm,     // ARM; arm, armv.*, xscale
     cellspu, // CellSPU: spu, cellspu
-    mico32,  // Mico32: mico32
+    lm32,  // LM32: lm32
     hexagon, // Hexagon: hexagon
     mips,    // MIPS: mips, mipsallegrex
     mipsel,  // MIPSEL: mipsel, mipsallegrexel, psp

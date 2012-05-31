@@ -1,5 +1,5 @@
 ; Make sure this testcase codegens to the lda -1 instruction
-; RUN: llvm-as < %s | llc -march=mico32 | grep {\\-1}
+; RUN: llvm-as < %s | llc -march=lm32 | grep {\\-1}
 
 define i64 @bar() {
 entry:

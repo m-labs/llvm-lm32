@@ -1,7 +1,7 @@
 ; fcfid and fctid should be generated when the 64bit feature is enabled, but not
 ; otherwise.
 
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mattr=+64bit | \
 ; RUN:   grep fcfid

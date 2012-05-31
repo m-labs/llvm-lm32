@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=mico32
+; RUN: llc < %s -march=lm32
 ; END.
 ; RUN: llc < %s -march=x86-64 | grep movzbl | count 2
 

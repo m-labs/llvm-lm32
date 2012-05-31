@@ -1,6 +1,6 @@
 ; this should not crash the ppc backend
 
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 
 define i32 @test(i32 %j.0.0.i) {

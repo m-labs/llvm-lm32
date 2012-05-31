@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=xcore -mcpu=xs1b-generic > %t1.s
 ; RUN: grep ladd %t1.s | count 2

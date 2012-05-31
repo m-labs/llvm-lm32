@@ -1,4 +1,4 @@
-//===- Mico32RegisterInfo.td - The Mico32 Register File --*- tablegen -*-=====//
+//===- LM32RegisterInfo.td - The LM32 Register File --*- tablegen -*-=====//
 // 
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,27 +13,27 @@
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-//  Declarations that describe the Mico32 register classes
+//  Declarations that describe the LM32 register classes
 //===----------------------------------------------------------------------===//
 
-class Mico32Reg<string n> : Register<n> {
-  let Namespace = "Mico32";
+class LM32Reg<string n> : Register<n> {
+  let Namespace = "LM32";
 }
 
 
 // M32GPR - One of the 32 32-bit general-purpose registers
-class M32GPR<bits<5> num, string n> : Mico32Reg<n> {
+class M32GPR<bits<5> num, string n> : LM32Reg<n> {
   field bits<5> Num = num;
 }
 
 // M32CSR - One of the 32-bit control and status registers.
-class M32CSR<bits<5> num, string n> : Mico32Reg<n> {
+class M32CSR<bits<5> num, string n> : LM32Reg<n> {
   field bits<5> Num = num;
 }
 
 
 //===----------------------------------------------------------------------===//
-//  Mico32 Registers
+//  LM32 Registers
 //===----------------------------------------------------------------------===//
 
 // General-purpose registers
@@ -87,7 +87,7 @@ def CFG2 : M32CSR<10, "cfg2">, DwarfRegNum<[111]>;
 //===----------------------------------------------------------------------===//
 
 // Control and Status Register Class.
-def CSR : RegisterClass<"Mico32", [i32], 32, (add
+def CSR : RegisterClass<"LM32", [i32], 32, (add
     IE, IM, IP, ICC, DCC, CC, CFG, EBA, CFG2)> {
   // None of the special purpose registers are allocatable.
   let isAllocatable = 0;
@@ -99,8 +99,8 @@ def CSR : RegisterClass<"Mico32", [i32], 32, (add
 // The order specified in the register list is implicitly defined to be the 
 // register allocation order.
 // Reserved registers are reserved by the function
-// Mico32RegisterInfo::getReservedRegs()
-def GPR : RegisterClass<"Mico32", [i32], 32, (add
+// LM32RegisterInfo::getReservedRegs()
+def GPR : RegisterClass<"LM32", [i32], 32, (add
     // Caller saved:
     R1, R2, R3, R4, R5, R6, R7, R8, R9, R10,
     // Callee saved:

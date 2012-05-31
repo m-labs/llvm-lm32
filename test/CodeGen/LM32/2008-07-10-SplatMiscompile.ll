@@ -1,5 +1,5 @@
-; mico32 only supports returning <2 x i32> at most.
-; RUN: llvm-as < %s | llc -march=mico32
+; lm32 only supports returning <2 x i32> at most.
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | grep vadduhm
 ; RUN: llvm-as < %s | llc -march=ppc32 -mcpu=g5 | grep vsubuhm

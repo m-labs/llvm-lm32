@@ -1,5 +1,5 @@
 ; Make sure this testcase codegens to the ctpop instruction
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 
 define signext i32 @foo(i32 signext %x) {

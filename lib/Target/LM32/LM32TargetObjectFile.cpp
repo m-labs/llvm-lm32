@@ -1,4 +1,4 @@
-//===-- Mico32TargetObjectFile.cpp - Mico32 object files ------------------===//
+//===-- LM32TargetObjectFile.cpp - LM32 object files ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32TargetObjectFile.h"
-#include "Mico32Subtarget.h"
+#include "LM32TargetObjectFile.h"
+#include "LM32Subtarget.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/GlobalVariable.h"
 #include "llvm/MC/MCContext.h"
@@ -23,7 +23,7 @@ using namespace llvm;
 // This is all copied from MBlaze
 //
 
-void Mico32TargetObjectFile::
+void LM32TargetObjectFile::
 Initialize(MCContext &Ctx, const TargetMachine &TM) {
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
 
@@ -46,7 +46,7 @@ static bool IsInSmallSection(uint64_t Size) {
   return Size > 0 && Size <= 8;
 }
 
-bool Mico32TargetObjectFile::
+bool LM32TargetObjectFile::
 IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM) const {
   if (GV->isDeclaration() || GV->hasAvailableExternallyLinkage())
     return false;
@@ -56,7 +56,7 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM) const {
 
 /// IsGlobalInSmallSection - Return true if this global address should be
 /// placed into small data/bss section.
-bool Mico32TargetObjectFile::
+bool LM32TargetObjectFile::
 IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
                        SectionKind Kind) const {
   // Only global variables, not functions.
@@ -77,7 +77,7 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
   return IsInSmallSection(TM.getTargetData()->getTypeAllocSize(Ty));
 }
 
-const MCSection *Mico32TargetObjectFile::
+const MCSection *LM32TargetObjectFile::
 SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
                        Mangler *Mang, const TargetMachine &TM) const {
   // TODO: Could also support "weak" symbols as well with ".gnu.linkonce.s.*"

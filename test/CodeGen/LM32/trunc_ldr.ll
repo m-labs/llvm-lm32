@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm | grep ldrb.*7 | count 1
 ; RUN: llvm-as < %s | llc -march=arm | grep ldrsb.*7 | count 1

@@ -1,4 +1,4 @@
-//===-- Mico32ISelLowering.cpp - Mico32 DAG Lowering Implementation -------===//
+//===-- LM32ISelLowering.cpp - LM32 DAG Lowering Implementation -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,17 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the interfaces that Mico32 uses to lower LLVM code into a
+// This file defines the interfaces that LM32 uses to lower LLVM code into a
 // selection DAG.
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "mico32-lower"
-#include "Mico32ISelLowering.h"
-#include "Mico32MachineFunctionInfo.h"
-#include "Mico32TargetMachine.h"
-#include "Mico32TargetObjectFile.h"
-#include "Mico32Subtarget.h"
+#define DEBUG_TYPE "lm32-lower"
+#include "LM32ISelLowering.h"
+#include "LM32MachineFunctionInfo.h"
+#include "LM32TargetMachine.h"
+#include "LM32TargetObjectFile.h"
+#include "LM32Subtarget.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
 #include "llvm/GlobalVariable.h"
@@ -35,30 +35,30 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-const char *Mico32TargetLowering::getTargetNodeName(unsigned Opcode) const {
+const char *LM32TargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
-    case Mico32ISD::JmpLink    : return "Mico32ISD::JmpLink";
-    case Mico32ISD::GPRel      : return "Mico32ISD::GPRel";
-    case Mico32ISD::ICmp       : return "Mico32ISD::ICmp";
-    case Mico32ISD::RetFlag    : return "Mico32ISD::RetFlag";
-    case Mico32ISD::Select_CC  : return "Mico32ISD::Select_CC";
-    case Mico32ISD::Hi         : return "Mico32ISD::Hi";
-    case Mico32ISD::Lo         : return "Mico32ISD::Lo";
+    case LM32ISD::JmpLink    : return "LM32ISD::JmpLink";
+    case LM32ISD::GPRel      : return "LM32ISD::GPRel";
+    case LM32ISD::ICmp       : return "LM32ISD::ICmp";
+    case LM32ISD::RetFlag    : return "LM32ISD::RetFlag";
+    case LM32ISD::Select_CC  : return "LM32ISD::Select_CC";
+    case LM32ISD::Hi         : return "LM32ISD::Hi";
+    case LM32ISD::Lo         : return "LM32ISD::Lo";
     default                    : return NULL;
   }
 }
 
-Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
-  : TargetLowering(TM, new Mico32TargetObjectFile()) {
-  Subtarget = &TM.getSubtarget<Mico32Subtarget>();
+LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
+  : TargetLowering(TM, new LM32TargetObjectFile()) {
+  Subtarget = &TM.getSubtarget<LM32Subtarget>();
 
-  // Mico32 does not have i1 type, so use i32 for
+  // LM32 does not have i1 type, so use i32 for
   // setcc operations results (slt, sgt, ...).
   setBooleanContents(ZeroOrOneBooleanContent);
 
   // Set up the integer register class
   // See MBlaze for conditional floating point setup if we add that.
-  addRegisterClass(MVT::i32, Mico32::GPRRegisterClass);
+  addRegisterClass(MVT::i32, LM32::GPRRegisterClass);
 
   // Load extented operations for i1 types must be promoted
   setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
@@ -88,7 +88,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
     setOperationAction(ISD::SREM, MVT::i32, Expand);
   }
 
-  // Mico32 doesn't have a DIV with REM instruction.
+  // LM32 doesn't have a DIV with REM instruction.
   setOperationAction(ISD::UDIVREM, MVT::i32, Expand);
   setOperationAction(ISD::SDIVREM, MVT::i32, Expand);
 
@@ -97,7 +97,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
     setOperationAction(ISD::MUL, MVT::i32, Expand);
   }
 
-  // Mico32 doesn't support 64-bit multiply.
+  // LM32 doesn't support 64-bit multiply.
   setOperationAction(ISD::MULHS, MVT::i32, Expand);
   setOperationAction(ISD::MULHS, MVT::i64, Expand);
   setOperationAction(ISD::MULHU, MVT::i32, Expand);
@@ -111,7 +111,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
 //FIXME: need to implement branches
   setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
 
-  // Mico32 doesn't have MUL_LOHI
+  // LM32 doesn't have MUL_LOHI
   setOperationAction(ISD::SMUL_LOHI, MVT::i32, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i32, Expand);
   setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
@@ -131,7 +131,7 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::SETCC,            MVT::f64, Expand);
 
 
-  // Mico32 Custom Operations
+  // LM32 Custom Operations
   // Custom legalize GlobalAddress nodes into LO/HI parts.
   setOperationAction(ISD::GlobalAddress,      MVT::i32,   Custom);
   setOperationAction(ISD::GlobalTLSAddress,   MVT::i32,   Custom);
@@ -146,14 +146,14 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::VACOPY,             MVT::Other, Expand);
 
 
-  // Mico32 does not have jump table branches...
+  // LM32 does not have jump table branches...
   setOperationAction(ISD::BR_JT,              MVT::Other, Expand);
   // ... so we have to lower the loads from the jump table.
   setOperationAction(ISD::JumpTable,          MVT::i32,   Custom);
   // Expand BR_CC to BRCOND.
   setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
 
-  // Operations not directly supported by Mico32.
+  // Operations not directly supported by LM32.
   setOperationAction(ISD::SIGN_EXTEND_INREG,  MVT::i1,    Expand);
   setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
@@ -209,21 +209,21 @@ Mico32TargetLowering::Mico32TargetLowering(Mico32TargetMachine &TM)
   setOperationAction(ISD::STACKSAVE,         MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,      MVT::Other, Expand);
 
-  setStackPointerRegisterToSaveRestore(Mico32::RSP);
+  setStackPointerRegisterToSaveRestore(LM32::RSP);
 
   computeRegisterProperties();
 }
 
-EVT Mico32TargetLowering::getSetCCResultType(EVT VT) const {
+EVT LM32TargetLowering::getSetCCResultType(EVT VT) const {
   return MVT::i32;
 }
 
 /// getFunctionAlignment - Return the Log2 alignment of this function.
-unsigned Mico32TargetLowering::getFunctionAlignment(const Function *) const {
+unsigned LM32TargetLowering::getFunctionAlignment(const Function *) const {
   return 2;
 }
 
-SDValue Mico32TargetLowering::LowerOperation(SDValue Op,
+SDValue LM32TargetLowering::LowerOperation(SDValue Op,
                                              SelectionDAG &DAG) const {
   switch (Op.getOpcode())
   {
@@ -241,33 +241,33 @@ SDValue Mico32TargetLowering::LowerOperation(SDValue Op,
 //  Lower helper functions
 //===----------------------------------------------------------------------===//
 MachineBasicBlock*
-Mico32TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
+LM32TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                   MachineBasicBlock *MBB)
                                                   const {
   switch (MI->getOpcode()) {
   default: assert(false && "Unexpected instr type to insert");
 /*
 
-  case Mico32::ShiftRL:
-  case Mico32::ShiftRA:
-  case Mico32::ShiftL:
+  case LM32::ShiftRL:
+  case LM32::ShiftRA:
+  case LM32::ShiftL:
     return EmitCustomShift(MI, MBB);
 
-  case Mico32::Select_FCC:
-  case Mico32::Select_CC:
+  case LM32::Select_FCC:
+  case LM32::Select_CC:
     return EmitCustomSelect(MI, MBB);
 
-  case Mico32::CAS32:
-  case Mico32::SWP32:
-  case Mico32::LAA32:
-  case Mico32::LAS32:
-  case Mico32::LAD32:
-  case Mico32::LAO32:
-  case Mico32::LAX32:
-  case Mico32::LAN32:
+  case LM32::CAS32:
+  case LM32::SWP32:
+  case LM32::LAA32:
+  case LM32::LAS32:
+  case LM32::LAD32:
+  case LM32::LAO32:
+  case LM32::LAX32:
+  case LM32::LAN32:
     return EmitCustomAtomic(MI, MBB);
 
-  case Mico32::MEMBARRIER:
+  case LM32::MEMBARRIER:
     // The Microblaze does not need memory barriers. Just delete the pseudo
     // instruction and finish.
     MI->eraseFromParent();
@@ -277,7 +277,7 @@ Mico32TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
 }
 
 MachineBasicBlock*
-Mico32TargetLowering::EmitCustomSelect(MachineInstr *MI,
+LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
                                        MachineBasicBlock *MBB) const {
   const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
   DebugLoc dl = MI->getDebugLoc();
@@ -305,12 +305,12 @@ Mico32TargetLowering::EmitCustomSelect(MachineInstr *MI,
   default: llvm_unreachable("Unknown branch condition");
 //FIXME:
 #if 0
-  case Mico32CC::EQ: Opc = Mico32::BEQID; break;
-  case Mico32CC::NE: Opc = Mico32::BNEID; break;
-  case Mico32CC::GT: Opc = Mico32::BGTID; break;
-  case Mico32CC::LT: Opc = Mico32::BLTID; break;
-  case Mico32CC::GE: Opc = Mico32::BGEID; break;
-  case Mico32CC::LE: Opc = Mico32::BLEID; break;
+  case LM32CC::EQ: Opc = LM32::BEQID; break;
+  case LM32CC::NE: Opc = LM32::BNEID; break;
+  case LM32CC::GT: Opc = LM32::BGTID; break;
+  case LM32CC::LT: Opc = LM32::BLTID; break;
+  case LM32CC::GE: Opc = LM32::BGEID; break;
+  case LM32CC::LE: Opc = LM32::BLEID; break;
 #endif
   }
 
@@ -334,12 +334,12 @@ Mico32TargetLowering::EmitCustomSelect(MachineInstr *MI,
   //  sinkMBB:
   //   %Result = phi [ %FalseValue, copy0MBB ], [ %TrueValue, thisMBB ]
   //  ...
-  //BuildMI(dneBB, dl, TII->get(Mico32::PHI), MI->getOperand(0).getReg())
+  //BuildMI(dneBB, dl, TII->get(LM32::PHI), MI->getOperand(0).getReg())
   //  .addReg(MI->getOperand(1).getReg()).addMBB(flsBB)
   //  .addReg(MI->getOperand(2).getReg()).addMBB(BB);
 
   BuildMI(*dneBB, dneBB->begin(), dl,
-          TII->get(Mico32::PHI), MI->getOperand(0).getReg())
+          TII->get(LM32::PHI), MI->getOperand(0).getReg())
     .addReg(MI->getOperand(2).getReg()).addMBB(flsBB)
     .addReg(MI->getOperand(1).getReg()).addMBB(MBB);
 
@@ -353,7 +353,7 @@ Mico32TargetLowering::EmitCustomSelect(MachineInstr *MI,
 //===----------------------------------------------------------------------===//
 //
 
-SDValue Mico32TargetLowering::LowerSELECT_CC(SDValue Op,
+SDValue LM32TargetLowering::LowerSELECT_CC(SDValue Op,
                                              SelectionDAG &DAG) const {
   SDValue LHS = Op.getOperand(0);
   SDValue RHS = Op.getOperand(1);
@@ -366,8 +366,8 @@ DAG.viewGraph();
 
   SDValue CompareFlag;
   if (LHS.getValueType() == MVT::i32) {
-    Opc = Mico32ISD::Select_CC;
-    CompareFlag = DAG.getNode(Mico32ISD::ICmp, dl, MVT::i32, LHS, RHS)
+    Opc = LM32ISD::Select_CC;
+    CompareFlag = DAG.getNode(LM32ISD::ICmp, dl, MVT::i32, LHS, RHS)
                     .getValue(1);
   } else {
     llvm_unreachable("Cannot lower select_cc with unknown type");
@@ -378,7 +378,7 @@ DAG.viewGraph();
 }
 
 // Modeled on Sparc LowerGlobalAddress.
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
 {
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
@@ -394,8 +394,8 @@ LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
   if (DAG.isVerifiedDebugInfoDesc(Op))
     return GA;
 #endif
-  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, GA);
-  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, GA);
+  SDValue Hi = DAG.getNode(LM32ISD::Hi, dl, MVT::i32, GA);
+  SDValue Lo = DAG.getNode(LM32ISD::Lo, dl, MVT::i32, GA);
   /* FIXME: revisit this and see if it gets optimized:
   // The goal here was to incorporate the "ADD" into the
   // LD but it doesn't work since Monarch:Lo is unsigned
@@ -411,7 +411,7 @@ LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
   //// SelectADDRri it looks for MonarchISD::Lo and makes
   //// this optimization (although it looks in both operands).
   //
-  // Note that Mico32 assembler does not have an @ha equivalent.
+  // Note that LM32 assembler does not have an @ha equivalent.
   // The M32R "shigh" GAS directive is what we need.
   */
   //return DAG.getNode(ISD::ADD, dl, MVT::i32, Lo, Hi);
@@ -419,21 +419,21 @@ LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
 }
 
 
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {
-  llvm_unreachable("TLS not implemented for Mico32.");
+  llvm_unreachable("TLS not implemented for LM32.");
   return SDValue(); // Not reached
 }
 
 // Derived from PPC.
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
   DEBUG(assert(Op.getValueType() == MVT::i32 && "pointers should be 32 bits."));
   DebugLoc dl = Op.getDebugLoc();
   JumpTableSDNode *JT = cast<JumpTableSDNode>(Op);
   SDValue JTI = DAG.getTargetJumpTable(JT->getIndex(), MVT::i32);
-  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, JTI);
-  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, JTI);
+  SDValue Hi = DAG.getNode(LM32ISD::Hi, dl, MVT::i32, JTI);
+  SDValue Lo = DAG.getNode(LM32ISD::Lo, dl, MVT::i32, JTI);
 
   // We don't support non-static relo models yet.
   if (DAG.getTarget().getRelocationModel() == Reloc::Static ) {
@@ -448,7 +448,7 @@ LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
 }
 
 
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
 {
   ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
@@ -456,17 +456,17 @@ LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
   DebugLoc dl = Op.getDebugLoc();
   const Constant *C = N->getConstVal();
   SDValue CP = DAG.getTargetConstantPool(C, MVT::i32, N->getAlignment());
-  SDValue Hi = DAG.getNode(Mico32ISD::Hi, dl, MVT::i32, CP);
-  SDValue Lo = DAG.getNode(Mico32ISD::Lo, dl, MVT::i32, CP);
+  SDValue Hi = DAG.getNode(LM32ISD::Hi, dl, MVT::i32, CP);
+  SDValue Lo = DAG.getNode(LM32ISD::Lo, dl, MVT::i32, CP);
   // See note above in LowerGlobalAddress about operands.
   return DAG.getNode(ISD::OR, dl, MVT::i32, Lo, Hi);
   //return DAG.getNode(ISD::ADD, dl, MVT::i32, Lo, Hi);
 }
 
-SDValue Mico32TargetLowering::LowerVASTART(SDValue Op,
+SDValue LM32TargetLowering::LowerVASTART(SDValue Op,
                                            SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
-  Mico32FunctionInfo *FuncInfo = MF.getInfo<Mico32FunctionInfo>();
+  LM32FunctionInfo *FuncInfo = MF.getInfo<LM32FunctionInfo>();
 
   DebugLoc dl = Op.getDebugLoc();
   SDValue FI = DAG.getFrameIndex(FuncInfo->getVarArgsFrameIndex(),
@@ -491,7 +491,7 @@ SDValue Mico32TargetLowering::LowerVASTART(SDValue Op,
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32GenCallingConv.inc"
+#include "LM32GenCallingConv.inc"
 
 //===----------------------------------------------------------------------===//
 //                  Call Calling Convention Implementation
@@ -519,7 +519,7 @@ SDValue Mico32TargetLowering::LowerVASTART(SDValue Op,
 /// LowerCall - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
 /// TODO: isVarArg, isTailCall.
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
           bool isVarArg, bool &isTailCall,
           const SmallVectorImpl<ISD::OutputArg> &Outs,
@@ -532,7 +532,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   if (CallConv != CallingConv::Fast && CallConv != CallingConv::C)
     llvm_unreachable("Unsupported calling convention");
 
-  // Mico32 does not yet support tail call optimization
+  // LM32 does not yet support tail call optimization
   isTailCall = false;
 
   // Analyze operands of the call, assigning locations to each operand.
@@ -541,7 +541,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
                  getTargetMachine(), ArgLocs, *DAG.getContext());
 
-  CCInfo.AnalyzeCallOperands(Outs, CC_Mico32);
+  CCInfo.AnalyzeCallOperands(Outs, CC_LM32);
 
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NumBytes = CCInfo.getNextStackOffset();
@@ -586,7 +586,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
       assert(VA.isMemLoc());
 
       // Create a store off the stack pointer for this argument.
-      SDValue StackPtr = DAG.getRegister(Mico32::RSP, MVT::i32);
+      SDValue StackPtr = DAG.getRegister(LM32::RSP, MVT::i32);
       int offset = VA.getLocMemOffset();
       offset += Subtarget->hasSPBias()? 4 : 0; 
       SDValue PtrOff = DAG.getIntPtrConstant(offset);
@@ -622,7 +622,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
     Callee = DAG.getTargetExternalSymbol(E->getSymbol(), getPointerTy());
 
-  // Mico32BranchLink = #chain, #target_address, #opt_in_flags...
+  // LM32BranchLink = #chain, #target_address, #opt_in_flags...
   //             = Chain, Callee, Reg#1, Reg#2, ...  
   //
   // Returns a chain & a flag for retval copy to use.
@@ -642,7 +642,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   if (InFlag.getNode())
     Ops.push_back(InFlag);
 
-  Chain  = DAG.getNode(Mico32ISD::JmpLink, dl, NodeTys, &Ops[0], Ops.size());
+  Chain  = DAG.getNode(LM32ISD::JmpLink, dl, NodeTys, &Ops[0], Ops.size());
   InFlag = Chain.getValue(1);
 
   // Create the CALLSEQ_END node.
@@ -664,7 +664,7 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
 /// being lowered. Returns a SDNode with the same number of values as the 
 /// ISD::CALL.
 // From Mips.
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
                 bool isVarArg, const SmallVectorImpl<ISD::InputArg> &Ins,
                 DebugLoc dl, SelectionDAG &DAG,
@@ -674,7 +674,7 @@ LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
                  getTargetMachine(), RVLocs, *DAG.getContext());
 
-  CCInfo.AnalyzeCallResult(Ins, RetCC_Mico32);
+  CCInfo.AnalyzeCallResult(Ins, RetCC_LM32);
 
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
@@ -697,19 +697,19 @@ LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
 /// TODO: isVarArg, structure return
 /// Based on Mips.
 /// Note: same as Monarch
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                      const SmallVectorImpl<ISD::InputArg> &Ins,
                      DebugLoc dl, SelectionDAG &DAG,
                      SmallVectorImpl<SDValue> &InVals) const {
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo *MFI = MF.getFrameInfo();
-  Mico32FunctionInfo *Mico32FI = MF.getInfo<Mico32FunctionInfo>();
-  Mico32FI->setVarArgsFrameIndex(0);
+  LM32FunctionInfo *LM32FI = MF.getInfo<LM32FunctionInfo>();
+  LM32FI->setVarArgsFrameIndex(0);
 
   // Keep track of the last register used for arguments and the last stack offset
   // used so we can find the first varargs argument.
-  unsigned ArgRegEnd = Mico32::R0;
+  unsigned ArgRegEnd = LM32::R0;
   int nextLocMemOffset = 0;
 
   // Assign locations to all of the incoming arguments.
@@ -717,7 +717,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
                  getTargetMachine(), ArgLocs, *DAG.getContext());
 
-  CCInfo.AnalyzeFormalArguments(Ins, CC_Mico32);
+  CCInfo.AnalyzeFormalArguments(Ins, CC_LM32);
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
@@ -731,10 +731,10 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
       TargetRegisterClass *RC = 0;
 
       if (RegVT == MVT::i32)
-        RC = Mico32::GPRRegisterClass;
+        RC = LM32::GPRRegisterClass;
 // FIXME: should we have f32?
 //      else if (RegVT == MVT::f32)
-//        RC = Mico32::GPRRegisterClass;
+//        RC = LM32::GPRRegisterClass;
       else
         llvm_unreachable("RegVT not supported by LowerFormalArguments");
 
@@ -761,7 +761,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
       InVals.push_back(ArgValue);
     } else { // VA.isRegLoc()
-      assert(ArgRegEnd == Mico32::R8 &&
+      assert(ArgRegEnd == LM32::R8 &&
               "We should have used all argument registers");
 
       // sanity check
@@ -805,30 +805,30 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
   // following vararg arguments are already on the stack. If an argument
   // register was already handled (indicated by ArgRegEnd) we know it
   // not a variadic argument.
-  assert(Mico32::R8 - 8 == Mico32::R0 && Mico32::R1 - 1 == Mico32::R0 &&
+  assert(LM32::R8 - 8 == LM32::R0 && LM32::R1 - 1 == LM32::R0 &&
           "Register numbers are expected to be sequential.");
   if (isVarArg ) {
-    assert(ArgRegEnd < Mico32::R9 && 
+    assert(ArgRegEnd < LM32::R9 && 
             "We should only be using 8 registers for arguments");
     // Check if all the variadic arguments are already on the stack or if some are
     // still in registers.
-    if (ArgRegEnd == Mico32::R8) {
+    if (ArgRegEnd == LM32::R8) {
       // The variadic arguments are already on the stack.
       // Record the frame index of the first variable argument
       // which is a value necessary to VASTART.
       int firstVarargFI = MFI->CreateFixedObject(4, nextLocMemOffset, true);
-      Mico32FI->setVarArgsFrameIndex(firstVarargFI);
+      LM32FI->setVarArgsFrameIndex(firstVarargFI);
       DEBUG(errs() << "All varargs on stack getVarArgsFrameIndex() to:" << 
-                      Mico32FI->getVarArgsFrameIndex() << "\n");
+                      LM32FI->getVarArgsFrameIndex() << "\n");
     } else {
       // Used to acumulate store chains.
       std::vector<SDValue> OutChains;
   
-      TargetRegisterClass *RC = Mico32::GPRRegisterClass;
+      TargetRegisterClass *RC = LM32::GPRRegisterClass;
   
       // We'll save all argument registers not already saved on the stack.  Store
       // higher numbered register at higher address.
-      unsigned Start = Mico32::R8;
+      unsigned Start = LM32::R8;
       unsigned End = ArgRegEnd + 1;
       
       // Start varargs at the first empty stack location.
@@ -843,14 +843,14 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
         OutChains.push_back(DAG.getStore(Chain, dl, ArgValue, StoreFI,
                                          MachinePointerInfo(),
                                          false, false, 0));
-        DEBUG(errs() << "Saving vararg register:" << Start - Mico32::R0 <<
+        DEBUG(errs() << "Saving vararg register:" << Start - LM32::R0 <<
                         " at FI:" << FI << "\n");
   
       }
       // Record the frame index of the first variable argument
       // which is a value necessary to VASTART.
       DEBUG(errs() << "setVarArgsFrameIndex to:" << FI << "\n");
-      Mico32FI->setVarArgsFrameIndex(FI);
+      LM32FI->setVarArgsFrameIndex(FI);
   
       // All stores are grouped in one node to allow the matching between
       // the size of Ins and InVals. This only happens when on varg functions
@@ -869,7 +869,7 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
 //===----------------------------------------------------------------------===//
 
 // Note: Same as Monarch
-SDValue Mico32TargetLowering::
+SDValue LM32TargetLowering::
 LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
             const SmallVectorImpl<ISD::OutputArg> &Outs,
             const SmallVectorImpl<SDValue> &OutVals,
@@ -883,7 +883,7 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                  getTargetMachine(), RVLocs, *DAG.getContext());
 
   // Analize return values.
-  CCInfo.AnalyzeReturn(Outs, RetCC_Mico32);
+  CCInfo.AnalyzeReturn(Outs, RetCC_LM32);
 
   // If this is the first return lowered for this function, add
   // the regs to the liveout set for the function.
@@ -908,23 +908,23 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
   }
 
   if (Flag.getNode())
-    return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(Mico32::RRA, MVT::i32), Flag);
+    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
+                       Chain, DAG.getRegister(LM32::RRA, MVT::i32), Flag);
   else // Return Void
-    return DAG.getNode(Mico32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(Mico32::RRA, MVT::i32));
+    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
+                       Chain, DAG.getRegister(LM32::RRA, MVT::i32));
 }
 
 //===----------------------------------------------------------------------===//
-//                           Mico32 Inline Assembly Support
+//                           LM32 Inline Assembly Support
 //===----------------------------------------------------------------------===//
 
 /// getConstraintType - Given a constraint letter, return the type of
 /// constraint it is for this target.
-Mico32TargetLowering::ConstraintType Mico32TargetLowering::
+LM32TargetLowering::ConstraintType LM32TargetLowering::
 getConstraintType(const std::string &Constraint) const
 {
-  // Mico32 specific constraint
+  // LM32 specific constraint
   //
   // 'd' : An address register. Equivalent to r.
   // 'y' : Equivalent to r; retained for
@@ -947,7 +947,7 @@ getConstraintType(const std::string &Constraint) const
 /// This object must already have been set up with the operand type
 /// and the current alternative constraint selected.
 TargetLowering::ConstraintWeight
-Mico32TargetLowering::getSingleConstraintMatchWeight(
+LM32TargetLowering::getSingleConstraintMatchWeight(
     AsmOperandInfo &info, const char *constraint) const {
   ConstraintWeight weight = CW_Invalid;
   Value *CallOperandVal = info.CallOperandVal;
@@ -984,12 +984,12 @@ Mico32TargetLowering::getSingleConstraintMatchWeight(
 ///
 /// This should only be used for C_Register constraints.  On error,
 /// this returns a register number of 0 and a null register class pointer..
-std::pair<unsigned, const TargetRegisterClass*> Mico32TargetLowering::
+std::pair<unsigned, const TargetRegisterClass*> LM32TargetLowering::
 getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
-      return std::make_pair(0U, Mico32::GPRRegisterClass);
+      return std::make_pair(0U, LM32::GPRRegisterClass);
       // FIXME:  This was copied directly from MBLAZE:
       // TODO: These can't possibly be right, but match what was in
       // getRegClassForInlineAsmConstraint.
@@ -997,18 +997,18 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
     case 'y':
     case 'f':
       if (VT == MVT::f32)
-        return std::make_pair(0U, Mico32::GPRRegisterClass);
+        return std::make_pair(0U, LM32::GPRRegisterClass);
     }
   }
   return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);
 }
 
-bool Mico32TargetLowering::
+bool LM32TargetLowering::
 isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
-  // The Mico32 target isn't yet aware of offsets.
+  // The LM32 target isn't yet aware of offsets.
   return false;
 }
 
-bool Mico32TargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
+bool LM32TargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   return VT != MVT::f32;
 }

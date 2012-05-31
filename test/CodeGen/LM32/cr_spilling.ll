@@ -1,7 +1,7 @@
 ; Monarch frame size is limited to 32767 byte offset.
 ; cr_spilling_pass.ll is working version of this test.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32 
+; RUN: llvm-as < %s | llc -march=lm32 
 ; END.
 ; PR1638
 

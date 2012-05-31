@@ -1,4 +1,4 @@
-//==-- Mico32MCTargetDesc.cpp - Mico32 Target Descriptions --------*- C++ -*-=//
+//==-- LM32MCTargetDesc.cpp - LM32 Target Descriptions ------------*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file provides Mico32 specific target descriptions.
+// This file provides LM32 specific target descriptions.
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32MCTargetDesc.h"
-#include "Mico32MCAsmInfo.h"
+#include "LM32MCTargetDesc.h"
+#include "LM32MCAsmInfo.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -20,50 +20,50 @@
 #include "llvm/Support/TargetRegistry.h"
 
 #define GET_INSTRINFO_MC_DESC
-#include "Mico32GenInstrInfo.inc"
+#include "LM32GenInstrInfo.inc"
 
 #define GET_SUBTARGETINFO_MC_DESC
-#include "Mico32GenSubtargetInfo.inc"
+#include "LM32GenSubtargetInfo.inc"
 
 #define GET_REGINFO_MC_DESC
-#include "Mico32GenRegisterInfo.inc"
+#include "LM32GenRegisterInfo.inc"
 
 using namespace llvm;
 
-static MCInstrInfo *createMico32MCInstrInfo() {
+static MCInstrInfo *createLM32MCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
-  InitMico32MCInstrInfo(X);
+  InitLM32MCInstrInfo(X);
   return X;
 }
 
-static MCRegisterInfo *createMico32MCRegisterInfo(StringRef TT) {
+static MCRegisterInfo *createLM32MCRegisterInfo(StringRef TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitMico32MCRegisterInfo(X, Mico32::RRA);
+  InitLM32MCRegisterInfo(X, LM32::RRA);
   return X;
 }
 
-static MCSubtargetInfo *createMico32MCSubtargetInfo(StringRef TT, StringRef CPU,
+static MCSubtargetInfo *createLM32MCSubtargetInfo(StringRef TT, StringRef CPU,
                                                    StringRef FS) {
   MCSubtargetInfo *X = new MCSubtargetInfo();
-  InitMico32MCSubtargetInfo(X, TT, CPU, FS);
+  InitLM32MCSubtargetInfo(X, TT, CPU, FS);
   return X;
 }
 
 
-static MCAsmInfo *createMico32MCAsmInfo(const Target &T, StringRef TT) {
-  MCAsmInfo *MAI = new Mico32MCAsmInfo(T, TT);
+static MCAsmInfo *createLM32MCAsmInfo(const Target &T, StringRef TT) {
+  MCAsmInfo *MAI = new LM32MCAsmInfo(T, TT);
 
   // Set the initial debugging machine moves that are assumed
   // on entry to a function.  From XCore.
   // Initial frame pointer is SP.
   MachineLocation Dst(MachineLocation::VirtualFP);
-  MachineLocation Src(Mico32::RSP, 0);
+  MachineLocation Src(LM32::RSP, 0);
   MAI->addInitialFrameState(0, Dst, Src);
 
   return MAI;
 }
 
-static MCCodeGenInfo *createMico32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
+static MCCodeGenInfo *createLM32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                                 CodeModel::Model CM,
                                                 CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
@@ -75,25 +75,25 @@ static MCCodeGenInfo *createMico32MCCodeGenInfo(StringRef TT, Reloc::Model RM,
   return X;
 }
 
-extern "C" void LLVMInitializeMico32TargetMC() {
+extern "C" void LLVMInitializeLM32TargetMC() {
   // Register the MC asm info.
-  //RegisterMCAsmInfo<Mico32MCAsmInfo> X(TheMico32Target);
-  RegisterMCAsmInfoFn X(TheMico32Target, createMico32MCAsmInfo);
+  //RegisterMCAsmInfo<LM32MCAsmInfo> X(TheLM32Target);
+  RegisterMCAsmInfoFn X(TheLM32Target, createLM32MCAsmInfo);
 
   // Register the MC codegen info.
-  TargetRegistry::RegisterMCCodeGenInfo(TheMico32Target,
-                                        createMico32MCCodeGenInfo);
+  TargetRegistry::RegisterMCCodeGenInfo(TheLM32Target,
+                                        createLM32MCCodeGenInfo);
 
   // Register the MC instruction info.
-  TargetRegistry::RegisterMCInstrInfo(TheMico32Target,
-                                      createMico32MCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(TheLM32Target,
+                                      createLM32MCInstrInfo);
 
   // Register the MC register info.
-  TargetRegistry::RegisterMCRegInfo(TheMico32Target,
-                                    createMico32MCRegisterInfo);
+  TargetRegistry::RegisterMCRegInfo(TheLM32Target,
+                                    createLM32MCRegisterInfo);
 
   // Register the MC subtarget info.
-  TargetRegistry::RegisterMCSubtargetInfo(TheMico32Target,
-                                          createMico32MCSubtargetInfo);
+  TargetRegistry::RegisterMCSubtargetInfo(TheLM32Target,
+                                          createLM32MCSubtargetInfo);
 }
 

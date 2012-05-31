@@ -1,4 +1,4 @@
-##===- lib/Target/Mico32/TargetDesc/Makefile ----------------*- Makefile -*-==##
+##===- lib/Target/LM32/MCTargetDesc/Makefile ----------------*- Makefile -*-==##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -8,7 +8,7 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL = ../../../..
-LIBRARYNAME = LLVMMico32Desc
+LIBRARYNAME = LLVMLM32Desc
 
 # Hack: we need to include 'main' target directory to grab private headers
 CPP.Flags += -I$(PROJ_OBJ_DIR)/.. -I$(PROJ_SRC_DIR)/..

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 define i64 @test(i64 %A, i32 %B) {
         %tmp12 = zext i32 %B to i64             ; <i64> [#uses=1]

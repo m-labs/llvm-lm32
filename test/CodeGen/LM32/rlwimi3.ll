@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32 
+; RUN: llvm-as < %s | llc -march=lm32 
 ;# RUN: llvm-as < %s | llc -march=ppc32 -stats |& \
 ;# RUN:   grep {Number of machine instrs printed} | grep 12
 

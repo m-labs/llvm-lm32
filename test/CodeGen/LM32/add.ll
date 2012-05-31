@@ -1,7 +1,7 @@
 ;test all the shifted and signextending adds and subs with and without consts
 ;
-; RUN: llvm-as < %s | llc -march=mico32
-; RUN: llvm-as < %s | llc -march=mico32 -o %t.s 
+; RUN: llvm-as < %s | llc -march=lm32
+; RUN: llvm-as < %s | llc -march=lm32 -o %t.s 
 ; END.
 ; DONT: grep {	addl} %t.s | count 2
 ; DONT: grep {	addq} %t.s | count 2

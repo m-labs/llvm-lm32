@@ -1,4 +1,4 @@
-//=====- Mico32FrameLowering.cpp - Mico32 Frame Information ------ C++ -*-====//
+//=====- LM32FrameLowering.cpp - LM32 Frame Information ---------- C++ -*-====//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the Mico32 implementation of TargetFrameLowering class.
+// This file contains the LM32 implementation of TargetFrameLowering class.
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mico32.h"
-#include "Mico32FrameLowering.h"
-#include "Mico32InstrInfo.h"
-#include "Mico32MachineFunctionInfo.h"
+#include "LM32.h"
+#include "LM32FrameLowering.h"
+#include "LM32InstrInfo.h"
+#include "LM32MachineFunctionInfo.h"
 #include "llvm/Function.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -26,12 +26,12 @@
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "Mico32Subtarget.h"
+#include "LM32Subtarget.h"
 
 
 using namespace llvm;
 
-Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &subtarget)
+LM32FrameLowering::LM32FrameLowering(const LM32Subtarget &subtarget)
   : TargetFrameLowering(TargetFrameLowering::StackGrowsDown,
                         4 /*StackAlignment*/, 
                         0 /*LocalAreaOffset*/,
@@ -43,7 +43,7 @@ Mico32FrameLowering::Mico32FrameLowering(const Mico32Subtarget &subtarget)
 
 /// determineFrameLayout - Align the frame and maximum call frame and
 /// updated the sizes. Copied from SPU.
-void Mico32FrameLowering::
+void LM32FrameLowering::
 determineFrameLayout(MachineFunction &MF) const {
   MachineFrameInfo *MFI = MF.getFrameInfo();
 
@@ -83,7 +83,7 @@ determineFrameLayout(MachineFunction &MF) const {
 /// function has variable sized allocas or frame pointer elimination 
 /// is disabled or stack alignment is less than requested alignment.
 ///
-bool Mico32FrameLowering::
+bool LM32FrameLowering::
 hasFP(const MachineFunction &MF) const {
   const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
   const MachineFrameInfo *MFI = MF.getFrameInfo();
@@ -97,16 +97,16 @@ hasFP(const MachineFunction &MF) const {
 
 // Generate the function prologue.
 // This is based on XCore with some SPU influence.
-void Mico32FrameLowering::
+void LM32FrameLowering::
 emitPrologue(MachineFunction &MF) const {
   MachineBasicBlock &MBB = MF.front();    // Prolog goes in entry BB
   MachineBasicBlock::iterator MBBI = MBB.begin();
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   MachineModuleInfo *MMI = &MF.getMMI();
 
-  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
-  const Mico32InstrInfo &TII =
-    *static_cast<const Mico32InstrInfo*>(MF.getTarget().getInstrInfo());
+  LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
+  const LM32InstrInfo &TII =
+    *static_cast<const LM32InstrInfo*>(MF.getTarget().getInstrInfo());
 
   DebugLoc dl = (MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc());
 
@@ -124,7 +124,7 @@ emitPrologue(MachineFunction &MF) const {
   // Get the frame size.
   int FrameSize = MFrmInf->getStackSize();
   assert(FrameSize%4 == 0 && 
-         "Mico32FrameLowering::emitPrologue Misaligned frame size");
+         "LM32FrameLowering::emitPrologue Misaligned frame size");
   
   
   bool emitFrameMoves = MMI->hasDebugInfo() ||
@@ -141,8 +141,8 @@ emitPrologue(MachineFunction &MF) const {
     // so we don't use 32768. See SPU for model of how to implement larger
     // stack frames.
     if (FrameSize < 32768) {
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),
-              Mico32::RSP).addReg(Mico32::RSP).addImm(-FrameSize);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::ADDI),
+              LM32::RSP).addReg(LM32::RSP).addImm(-FrameSize);
     } else {
       // We could use multiple instructions to generate the offset.
       report_fatal_error("Unhandled frame size in function: " + MBB.getParent()->getFunction()->getName() + " size: " + Twine(FrameSize));
@@ -156,7 +156,7 @@ emitPrologue(MachineFunction &MF) const {
 
       // Show update of SP.
       MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL)).addSym(FrameLabel);
 
   DEBUG(dbgs() << "\nFunction: "
                << MF.getFunction()->getName() << " SP Frame debug location\n");
@@ -173,20 +173,20 @@ emitPrologue(MachineFunction &MF) const {
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
         +FrameSize;
       LRSpillOffset += Subtarget.hasSPBias()? 4 : 0;
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
-        .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
-      MBB.addLiveIn(Mico32::RRA);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::SW))
+        .addReg(LM32::RRA).addReg(LM32::RSP).addImm(LRSpillOffset);
+      MBB.addLiveIn(LM32::RRA);
       
       if (emitFrameMoves) {
         MCSymbol *SaveLRLabel = MMI->getContext().CreateTempSymbol();
-        BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
+        BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL))
                 .addSym(SaveLRLabel);
   DEBUG(dbgs() << "\nFunction: "
                << MF.getFunction()->getName() << " LR Frame debug location\n");
   DEBUG(dbgs() << "Moving %RRA (link register): \n");
   DEBUG(dbgs() << "VirtualFP[FPSpillOffset] = VirtFP[" << LRSpillOffset << "]\n");
         MachineLocation CSDst(MachineLocation::VirtualFP, LRSpillOffset);
-        MachineLocation CSSrc(Mico32::RRA);
+        MachineLocation CSSrc(LM32::RRA);
         MMI->getFrameMoves().push_back(MachineMove(SaveLRLabel, CSDst, CSSrc));
       }
     }
@@ -197,11 +197,11 @@ emitPrologue(MachineFunction &MF) const {
         MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
       FPSpillOffset += Subtarget.hasSPBias()? 4 : 0;
   
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::SW))
-        .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::SW))
+        .addReg(LM32::RFP).addReg(LM32::RSP).addImm(FPSpillOffset);
   
       // RFP is live-in. It is killed at the spill.
-      MBB.addLiveIn(Mico32::RFP);
+      MBB.addLiveIn(LM32::RFP);
       if (emitFrameMoves) {
              DEBUG(dbgs() << "\nFunction: "
                << MF.getFunction()->getName() << " FP Frame debug location\n");
@@ -209,24 +209,24 @@ emitPrologue(MachineFunction &MF) const {
                << ((FP) ? "FP" : "SP") << " to \n");
   DEBUG(dbgs() << "VirtualFP[FPSpillOffset] = VirtFP[" << FPSpillOffset << "]\n");
         MCSymbol *SaveRFPLabel = MMI->getContext().CreateTempSymbol();
-        BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL))
+        BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL))
                 .addSym(SaveRFPLabel);
         MachineLocation CSDst(MachineLocation::VirtualFP, FPSpillOffset);
-        MachineLocation CSSrc(Mico32::RFP);
+        MachineLocation CSSrc(LM32::RFP);
         MMI->getFrameMoves().push_back(MachineMove(SaveRFPLabel, CSDst, CSSrc));
       }
       // Set the FP from the SP.
-      unsigned FramePtr = Mico32::RFP;
+      unsigned FramePtr = LM32::RFP;
       // The FP points to the beginning of the frame ( = SP on entry), 
       // hence we add in the FrameSize.
       FrameSize += Subtarget.hasSPBias()? 4 : 0;
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI),FramePtr)
-        .addReg(Mico32::RSP).addImm(FrameSize);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::ADDI),FramePtr)
+        .addReg(LM32::RSP).addImm(FrameSize);
       if (emitFrameMoves) {
         DEBUG(dbgs() << "FRAMEMOVE: FPreg: is now FP \n");
         // Show FP is now valid.
         MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
-        BuildMI(MBB, MBBI, dl,TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
+        BuildMI(MBB, MBBI, dl,TII.get(LM32::PROLOG_LABEL)).addSym(FrameLabel);
         MachineLocation SPDst(FramePtr);
         MachineLocation SPSrc(MachineLocation::VirtualFP);
         MMI->getFrameMoves().push_back(MachineMove(FrameLabel, SPDst, SPSrc));
@@ -255,7 +255,7 @@ emitPrologue(MachineFunction &MF) const {
   // This is from PPC:
   if (emitFrameMoves) {
     MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
-    BuildMI(MBB, MBBI, dl, TII.get(Mico32::PROLOG_LABEL)).addSym(FrameLabel);
+    BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL)).addSym(FrameLabel);
     MCSymbol *ReadyLabel = 0;
 
     MCSymbol *Label = FP ? ReadyLabel : FrameLabel;
@@ -289,14 +289,14 @@ emitPrologue(MachineFunction &MF) const {
 }
 
 
-void Mico32FrameLowering::
+void LM32FrameLowering::
 emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   MachineBasicBlock::iterator MBBI = prior(MBB.end());
-  const Mico32InstrInfo &TII =
-    *static_cast<const Mico32InstrInfo*>(MF.getTarget().getInstrInfo());
-  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
-  assert(MBBI->getOpcode() == Mico32::RET &&
+  const LM32InstrInfo &TII =
+    *static_cast<const LM32InstrInfo*>(MF.getTarget().getInstrInfo());
+  LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
+  assert(MBBI->getOpcode() == LM32::RET &&
          "Can only put epilog before 'ret' instruction!");
   DebugLoc dl = MBBI->getDebugLoc();
   
@@ -311,8 +311,8 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
       int FPSpillOffset = 
         MFrmInf->getObjectOffset(MFuncInf->getFPSpillSlot())+FrameSize;
       FPSpillOffset += Subtarget.hasSPBias()? 4 : 0;
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
-        .addReg(Mico32::RFP).addReg(Mico32::RSP).addImm(FPSpillOffset);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::LW))
+        .addReg(LM32::RFP).addReg(LM32::RSP).addImm(FPSpillOffset);
     }
   
     if (MFuncInf->getUsesLR()) {
@@ -320,14 +320,14 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
           +FrameSize;
       LRSpillOffset += Subtarget.hasSPBias()? 4 : 0;
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::LW))
-        .addReg(Mico32::RRA).addReg(Mico32::RSP).addImm(LRSpillOffset);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::LW))
+        .addReg(LM32::RRA).addReg(LM32::RSP).addImm(LRSpillOffset);
     }
 
     // SP +=  MFrmInf->getStackSize()
     if (FrameSize < 32768) {
-      BuildMI(MBB, MBBI, dl, TII.get(Mico32::ADDI), Mico32::RSP)
-        .addReg(Mico32::RSP).addImm(FrameSize);
+      BuildMI(MBB, MBBI, dl, TII.get(LM32::ADDI), LM32::RSP)
+        .addReg(LM32::RSP).addImm(FrameSize);
     } else {
       assert( 0 && "Unimplemented - per function stack size limited to 32767 bytes.");
     }
@@ -339,7 +339,7 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
 /// before the specified functions frame layout (MF.getFrameInfo()) is
 /// finalized.  Once the frame is finalized, MO_FrameIndex operands are
 /// replaced with direct constants.  This method is optional.
-void Mico32FrameLowering::
+void LM32FrameLowering::
 processFunctionBeforeFrameFinalized(MachineFunction &MF) const {}
 
 /// processFunctionBeforeCalleeSavedScan - This method is called immediately
@@ -347,14 +347,14 @@ processFunctionBeforeFrameFinalized(MachineFunction &MF) const {}
 /// what callee saved registers should be spilled. This method is optional.
 /// ARM provides a complex example of this function.
 /// The following is based on XCore
-void Mico32FrameLowering::
+void LM32FrameLowering::
 processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
-  const TargetRegisterClass *RC = Mico32::GPRRegisterClass;
-  Mico32FunctionInfo *MFuncInf = MF.getInfo<Mico32FunctionInfo>();
-  const bool LRUsed = MF.getRegInfo().isPhysRegUsed(Mico32::RRA);
+  const TargetRegisterClass *RC = LM32::GPRRegisterClass;
+  LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
+  const bool LRUsed = MF.getRegInfo().isPhysRegUsed(LM32::RRA);
   const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);
   const bool isVarArg = MF.getFunction()->isVarArg();
   
@@ -371,7 +371,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   // LR can be optimized out prior to now:
   int FrameIdx;
   if (LRUsed) {
-    MF.getRegInfo().setPhysRegUnused(Mico32::RRA);
+    MF.getRegInfo().setPhysRegUnused(LM32::RRA);
     
     if ( !isVarArg )
       FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), offset, true);
@@ -397,7 +397,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     // This needs saving / restoring in the epilogue / prologue.
     // Supposedly FP is marked live-in and is killed at the spill. So
     // don't bother marking it unused.
-    //MF.getRegInfo().setPhysRegUnused(Mico32::RFP);
+    //MF.getRegInfo().setPhysRegUnused(LM32::RFP);
     // FIXME: shouldn't isSS be true?  XCore says no...
     if ( !isVarArg )
       FrameIdx = MFrmInf->CreateFixedObject(RC->getSize(), offset, true);

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -mips-ssection-threshold=8 -march=mips -f -o %t0
 ; RUN: llvm-as < %s | llc -mips-ssection-threshold=0 -march=mips -f -o %t1

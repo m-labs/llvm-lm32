@@ -1,4 +1,4 @@
-//===------- Mico32.td - Calling Conventions for Mico32 --*- C++ --------*-===//
+//===-- LM32CallingConv.td - Calling Conventions for LM32 -------*- C++ -*-===//
 // 
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,12 +7,12 @@
 // 
 //===----------------------------------------------------------------------===//
 //
-// This describes the calling conventions for the Mico32 architecture.
+// This describes the calling conventions for the LM32 architecture.
 //
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Mico32 Calling Conventions
+// LM32 Calling Conventions
 //===----------------------------------------------------------------------===//
 
 // Note it looks like LLVM supports passing or return stucture arguments
@@ -24,7 +24,7 @@
 // See also: http://nondot.org/sabre/LLVMNotes/CustomCallingConventions.txt
 
 
-def CC_Mico32 : CallingConv<[
+def CC_LM32 : CallingConv<[
   // Promote i8/i16 arguments to i32.
   CCIfType<[i8, i16], CCPromoteToType<i32>>,
 
@@ -42,8 +42,8 @@ def CC_Mico32 : CallingConv<[
 // dependent codegen should not have to do anything special to handle sret.
 
 // Note the return registers (and caller saves) should 
-// be "Defs" in the call instruction in Mico32InstrInfo.td.
-def RetCC_Mico32 : CallingConv<[
+// be "Defs" in the call instruction in LM32InstrInfo.td.
+def RetCC_LM32 : CallingConv<[
   // i32 and f32 are returned in registers R1, R2.
   CCIfType<[i32, f32], CCAssignToReg<[R1, R2]>>
 ]>;

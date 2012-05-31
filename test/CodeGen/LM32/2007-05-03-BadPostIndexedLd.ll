@@ -1,4 +1,4 @@
-; RUN: llc < %s -march=mico32
+; RUN: llc < %s -march=lm32
 ; END.
 ; RUN: llc < %s -mtriple=arm-apple-darwin
 

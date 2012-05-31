@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm | grep add | grep lsl
 ; RUN: llvm-as < %s | llc -march=arm | grep bic | grep asr

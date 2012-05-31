@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | \
 ; RUN:   llc -march=ppc32 -mtriple=powerpc-apple-darwin8 -mattr=stfiwx -o %t1 -f

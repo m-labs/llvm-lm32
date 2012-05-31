@@ -1,4 +1,4 @@
-//===-- Mico32ELFWriterInfo.h - ELF Writer Info for Mico32 ------*- C++ -*-===//
+//===-- LM32ELFWriterInfo.h - ELF Writer Info for LM32 ----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,21 +7,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements ELF writer information for the Mico32 backend.
+// This file implements ELF writer information for the LM32 backend.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32_ELF_WRITER_INFO_H
-#define MICO32_ELF_WRITER_INFO_H
+#ifndef LM32_ELF_WRITER_INFO_H
+#define LM32_ELF_WRITER_INFO_H
 
 #include "llvm/Target/TargetELFWriterInfo.h"
 
 namespace llvm {
 
-  class Mico32ELFWriterInfo : public TargetELFWriterInfo {
+  class LM32ELFWriterInfo : public TargetELFWriterInfo {
   public:
-    Mico32ELFWriterInfo(TargetMachine &TM);
-    virtual ~Mico32ELFWriterInfo();
+    LM32ELFWriterInfo(TargetMachine &TM);
+    virtual ~LM32ELFWriterInfo();
 
     /// getRelocationType - Returns the target specific ELF Relocation type.
     /// 'MachineRelTy' contains the object code independent relocation type
@@ -55,4 +55,4 @@ namespace llvm {
 
 } // end llvm namespace
 
-#endif // MICO32_ELF_WRITER_INFO_H
+#endif // LM32_ELF_WRITER_INFO_H

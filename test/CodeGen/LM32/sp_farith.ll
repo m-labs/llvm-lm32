@@ -1,4 +1,4 @@
-; RUN: llvm-as -o - %s | llc -march=mico32
+; RUN: llvm-as -o - %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as -o - %s | llc -march=cellspu -enable-unsafe-fp-math > %t1.s
 ; RUN: grep fa %t1.s | count 2

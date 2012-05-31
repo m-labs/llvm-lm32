@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llc -mtriple=armv7-eabi -mcpu=cortex-a8 < %s
 ; PR5411

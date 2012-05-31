@@ -1,8 +1,8 @@
 ; Test various forms of calls.
 
-; RUN: llc < %s -march=mico32
+; RUN: llc < %s -march=lm32
 ; END.
-; RUN: llc < %s -march=mico32| \
+; RUN: llc < %s -march=lm32| \
 ; RUN:   grep {bl } | count 1
 ; RUN: llc < %s -march=ppc32 | \
 ; RUN:   grep {bctrl} | count 1

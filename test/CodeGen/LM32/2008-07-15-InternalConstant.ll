@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=mips -f -o %t
 ; RUN: grep {rodata.str1.4,"aMS",@progbits}  %t | count 1

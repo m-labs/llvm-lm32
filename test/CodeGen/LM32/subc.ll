@@ -1,5 +1,5 @@
 ; All of these should be codegen'd without loading immediates
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc32 -o %t -f
 ; RUN: grep subfc %t | count 1

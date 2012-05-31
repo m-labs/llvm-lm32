@@ -1,4 +1,4 @@
-//===- Mico32Schedule.td - Mico32 Scheduling Definitions --------*- C++ -*-===//
+//===- LM32Schedule.td - LM32 Scheduling Definitions ------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,12 +8,12 @@
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Mico32 Functional Units
+// LM32 Functional Units
 //===----------------------------------------------------------------------===//
 def ALU	: FuncUnit;
 
 //===----------------------------------------------------------------------===//
-// Instruction Itinerary classes used for Mico32 
+// Instruction Itinerary classes used for LM32 
 //===----------------------------------------------------------------------===//
 //                                 // result:issue
 def IIAlu       : InstrItinClass;  // 1 : 1
@@ -27,10 +27,10 @@ def IIDiv       : InstrItinClass;  // 34 : 34
 def IIMul       : InstrItinClass;  // 3 : 1
 
 //===----------------------------------------------------------------------===//
-// Mico32 Generic instruction itineraries.
+// LM32 Generic instruction itineraries.
 //===----------------------------------------------------------------------===//
 // FIXME: This is only a first pass to get things compiling.
-def Mico32Itineraries : ProcessorItineraries<
+def LM32Itineraries : ProcessorItineraries<
   [ALU], [], [
   InstrItinData<IIAlu              , [InstrStage<1,  [ALU]>]>,
   InstrItinData<IIStore            , [InstrStage<1,  [ALU]>]>,

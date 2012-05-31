@@ -1,4 +1,4 @@
-//===- Mico32InstrInfo.h - Mico32 Instruction Information -------*- C++ -*-===//
+//===- LM32InstrInfo.h - LM32 Instruction Information -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,30 +7,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the Mico32 implementation of the TargetInstrInfo class.
+// This file contains the LM32 implementation of the TargetInstrInfo class.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32INSTRUCTIONINFO_H
-#define MICO32INSTRUCTIONINFO_H
+#ifndef LM32INSTRUCTIONINFO_H
+#define LM32INSTRUCTIONINFO_H
 
-#include "Mico32.h"
+#include "LM32.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "Mico32RegisterInfo.h"
+#include "LM32RegisterInfo.h"
 
 #define GET_INSTRINFO_HEADER
-#include "Mico32GenInstrInfo.inc"
+#include "LM32GenInstrInfo.inc"
 
 namespace llvm {
 
-namespace Mico32 {
+namespace LM32 {
 
   inline static bool isUncondBranchOpcode(int Opc) {
     switch (Opc) {
     default: return false;
-    case Mico32::BI:
-    case Mico32::B:
+    case LM32::BI:
+    case LM32::B:
       return true;
     }
   }
@@ -38,29 +38,29 @@ namespace Mico32 {
   inline static bool isCondBranchOpcode(int Opc) {
     switch (Opc) {
     default: return false;
-    case Mico32::BE:
-    case Mico32::BG:
-    case Mico32::BGE:
-    case Mico32::BGEU:
-    case Mico32::BGU:
-    case Mico32::BNE:
+    case LM32::BE:
+    case LM32::BG:
+    case LM32::BGE:
+    case LM32::BGEU:
+    case LM32::BGU:
+    case LM32::BNE:
       return true;
     }
   }
 }
 
 
-class Mico32InstrInfo : public Mico32GenInstrInfo {
-  Mico32TargetMachine &TM;
-  const Mico32RegisterInfo RI;
+class LM32InstrInfo : public LM32GenInstrInfo {
+  LM32TargetMachine &TM;
+  const LM32RegisterInfo RI;
 public:
-  explicit Mico32InstrInfo(Mico32TargetMachine &TM);
+  explicit LM32InstrInfo(LM32TargetMachine &TM);
 
   /// getRegisterInfo - TargetInstrInfo is a superset of MRegister info.  As
   /// such, whenever a client has an instance of instruction info, it should
   /// always be able to get register info as well (through this method).
   ///
-  virtual const Mico32RegisterInfo &getRegisterInfo() const { return RI; }
+  virtual const LM32RegisterInfo &getRegisterInfo() const { return RI; }
 
 #if 0
   /// isLoadFromStackSlot - If the specified machine instruction is a direct

@@ -1,4 +1,4 @@
-; RUN: llc -march=mico32 < %s
+; RUN: llc -march=lm32 < %s
 ; END.
 ; RUN: llc < %s
 ;; Formerly crashed, see PR 1508

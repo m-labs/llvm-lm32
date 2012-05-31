@@ -1,4 +1,4 @@
-//===-- Mico32SelectionDAGInfo.h - Mico32 SelectionDAG Info -----*- C++ -*-===//
+//===-- LM32SelectionDAGInfo.h - LM32 SelectionDAG Info ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,23 +7,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the Mico32 subclass for TargetSelectionDAGInfo.
+// This file defines the LM32 subclass for TargetSelectionDAGInfo.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32SELECTIONDAGINFO_H
-#define MICO32SELECTIONDAGINFO_H
+#ifndef LM32SELECTIONDAGINFO_H
+#define LM32SELECTIONDAGINFO_H
 
 #include "llvm/Target/TargetSelectionDAGInfo.h"
 
 namespace llvm {
 
-class Mico32TargetMachine;
+class LM32TargetMachine;
 
-class Mico32SelectionDAGInfo : public TargetSelectionDAGInfo {
+class LM32SelectionDAGInfo : public TargetSelectionDAGInfo {
 public:
-  explicit Mico32SelectionDAGInfo(const Mico32TargetMachine &TM);
-  ~Mico32SelectionDAGInfo();
+  explicit LM32SelectionDAGInfo(const LM32TargetMachine &TM);
+  ~LM32SelectionDAGInfo();
 };
 
 }

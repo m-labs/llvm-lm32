@@ -1,6 +1,6 @@
-; mico32 cann't directly return i128.
+; lm32 cann't directly return i128.
 ; XFAIL: *
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc64 | grep sld | count 5
 

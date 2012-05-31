@@ -1,7 +1,7 @@
-add_llvm_library(LLVMMico32Desc
-  Mico32MCTargetDesc.cpp
-  Mico32MCAsmInfo.cpp
+add_llvm_library(LLVMLM32Desc
+  LM32MCTargetDesc.cpp
+  LM32MCAsmInfo.cpp
   )
 
-add_dependencies(LLVMMico32Desc Mico32CommonTableGen)
+add_dependencies(LLVMLM32Desc LM32CommonTableGen)
 

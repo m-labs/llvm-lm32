@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 	%struct.color_sample = type { i32 }
 	%struct.ref = type { %struct.color_sample, i16, i16 }

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32 | grep .weak
+; RUN: llvm-as < %s | llc -march=lm32 | grep .weak
 ; END.
 ; DONTRUN: llvm-as < %s | llc -march=arm | grep .weak
 

@@ -1,29 +1,29 @@
-set(LLVM_TARGET_DEFINITIONS Mico32.td)
+set(LLVM_TARGET_DEFINITIONS LM32.td)
 
-tablegen(LLVM Mico32GenRegisterInfo.inc -gen-register-info)
-tablegen(LLVM Mico32GenInstrInfo.inc -gen-instr-info)
-tablegen(LLVM Mico32GenCodeEmitter.inc -gen-emitter)
-tablegen(LLVM Mico32GenAsmWriter.inc -gen-asm-writer)
-tablegen(LLVM Mico32GenAsmMatcher.inc -gen-asm-matcher)
-tablegen(LLVM Mico32GenDAGISel.inc -gen-dag-isel)
-tablegen(LLVM Mico32GenCallingConv.inc -gen-callingconv)
-tablegen(LLVM Mico32GenSubtargetInfo.inc -gen-subtarget)
-tablegen(LLVM Mico32GenIntrinsics.inc -gen-tgt-intrinsic)
-tablegen(LLVM Mico32GenEDInfo.inc -gen-enhanced-disassembly-info)
-add_public_tablegen_target(Mico32CommonTableGen)
+tablegen(LLVM LM32GenRegisterInfo.inc -gen-register-info)
+tablegen(LLVM LM32GenInstrInfo.inc -gen-instr-info)
+tablegen(LLVM LM32GenCodeEmitter.inc -gen-emitter)
+tablegen(LLVM LM32GenAsmWriter.inc -gen-asm-writer)
+tablegen(LLVM LM32GenAsmMatcher.inc -gen-asm-matcher)
+tablegen(LLVM LM32GenDAGISel.inc -gen-dag-isel)
+tablegen(LLVM LM32GenCallingConv.inc -gen-callingconv)
+tablegen(LLVM LM32GenSubtargetInfo.inc -gen-subtarget)
+tablegen(LLVM LM32GenIntrinsics.inc -gen-tgt-intrinsic)
+tablegen(LLVM LM32GenEDInfo.inc -gen-enhanced-disassembly-info)
+add_public_tablegen_target(LM32CommonTableGen)
 
-add_llvm_target(Mico32CodeGen
-  Mico32AsmPrinter.cpp
-  Mico32ELFWriterInfo.cpp
-  Mico32FrameLowering.cpp
-  Mico32InstrInfo.cpp
-  Mico32ISelDAGToDAG.cpp
-  Mico32ISelLowering.cpp
-  Mico32RegisterInfo.cpp
-  Mico32SelectionDAGInfo.cpp
-  Mico32Subtarget.cpp
-  Mico32TargetMachine.cpp
-  Mico32TargetObjectFile.cpp
+add_llvm_target(LM32CodeGen
+  LM32AsmPrinter.cpp
+  LM32ELFWriterInfo.cpp
+  LM32FrameLowering.cpp
+  LM32InstrInfo.cpp
+  LM32ISelDAGToDAG.cpp
+  LM32ISelLowering.cpp
+  LM32RegisterInfo.cpp
+  LM32SelectionDAGInfo.cpp
+  LM32Subtarget.cpp
+  LM32TargetMachine.cpp
+  LM32TargetObjectFile.cpp
   )
 
 add_subdirectory(TargetInfo)

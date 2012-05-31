@@ -1,4 +1,4 @@
-//=====-- Mico32Subtarget.h - Define Subtarget for the Mico32 --*- C++ -*--====//
+//=====-- LM32Subtarget.h - Define Subtarget for the LM32 -----*- C++ -*--====//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,25 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the Mico32 specific subclass of TargetSubtarget.
+// This file declares the LM32 specific subclass of TargetSubtarget.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MICO32SUBTARGET_H
-#define MICO32SUBTARGET_H
+#ifndef LM32SUBTARGET_H
+#define LM32SUBTARGET_H
 
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
-#include "Mico32GenSubtargetInfo.inc"
+#include "LM32GenSubtargetInfo.inc"
 
 
 namespace llvm {
 class StringRef;
 
-class Mico32Subtarget : public Mico32GenSubtargetInfo {
+class LM32Subtarget : public LM32GenSubtargetInfo {
 protected:
   // Is the barrel shifter present? 
   bool HasBarrel;
@@ -44,14 +44,14 @@ protected:
   bool HasSPBias;
 
   // Selected instruction itineraries (one entry per itinerary class.)
-  // Used by Mico32GenSubtarget.inc.
+  // Used by LM32GenSubtarget.inc.
   InstrItineraryData InstrItins;
 
 public:
 
   /// This constructor initializes the data members to match that
   /// of the specified triple.
-  Mico32Subtarget(const std::string &TT, const std::string &CPU,
+  LM32Subtarget(const std::string &TT, const std::string &CPU,
                   const std::string &FS);
   
   /// ParseSubtargetFeatures - Parses features string setting specified 

@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llc < %s -march=arm -mtriple=arm-linux-gnueabi
 ; PR1279

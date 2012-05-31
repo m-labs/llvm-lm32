@@ -1,6 +1,6 @@
 ; RUN: llvm-as < %s | llc -march=arm | grep .weak
 ; END.
-; RUN: llvm-as < %s | llc -march=mico32 | grep .weak
+; RUN: llvm-as < %s | llc -march=lm32 | grep .weak
 ; DONTRUN: llvm-as < %s | llc -march=arm | grep .weak
 
 define i32 @f(i32 %a) {

@@ -1,5 +1,5 @@
 ;All this should do is not crash
-;RUN: llvm-as < %s | llc -march=mico32
+;RUN: llvm-as < %s | llc -march=lm32
 
 target datalayout = "e-p:32:32"
 

@@ -1,5 +1,5 @@
 ; The global symbol should be legalized
-; RUN: llvm-as < %s | llc -march=mico32 
+; RUN: llvm-as < %s | llc -march=lm32 
 
 target datalayout = "e-p:64:64"
         %struct.LIST_HELP = type { %struct.LIST_HELP*, i8* }

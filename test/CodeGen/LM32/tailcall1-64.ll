@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=ppc64 -tailcallopt | grep TC_RETURNd8
 define fastcc i32 @tailcallee(i32 %a1, i32 %a2, i32 %a3, i32 %a4) {

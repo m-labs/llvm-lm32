@@ -1,4 +1,4 @@
-//===-- Mico32AsmPrinter.cpp - Mico32 LLVM assembly writer ------------===//
+//===-- LM32AsmPrinter.cpp - LM32 LLVM assembly writer --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,13 +8,13 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains a printer that converts from our internal representation
-// of machine-dependent LLVM code to GAS-format Mico32 assembly language.
+// of machine-dependent LLVM code to GAS-format LM32 assembly language.
 //
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "asm-printer"
-#include "Mico32.h"
-#include "Mico32InstrInfo.h"
+#include "LM32.h"
+#include "LM32InstrInfo.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Module.h"
@@ -37,17 +37,17 @@
 using namespace llvm;
 
 namespace {
-  class Mico32AsmPrinter : public AsmPrinter {
+  class LM32AsmPrinter : public AsmPrinter {
   public:
-    Mico32AsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
+    LM32AsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
       : AsmPrinter(TM, Streamer) {}
 
     virtual const char *getPassName() const {
-      return "Mico32 Assembly Printer";
+      return "LM32 Assembly Printer";
     }
 
     // The printXXXOperand functions are referenced in the
-    // Mico32InstrInfo.td file.
+    // LM32InstrInfo.td file.
     void printOperand(const MachineInstr *MI, int opNum, raw_ostream &O);
     void printUnsignedImm(const MachineInstr *MI, int opNum, raw_ostream &O);
     void printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
@@ -78,13 +78,13 @@ namespace {
   };
 } // end of anonymous namespace
 
-#include "Mico32GenAsmWriter.inc"
+#include "LM32GenAsmWriter.inc"
 
-extern "C" void LLVMInitializeMico32AsmPrinter() {
-  RegisterAsmPrinter<Mico32AsmPrinter> X(TheMico32Target);
+extern "C" void LLVMInitializeLM32AsmPrinter() {
+  RegisterAsmPrinter<LM32AsmPrinter> X(TheLM32Target);
 }
 
-void Mico32AsmPrinter::printUnsignedImm(const MachineInstr *MI, int opNum,
+void LM32AsmPrinter::printUnsignedImm(const MachineInstr *MI, int opNum,
                                         raw_ostream &O)
 {
   const MachineOperand &MO = MI->getOperand(opNum);
@@ -101,7 +101,7 @@ void Mico32AsmPrinter::printUnsignedImm(const MachineInstr *MI, int opNum,
 //  <..."add ${addr:arith}, $dst", [(set IntRegs:$dst, ADDRri:$addr)..>;
 // will cause TableGen to pass the modifier "arith" to printMemOperand.
 // See SPARC for example.
-void Mico32AsmPrinter::
+void LM32AsmPrinter::
 printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
                 const char *Modifier)
 {
@@ -113,7 +113,7 @@ printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
 }
 
 
-void Mico32AsmPrinter::
+void LM32AsmPrinter::
 printOperand(const MachineInstr *MI, int opNum, raw_ostream &O)
 {
   const MachineOperand &MO = MI->getOperand(opNum);
@@ -151,7 +151,7 @@ printOperand(const MachineInstr *MI, int opNum, raw_ostream &O)
   }
 }
 
-void Mico32AsmPrinter::
+void LM32AsmPrinter::
 printS16ImmOperand(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
 {
   O << (short) MI->getOperand(OpNo).getImm();
@@ -161,7 +161,7 @@ printS16ImmOperand(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
 
 /// PrintAsmOperand - Print out an operand for an inline asm expression.
 ///
-bool Mico32AsmPrinter::
+bool LM32AsmPrinter::
 PrintAsmOperand(const MachineInstr *MI, unsigned OpNo, unsigned AsmVariant,
                 const char *ExtraCode, raw_ostream &O)
 {
@@ -180,7 +180,7 @@ PrintAsmOperand(const MachineInstr *MI, unsigned OpNo, unsigned AsmVariant,
   return false;
 }
 
-bool Mico32AsmPrinter::
+bool LM32AsmPrinter::
 PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
                       unsigned AsmVariant, const char *ExtraCode,
                       raw_ostream &O)
@@ -195,7 +195,7 @@ PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
   return false;
 }
 
-void Mico32AsmPrinter::
+void LM32AsmPrinter::
 printSymbolHi(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
 {
   if (MI->getOperand(OpNo).isImm()) {
@@ -208,7 +208,7 @@ printSymbolHi(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
   }
 }
 
-void Mico32AsmPrinter::
+void LM32AsmPrinter::
 printSymbolLo(const MachineInstr *MI, unsigned OpNo, raw_ostream &O)
 {
   if (MI->getOperand(OpNo).isImm()) {

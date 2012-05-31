@@ -75,7 +75,7 @@ set(LLVM_ALL_TARGETS
   Hexagon
   Mips
   MBlaze
-  Mico32
+  LM32
   MSP430
   PowerPC
   PTX

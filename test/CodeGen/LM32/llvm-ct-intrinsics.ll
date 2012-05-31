@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; Make sure this testcase is supported by all code generators
 ; RUN: llvm-as < %s | llc

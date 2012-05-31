@@ -1,5 +1,5 @@
 ; Make sure this testcase codegens to the ctlz instruction
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 
 declare i8 @llvm.ctlz.i8(i8)
 

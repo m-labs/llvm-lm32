@@ -1,4 +1,4 @@
-; RUN: llvm-as < %s | llc -march=mico32
+; RUN: llvm-as < %s | llc -march=lm32
 ; END.
 ; RUN: llvm-as < %s | llc -march=arm -mattr=+v6 | grep uxtb | count 1
 ; RUN: llvm-as < %s | llc -march=arm -mattr=+v6 | grep uxtab | count 1
