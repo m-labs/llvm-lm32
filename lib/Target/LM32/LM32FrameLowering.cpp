@@ -41,43 +41,6 @@ LM32FrameLowering::LM32FrameLowering(const LM32Subtarget &subtarget)
 }
 
 
-/// determineFrameLayout - Align the frame and maximum call frame and
-/// updated the sizes. Copied from SPU.
-void LM32FrameLowering::
-determineFrameLayout(MachineFunction &MF) const {
-  MachineFrameInfo *MFI = MF.getFrameInfo();
-
-  // Get the number of bytes to allocate from the FrameInfo
-  unsigned FrameSize = MFI->getStackSize();
-
-  // Get the alignments provided by the target, and the maximum alignment
-  // (if any) of the fixed frame objects.
-  unsigned TargetAlign = getStackAlignment();
-  unsigned Align = std::max(TargetAlign, MFI->getMaxAlignment());
-  assert(isPowerOf2_32(Align) && "Alignment is not power of 2");
-  unsigned AlignMask = Align - 1;
-
-  // Get the maximum call frame size of all the calls.
-  unsigned maxCallFrameSize = MFI->getMaxCallFrameSize();
-
-  // If we have dynamic alloca then maxCallFrameSize needs to be aligned so
-  // that allocations will be aligned.
-  if (MFI->hasVarSizedObjects())
-    maxCallFrameSize = (maxCallFrameSize + AlignMask) & ~AlignMask;
-
-  // Update maximum call frame size.
-  MFI->setMaxCallFrameSize(maxCallFrameSize);
-
-  // Include call frame size in total.
-  FrameSize += maxCallFrameSize;
-
-  // Make sure the frame is aligned.
-  FrameSize = (FrameSize + AlignMask) & ~AlignMask;
-
-  // Update frame info.
-  MFI->setStackSize(FrameSize);
-}
-
 /// hasFP - Return true if the specified function should have a dedicated frame
 /// pointer register.  This is true if the stacksize > 0 and either the 
 /// function has variable sized allocas or frame pointer elimination 
@@ -109,9 +72,6 @@ emitPrologue(MachineFunction &MF) const {
     *static_cast<const LM32InstrInfo*>(MF.getTarget().getInstrInfo());
 
   DebugLoc dl = (MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc());
-
-  // determineFrameLayout() sets some stack related sizes so do it first.
-  determineFrameLayout(MF);
 
   // Check the maximum call frame size of all the calls is sensible.
   assert(MFrmInf->getMaxCallFrameSize()%4 == 0 && "Misaligned call frame size");
