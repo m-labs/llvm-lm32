@@ -502,6 +502,25 @@ SDValue LM32TargetLowering::LowerVASTART(SDValue Op,
 //   For mips eabi see http://www.cygwin.com/ml/binutils/2003-06/msg00436.html
 //     Elements may have been used from SparcTargetLowering::LowerArguments.
 //===----------------------------------------------------------------------===//
+/// HandleByVal - byval parameters that fit in the remaining registers
+/// will be passed in those, if it doesn't fit, the whole parameter will be
+/// passed on stack and all remaining registers are confiscated.
+void LM32TargetLowering::HandleByVal(CCState *State, unsigned &Size) const {
+  static const unsigned ArgRegList[] = {
+    LM32::R1, LM32::R2, LM32::R3, LM32::R4, LM32::R5, LM32::R6, LM32::R7,
+    LM32::R8
+  };
+  unsigned NumWords = (Size + 3)/4;
+  unsigned NewSize = 0;
+  for (unsigned i = 0; i < NumWords; ++i) {
+    if (!State->AllocateReg(ArgRegList, 8)) {
+      NewSize = NumWords*4;
+      break;
+    }
+  }
+  Size = NewSize;
+}
+
 /// Monarch call implementation
 /// LowerCall - This hook must be implemented to lower calls into the
 /// the specified DAG. The outgoing arguments to the call are described
@@ -557,11 +576,14 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
   SmallVector<std::pair<unsigned, SDValue>, 16> RegsToPass;
   SmallVector<SDValue, 8> MemOpChains;
 
+  unsigned ArgRegEnd = LM32::R0;
+
   // Walk the register/memloc assignments, inserting copies/loads.
   // This was based on Sparc but the Sparc code has been updated.
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
     SDValue Arg = OutVals[i];
+    ISD::ArgFlagsTy Flags = Outs[i].Flags;
 
     // Promote the value if needed.
     switch (VA.getLocInfo()) {
@@ -581,7 +603,39 @@ LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
     // Arguments that can be passed on register must be kept at 
     // RegsToPass vector
     if (VA.isRegLoc()) {
-      RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
+      ArgRegEnd = VA.getLocReg();
+      RegsToPass.push_back(std::make_pair(ArgRegEnd, Arg));
+    } else if (Flags.isByVal()) {
+      unsigned NumWords = (Flags.getByValSize() + 3)/4;
+      if (NumWords <= (LM32::R8 - ArgRegEnd)) {
+        // Load byval aggregate into argument registers.
+        for (unsigned i = 0; i < NumWords; ++i) {
+          SDValue AddArg = DAG.getNode(ISD::ADD, dl, getPointerTy(), Arg,
+                                       DAG.getConstant(i*4, MVT::i32));
+          SDValue Load = DAG.getLoad(getPointerTy(), dl, Chain, AddArg,
+                                     MachinePointerInfo(),
+                                     false, false, false, 0);
+          MemOpChains.push_back(Load.getValue(1));
+          RegsToPass.push_back(std::make_pair(++ArgRegEnd, Load));
+        }
+        continue;
+      }
+      // Byval aggregate didn't fit in the argument registers,
+      // pass it on the stack.
+      SDValue StackPtr = DAG.getCopyFromReg(Chain, dl, LM32::RSP,
+                                            getPointerTy());
+      int Offset = VA.getLocMemOffset();
+      Offset += Subtarget->hasSPBias() ? 4 : 0;
+      SDValue StackOffset = DAG.getIntPtrConstant(Offset);
+      SDValue Dst = DAG.getNode(ISD::ADD, dl, getPointerTy(), StackPtr,
+                                StackOffset);
+      SDValue SizeNode = DAG.getConstant(NumWords*4, MVT::i32);
+      MemOpChains.push_back(DAG.getMemcpy(Chain, dl, Dst, Arg, SizeNode,
+                                          Flags.getByValAlign(),
+                                          /*isVolatile=*/false,
+                                          /*AlwaysInline=*/false,
+                                          MachinePointerInfo(0),
+                                          MachinePointerInfo(0)));
     } else {
       assert(VA.isMemLoc());
 
@@ -702,6 +756,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                      const SmallVectorImpl<ISD::InputArg> &Ins,
                      DebugLoc dl, SelectionDAG &DAG,
                      SmallVectorImpl<SDValue> &InVals) const {
+  SmallVector<SDValue, 8> OutChains;
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo *MFI = MF.getFrameInfo();
   LM32FunctionInfo *LM32FI = MF.getInfo<LM32FunctionInfo>();
@@ -721,6 +776,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
+    ISD::ArgFlagsTy Flags = Ins[i].Flags;
 
     // Arguments stored on registers
     if (VA.isRegLoc()) {
@@ -760,6 +816,32 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
       }
 
       InVals.push_back(ArgValue);
+    } else if (Flags.isByVal()) {
+      unsigned NumWords = (Flags.getByValSize() + 3)/4;
+      unsigned Size = NumWords*4;
+      unsigned Align = Flags.getByValAlign();
+      int FI = 0;
+      if (NumWords <= (LM32::R8 - ArgRegEnd)) {
+        // Store the argument registers onto the local stack
+        FI = MFI->CreateStackObject(Size, Align, false);
+        for (unsigned i = 0; i < NumWords; ++i) {
+          unsigned LiveReg = MF.addLiveIn(++ArgRegEnd, LM32::GPRRegisterClass);
+          SDValue AddArg = DAG.getNode(ISD::ADD, dl, MVT::i32,
+                                       DAG.getFrameIndex(FI, getPointerTy()),
+                                       DAG.getConstant(i*4, MVT::i32));
+          OutChains.push_back(DAG.getStore(Chain, dl,
+                                           DAG.getRegister(LiveReg, MVT::i32),
+                                           AddArg,
+                                           MachinePointerInfo(),
+                                           false, false, 0));
+        }
+      } else {
+        // Byval arguments didn't fit in registers, mark all as occupied.
+        ArgRegEnd = LM32::R8;
+        nextLocMemOffset = VA.getLocMemOffset() + Size;
+        FI = MFI->CreateFixedObject(Size, VA.getLocMemOffset(), true);
+      }
+      InVals.push_back(DAG.getFrameIndex(FI, getPointerTy()));
     } else { // VA.isRegLoc()
       assert(ArgRegEnd == LM32::R8 &&
               "We should have used all argument registers");
@@ -821,9 +903,6 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
       DEBUG(errs() << "All varargs on stack getVarArgsFrameIndex() to:" << 
                       LM32FI->getVarArgsFrameIndex() << "\n");
     } else {
-      // Used to acumulate store chains.
-      std::vector<SDValue> OutChains;
-  
       TargetRegisterClass *RC = LM32::GPRRegisterClass;
   
       // We'll save all argument registers not already saved on the stack.  Store
@@ -851,15 +930,15 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
       // which is a value necessary to VASTART.
       DEBUG(errs() << "setVarArgsFrameIndex to:" << FI << "\n");
       LM32FI->setVarArgsFrameIndex(FI);
-  
-      // All stores are grouped in one node to allow the matching between
-      // the size of Ins and InVals. This only happens when on varg functions
-      if (!OutChains.empty()) {
-        OutChains.push_back(Chain);
-        Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                            &OutChains[0], OutChains.size());
-      }
     }
+  }
+  // All stores are grouped in one node to allow the matching between
+  // the size of Ins and InVals. This only happens when on varg functions and
+  // byval arguments
+  if (!OutChains.empty()) {
+    OutChains.push_back(Chain);
+    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+                        &OutChains[0], OutChains.size());
   }
   return Chain;
 }

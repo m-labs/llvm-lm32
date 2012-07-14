@@ -151,6 +151,9 @@ namespace llvm {
                   const SmallVectorImpl<SDValue> &OutVals,
                   DebugLoc dl, SelectionDAG &DAG) const;
 
+    /// HandleByVal - Target-specific cleanup for ByVal support.
+    virtual void HandleByVal(CCState *, unsigned &) const;
+
 #if 0
     virtual MachineBasicBlock*
       EmitCustomShift(MachineInstr *MI, MachineBasicBlock *MBB) const;
