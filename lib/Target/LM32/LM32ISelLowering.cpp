@@ -1,3 +1,4 @@
+
 //===-- LM32ISelLowering.cpp - LM32 DAG Lowering Implementation -----------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -58,7 +59,7 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
 
   // Set up the integer register class
   // See MBlaze for conditional floating point setup if we add that.
-  addRegisterClass(MVT::i32, LM32::GPRRegisterClass);
+  addRegisterClass(MVT::i32, &LM32::GPRRegClass);
 
   // Load extented operations for i1 types must be promoted
   setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
@@ -519,14 +520,19 @@ SDValue LM32TargetLowering::LowerVASTART(SDValue Op,
 /// LowerCall - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
 /// TODO: isVarArg, isTailCall.
-SDValue LM32TargetLowering::
-LowerCall(SDValue Chain, SDValue Callee, CallingConv::ID CallConv,
-          bool isVarArg, bool &isTailCall,
-          const SmallVectorImpl<ISD::OutputArg> &Outs,
-          const SmallVectorImpl<SDValue> &OutVals,
-          const SmallVectorImpl<ISD::InputArg> &Ins,
-          DebugLoc dl, SelectionDAG &DAG,
-          SmallVectorImpl<SDValue> &InVals) const {
+SDValue
+LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                               SmallVectorImpl<SDValue> &InVals) const {
+  SelectionDAG &DAG                     = CLI.DAG;
+  DebugLoc &dl                          = CLI.DL;
+  SmallVector<ISD::OutputArg, 32> &Outs = CLI.Outs;
+  SmallVector<SDValue, 32> &OutVals     = CLI.OutVals;
+  SmallVector<ISD::InputArg, 32> &Ins   = CLI.Ins;
+  SDValue Chain                         = CLI.Chain;
+  SDValue Callee                        = CLI.Callee;
+  bool &isTailCall                      = CLI.IsTailCall;
+  CallingConv::ID CallConv              = CLI.CallConv;
+  bool isVarArg                         = CLI.IsVarArg;
 
   // For now, only CallingConv::C implemented
   if (CallConv != CallingConv::Fast && CallConv != CallingConv::C)
@@ -704,6 +710,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                      SmallVectorImpl<SDValue> &InVals) const {
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo *MFI = MF.getFrameInfo();
+  MachineRegisterInfo &RegInfo = MF.getRegInfo();
   LM32FunctionInfo *LM32FI = MF.getInfo<LM32FunctionInfo>();
   LM32FI->setVarArgsFrameIndex(0);
 
@@ -728,20 +735,20 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
       // We're expecting registers to increase in numbering.
       assert(ArgRegEnd < VA.getLocReg());
       ArgRegEnd = VA.getLocReg();
-      TargetRegisterClass *RC = 0;
+      unsigned VReg;
 
       if (RegVT == MVT::i32)
-        RC = LM32::GPRRegisterClass;
+	VReg = RegInfo.createVirtualRegister(&LM32::GPRRegClass);
 // FIXME: should we have f32?
 //      else if (RegVT == MVT::f32)
-//        RC = LM32::GPRRegisterClass;
+//	  VReg = RegInfo.createVirtualRegister(&LM32::GPRRegClass);
       else
         llvm_unreachable("RegVT not supported by LowerFormalArguments");
 
       // Transform the arguments stored on
       // physical registers into virtual ones
-      unsigned Reg = MF.addLiveIn(ArgRegEnd, RC);
-      SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, Reg, RegVT);
+      RegInfo.addLiveIn(ArgRegEnd, VReg);
+      SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
       // If this is an 8 or 16-bit value, it has been passed promoted
       // to 32 bits.  Insert an assert[sz]ext to capture this, then
@@ -824,8 +831,6 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
       // Used to acumulate store chains.
       std::vector<SDValue> OutChains;
   
-      TargetRegisterClass *RC = LM32::GPRRegisterClass;
-  
       // We'll save all argument registers not already saved on the stack.  Store
       // higher numbered register at higher address.
       unsigned Start = LM32::R8;
@@ -835,8 +840,10 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
       int varArgOffset = -4;
       int FI = 0;
       for (; Start >= End ; Start--, varArgOffset-=4) {
-        unsigned LiveReg = MF.addLiveIn(Start, RC);
-        SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, LiveReg, MVT::i32);
+	// Move argument from phys reg -> virt reg
+        unsigned VReg = RegInfo.createVirtualRegister(&LM32::GPRRegClass);
+        RegInfo.addLiveIn(Start, VReg);
+        SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i32);
   
         FI = MFI->CreateFixedObject(4, varArgOffset, true);
         SDValue StoreFI = DAG.getFrameIndex(FI, getPointerTy());
@@ -984,12 +991,13 @@ LM32TargetLowering::getSingleConstraintMatchWeight(
 ///
 /// This should only be used for C_Register constraints.  On error,
 /// this returns a register number of 0 and a null register class pointer..
-std::pair<unsigned, const TargetRegisterClass*> LM32TargetLowering::
+std::pair<unsigned, const TargetRegisterClass*>
+LM32TargetLowering::
 getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
-      return std::make_pair(0U, LM32::GPRRegisterClass);
+      return std::make_pair(0U, &LM32::GPRRegClass);
       // FIXME:  This was copied directly from MBLAZE:
       // TODO: These can't possibly be right, but match what was in
       // getRegClassForInlineAsmConstraint.
@@ -997,7 +1005,7 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
     case 'y':
     case 'f':
       if (VT == MVT::f32)
-        return std::make_pair(0U, LM32::GPRRegisterClass);
+        return std::make_pair(0U, &LM32::GPRRegClass);
     }
   }
   return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);

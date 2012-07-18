@@ -117,8 +117,8 @@ emitPrologue(MachineFunction &MF) const {
   assert(MFrmInf->getMaxCallFrameSize()%4 == 0 && "Misaligned call frame size");
 
   bool FP = hasFP(MF);
-  bool needsRealignment =
-           MF.getTarget().getRegisterInfo()->needsStackRealignment(MF);
+//  bool needsRealignment =
+//           MF.getTarget().getRegisterInfo()->needsStackRealignment(MF);
 
 
   // Get the frame size.
@@ -352,7 +352,7 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
   const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
-  const TargetRegisterClass *RC = LM32::GPRRegisterClass;
+  const TargetRegisterClass *RC = &LM32::GPRRegClass;
   LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
   const bool LRUsed = MF.getRegInfo().isPhysRegUsed(LM32::RRA);
   const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);

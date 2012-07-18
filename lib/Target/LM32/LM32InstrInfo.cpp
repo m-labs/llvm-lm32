@@ -1,3 +1,4 @@
+
 //===- LM32InstrInfo.cpp - LM32 Instruction Information ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -99,7 +100,6 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                     unsigned SrcReg, bool isKill, int FI,
                     const TargetRegisterClass *RC,
                     const TargetRegisterInfo *TRI) const {
-  assert(RC == LM32::GPRRegisterClass && "Unknown register class.");
   DebugLoc DL;
   if (I != MBB.end()) DL = I->getDebugLoc();
 
@@ -112,7 +112,6 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                      unsigned DestReg, int FI,
                      const TargetRegisterClass *RC,
                      const TargetRegisterInfo *TRI) const {
-  assert(RC == LM32::GPRRegisterClass && "Unexpected register class.");
   DebugLoc DL;
   if (I != MBB.end()) DL = I->getDebugLoc();
 

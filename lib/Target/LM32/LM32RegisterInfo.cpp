@@ -1,3 +1,4 @@
+
 //===- LM32RegisterInfo.cpp - LM32 Register Information -== -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -56,10 +57,10 @@ LM32RegisterInfo(const LM32Subtarget &ST, const TargetInstrInfo &tii)
 /// order of desired callee-save stack frame offset. The first register is
 /// close to the incoming stack pointer if stack grows down, and vice versa.
 /// Copied from GCC lm32.h
-const unsigned* LM32RegisterInfo::
+const uint16_t* LM32RegisterInfo::
 getCalleeSavedRegs(const MachineFunction *MF) const {
   // LM32 callee-save register range is R11 - R28
-  static const unsigned CalleeSavedRegs[] = {
+  static const uint16_t CalleeSavedRegs[] = {
     LM32::R11, LM32::R12, LM32::R13, LM32::R14,
     LM32::R15, LM32::R16, LM32::R17, LM32::R18,
     LM32::R19, LM32::R20, LM32::R21, LM32::R22,

@@ -17,6 +17,7 @@
 #include "llvm/Target/TargetELFWriterInfo.h"
 
 namespace llvm {
+  class TargetMachine;
 
   class LM32ELFWriterInfo : public TargetELFWriterInfo {
   public:
