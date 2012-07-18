@@ -1,0 +1,1 @@
+When llc crashes it generates debugging information.  The generation of the debug info takes a while.  To speed up the testsuite execution the tests failing tests have been renamed to *.xfail to disable thier execution.

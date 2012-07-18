@@ -1,0 +1,209 @@
+This is the Lattice LM32 backend.
+
+INSTALLATION
+
+Install llvm-gcc and ensure it works.  See the LLVM Getting Started manual for directions:
+http://llvm.org/docs/GettingStarted.html#quickstart
+
+The general project layout will be:
+ $TOPDIR
+    - llvm
+    - build
+    - install
+
+1) Check out the LM32 LLVM port and clang from the GIT repository: 
+------------------
+cd $TOPDIR
+git clone git://github.com/milkymist/llvm-lm32.git llvm
+(cd $TOPDIR/llvm/tools ; git clone git://github.com/milkymist/clang-lm32.git clang)
+------------------
+
+2a) Configure with cmake:
+------------------
+mkdir $TOPDIR/build
+( cd $TOPDIR/build ;  cmake ../llvm  -DCMAKE_INSTALL_PREFIX=$TOPDIR/install -DCMAKE_BUILD_TYPE=Debug)
+------------------
+
+
+2b) Alternatively, configure with autotools:
+-------------------
+mkdir $TOPDIR/build
+
+(cd $TOPDIR/build ; ../llvm/configure CC=gcc CXX=g++ --enable-debug-runtime --prefix=$TOPDIR/install/)
+-------------------
+The "CC=gcc CXX=g++" may be required on systems with clang installed. On OSX do not use these flags.
+
+3) Once configured build llvm and clang:
+-------------------
+(cd $TOPDIR/build ; make install)
+-------------------
+
+4) (Optional) Build and install CompilerRT (Clang runtime support library).  The LM32 port is on GitHub: https://github.com/jpbonn/compiler-rt-lm32
+
+
+LLVM LM32 CODEGEN TESTS
+
+Run tests in a CMAKE configured environment:
+-------------------
+(cd $TOPDIR/build ; ./bin/llvm-lit -sv -j1 test/CodeGen/LM32/)
+-------------------
+
+Run tests in an autools configured environment:
+-------------------
+Do "make check" to run the LLVM tests:
+(cd $TOPDIR/build ; make check )
+
+After the inital "make check" (which does some initial DejaGnu configuration) you can use just:
+
+(cd $TOPDIR/build ; make TESTSUITE=CodeGen/LM32 check)
+--------------------
+
+
+Test Results:
+
+****An additional test is failing as of 12/8/2011.  The failure may be related to recent DataLayout changes (a0:32:32 to a0:8:8).  This should be debugged. ***
+
+********************
+Testing Time: 17.58s
+********************
+Failing Tests (2):
+    LLVM :: CodeGen/LM32/2006-12-07-LargeAlloca.ll
+    LLVM :: CodeGen/LM32/2007-04-03-PEIBug.ll
+
+  Expected Passes    : 493
+  Expected Failures  : 25
+  Unexpected Failures: 2
+
+
+NOTES
+
+Calling conventions
+from GCC lm32.c
+Return values are returned in a register for all non-aggregate types (long double uses two registers for return value). Aggregate types 32bits or less are returned in a register.
+handled
+
+LM32 ABI
+(observed)
+
+This is intended to supplement the LM32 Processor Reference Manual (March 2010) description.
+
+The default stack alignment is 4 bytes. When parameters are placed on the stack a lexically earlier parameter resides at a lower address than a later parameter. Such parameters are aligned to 4 byte boundaries, this might create padding of unspecified contents after the previous parameter. There might be final padding to retain stack alignment.
+
+Callers of variadic functions treat the calls the same as non-variadic functions. Within the prologue of a variadic function stack space is allocated for the argument registers that may contain variadic arguments, stack space is not allocated for the non-variadic arguments in registers.  The variadic argument registers are copied to the stack in the prologue.  The allocated stack space for variadic registers abuts any outgoing arguments stored on the stack. This results in the variadic arguments being stored sequentially on the stack.  The location of the first variadic argument is stored in a pointer. Subsequent variadic arguments are accessed by incrementing the pointer. 
+
+[ FIXME: this only applies if the parameters are earlier @ lower address: convention requires varadic functions to have a prototype in scope, at the point of the call. Conventionally K&R C did not require this, but ANSI C has always required it. We have no requirement to preserve K&R compatibility.]
+
+The called function must first initialize its stack frame. Table 1 shows the layout and sizes of the stack frame. How this is initialized is implementation defined.
+
+Once the arguments are evaluated, transfer can be passed to the called function. This initializes RA (R29) with the return address.
+
+The stack pointer (sp) points to the first unused location, and the frame
+pointer (fp) points at the first location used in the active frame.  
+
+The stack grows downwards (decreasing addresses) and the calling function is responsible for creating space on the stack for passed parameters, and for reclaiming it after the called function returns. This stack space need not be allocated and reclaimed around each function call, but allocated once in a function’s prologue and reclaimed in the epilogue.
+
+FIXME: this appears to be only small structures made of ints in GCC - 2 chars are passed by reference.  We should probably change this to 8 byte structs in LLVM, especially since the archman specifies r1 and r2 are used for return values and I don't see GCC ever doing this except wih doubles.
+[Small structures (up to 4 bytes) are returned in the integer registers. Larger structures are returned via an artificial parameter that is prepended to the user specified parameters. This parameter points to an area in the caller’s stack frame in which to store the return value. It is the responsibility of the calling function to allocate this space.]
+
+FIXME: is this correct? A floating point type is passed and returned as if it were a small structure. 
+FIXME:[How are doubles returned? How are doubles passed that cross the register/stack parameter boundry?]
+
+Parameters passed in registers occupy one or more registers each. FIXME:[If a type’s alignment is greater than 4 bytes, it will also be aligned into a register pair — possibly leaving an unused register between it and the previous parameter. Integral types are sign or zero extended as appropriate to the register size. Structures occupy one or more integer registers and are aligned at the most significant end. If the structure size is not a multiple of 4 bytes, the final register it occupies has unspecified tail padding.] If the data type is not supported in hardware, it shall be passed and returned as if it were an opaque structure of the correct length.
+
+The stack frame is created at the maximum size required for all function calls within the current function. Thus the utilization of the outgoing argument words space varies during the function. A frame pointer is not mandated for each function, however it is necessary for functions that use alloca or for functions that require stack alignment greter then the default 4 bytes. If a frame pointer is necessary, it is initialized to the incoming stack pointer. To implement alloca, all that is necessary is to decrement SP appropriately (accounting for 4 byte alignment) and return a pointer max(Outgoing Parameters) words above the SP.
+
+Space allocated via alloca() is 4 byte aligned.  Additional space is allocated by alloca if needed to maintain 4 byte alignment.
+
+Outgoing parameters on stack are always accessed via the SP. If the FP is used local workspace and callee saves are accessed via the FP (except as noted under stack realignment).
+
+       stack grows down
+         high address       --------------------------------
+                            |                              |
+                            |    Incoming Parameters       |
+                            |      Passed to Callee        |
+                            |(only ones that don't fit in  |
+                            | registers)                   |
+                            | allocated by caller          |   ^Caller Allocated
+                            --------------------------------   ----------------
+SP in Caller, FP ->         |  register varargs copied to  |    Callee Allocated
+(SP pre-prologue in callee, |      stack (if needeed)      |   
+ FP if used)                --------------------------------
+                            |      Local Workspace         |
+                            --------------------------------
+                            |    Callee Save               |
+                            |    Registers                 |
+                            |(Frame Pointer save if needed)|
+                            |(Link Register save if needed)|
+                            --------------------------------
+                            |       4 byte aligned         |
+                            |          alloca              |
+                            --------------------------------
+                            |                              |
+                            |    Outgoing Parameters       |
+                            | that don't fit in registers  |
+                            |sized for all called functions|
+                            --------------------------------
+                  SP  ->    |                              |
+
+         low address
+TABLE 1
+
+Stack Realignment
+Stack realignment occurs when an object on the stack frame has a higher alignment than the default 4 byte alignment.  Extra space will be allocated in the frame to allow the frame objects to be aligned to the requested alignment.  The function prologue will force the stack pointer to the requested alignment by adding code to mask the low order bits.  The frame pointer is set as usual pointing to the first used word in the frame but it's alignment will not be adjusted.  The offset of the frame pointer to the stack pointer will be unknown at this point. Vararg parameters and incoming parameters will be accessed through the FP, the SP will be used for all other stack frame accesses. The current implementation limits the size of the call frame.  The offset from the SP to the top of the local workspace is limited to a 16 bit signed immediate (-32768). A framepointer is required since the SP is restored from the FP in the function prologue.
+
+http://groups.google.com/group/llvm-dev/browse_thread/thread/537afe9317752e87/d85486c583ba3f27?show_docid=d85486c583ba3f27
+"stack alignment and backend" in mailing list.
+
+Stack Pointer Bias
+There is a nospbias option available. The default LM32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
+
+GAS Relocatable Expression Modifiers
+http://sourceware.org/binutils/docs/as/LM32_002dModifiers.html#LM32_002dModifiers
+
+
+lm32.c:lm32_function_arg()
+vararg parameters are passed on the stack.
+
+from bfd.h:
+/* Lattice LM32 relocations.  */
+  BFD_RELOC_LM32_CALL,
+  BFD_RELOC_LM32_BRANCH,
+  BFD_RELOC_LM32_16_GOT,
+  BFD_RELOC_LM32_GOTOFF_HI16,
+  BFD_RELOC_LM32_GOTOFF_LO16,
+  BFD_RELOC_LM32_COPY,
+  BFD_RELOC_LM32_GLOB_DAT,
+  BFD_RELOC_LM32_JMP_SLOT,
+  BFD_RELOC_LM32_RELATIVE,
+
+from tc-lm32.c:
+bfd_reloc_code_real_type
+md_cgen_lookup_reloc (const CGEN_INSN *insn ATTRIBUTE_UNUSED,
+		      const CGEN_OPERAND *operand,
+		      fixS *fixP ATTRIBUTE_UNUSED)
+{
+  switch (operand->type)
+    {
+    case LM32_OPERAND_GOT16:
+      return BFD_RELOC_LM32_16_GOT;
+    case LM32_OPERAND_GOTOFFHI16:
+      return BFD_RELOC_LM32_GOTOFF_HI16;
+    case LM32_OPERAND_GOTOFFLO16:
+      return BFD_RELOC_LM32_GOTOFF_LO16;
+    case LM32_OPERAND_GP16:
+      return BFD_RELOC_GPREL16;
+    case LM32_OPERAND_LO16:
+      return BFD_RELOC_LO16;
+    case LM32_OPERAND_HI16:
+      return BFD_RELOC_HI16;
+    case LM32_OPERAND_BRANCH:
+      return BFD_RELOC_LM32_BRANCH;
+    case LM32_OPERAND_CALL:
+      return BFD_RELOC_LM32_CALL;
+    default:
+      break;
+    }
+  return BFD_RELOC_NONE;
+}
+
+

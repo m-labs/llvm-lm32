@@ -239,7 +239,7 @@ enum {
   EM_SCORE7        = 135, // Sunplus S+core7 RISC processor
   EM_DSP24         = 136, // New Japan Radio (NJR) 24-bit DSP Processor
   EM_VIDEOCORE3    = 137, // Broadcom VideoCore III processor
-  EM_LATTICEMICO32 = 138, // RISC processor for Lattice FPGA architecture
+  EM_LM32          = 138, // RISC processor for Lattice FPGA architecture
   EM_SE_C17        = 139, // Seiko Epson C17 family
   EM_TI_C6000      = 140, // The Texas Instruments TMS320C6000 DSP family
   EM_TI_C2000      = 141, // The Texas Instruments TMS320C2000 DSP family
