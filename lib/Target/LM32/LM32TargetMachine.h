@@ -68,16 +68,12 @@ namespace llvm {
       return &TSInfo;
     }
   
-//    virtual const LM32ELFWriterInfo *getELFWriterInfo() const {
-//      return &ELFWriterInfo;
-//    }
-  
     virtual const TargetData *getTargetData() const {
       return &DataLayout;
     }
   
     // Pass Pipeline Configuration
-    virtual bool addInstSelector(PassManagerBase &PM);
+    virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
   };
   
 } // end namespace llvm

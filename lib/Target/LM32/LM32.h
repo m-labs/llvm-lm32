@@ -23,16 +23,14 @@ namespace llvm {
   class FunctionPass;
   class MachineCodeEmitter;
   class MCCodeEmitter;
-  //class TargetAsmBackend;
   class formatted_raw_ostream;
 
   MCCodeEmitter *createLM32MCCodeEmitter(const Target &,
                                            TargetMachine &TM,
                                            MCContext &Ctx);
 
-  //TargetAsmBackend *createLM32AsmBackend(const Target &, const std::string &);
-
-  FunctionPass *createLM32ISelDag(LM32TargetMachine &TM);
+  FunctionPass *createLM32ISelDag(LM32TargetMachine &TM,
+                                  CodeGenOpt::Level OptLevel);
 
   extern Target TheLM32Target;
 } // end namespace llvm;

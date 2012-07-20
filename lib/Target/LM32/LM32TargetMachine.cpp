@@ -19,12 +19,6 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-
-extern "C" void LLVMInitializeLM32Target() {
-  // Register the target.
-  RegisterTargetMachine<LM32TargetMachine> X(TheLM32Target);
-}
-
 ///
 /// Note: DataLayout is described in:
 /// http://www.llvm.org/docs/LangRef.html#datalayout
@@ -54,14 +48,35 @@ LM32TargetMachine(const Target &T, StringRef TT,
 //    InstrItins(Subtarget.getInstrItineraryData())
 {}
 
+
 //===----------------------------------------------------------------------===//
 // Pass Pipeline Configuration
 //===----------------------------------------------------------------------===//
+namespace {
+/// LM32 Code Generator Pass Configuration Options.
+class LM32PassConfig : public TargetPassConfig {
+public:
+  LM32PassConfig(LM32TargetMachine *TM, PassManagerBase &PM)
+    : TargetPassConfig(TM, PM) {}
 
+  LM32TargetMachine &getLM32TargetMachine() const {
+    return getTM<LM32TargetMachine>();
+  }
 
-// Install an instruction selector pass using
-// the ISelDag to generate LM32 code.
-bool LM32TargetMachine::addInstSelector(PassManagerBase &PM) {
-  PM.add(createLM32ISelDag(*this));
+  virtual bool addInstSelector();
+};
+} // namespace
+
+TargetPassConfig *LM32TargetMachine::createPassConfig(PassManagerBase &PM) {
+  return new LM32PassConfig(this, PM);
+}
+
+bool LM32PassConfig::addInstSelector() {
+  addPass(createLM32ISelDag(getLM32TargetMachine(), getOptLevel()));
   return false;
+}
+
+// Force static initialization.
+extern "C" void LLVMInitializeLM32Target() {
+  RegisterTargetMachine<LM32TargetMachine> X(TheLM32Target);
 }
