@@ -54,7 +54,8 @@ def FeatureSPBias :
 // LM32 supported processors.
 //===----------------------------------------------------------------------===//
 
-def : Processor< "lm32", LM32Itineraries, []>;
+def : Processor< "lm32", LM32Itineraries, [FeatureDIV, FeatureMUL,
+                                           FeatureBarrel, FeatureSPBias]>;
 
 
 //===----------------------------------------------------------------------===//

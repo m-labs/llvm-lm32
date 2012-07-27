@@ -26,13 +26,13 @@ using namespace llvm;
 LM32Subtarget::LM32Subtarget(const std::string &TT, 
                                  const std::string &CPU,
                                  const std::string &FS) 
-  : LM32GenSubtargetInfo(TT, CPU, FS)
+  : LM32GenSubtargetInfo(TT, CPU, FS),
+    HasSDIV(false),
+    HasDIV(false),
+    HasMUL(false),
+    HasBarrel(false),
+    HasSPBias(false)
 {
-  HasSDIV = false;
-  HasDIV = true;
-  HasMUL = true;
-  HasBarrel = true;
-  HasSPBias = true;
 
   // Parse features string.
   std::string CPUName = CPU;
