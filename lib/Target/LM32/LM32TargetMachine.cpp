@@ -39,8 +39,9 @@ LM32TargetMachine(const Target &T, StringRef TT,
 // I'm not sure why i64 was switched to i64 alignment from i32.
 //    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-a0:8:8-S32-s0:32:32-n32"),
 //    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:64:64-a0:8:8-S32-s0:32:32-n32"),
-    // *** This must match Targets.cpp in clang.
-    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-f32:32:32-f64:32:32-a0:8:8-S32-s0:32:32-n32"),
+// Note must set both v64 and v128 since both are set in defaults.
+// *** This must match Targets.cpp in clang.
+    DataLayout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-f32:32:32-f64:32:32-a0:8:32-S32-s0:32:32-n32-v64:32:32-v128:32:32"),
     InstrInfo(*this), 
     FrameLowering(Subtarget),
     TLInfo(*this), TSInfo(*this)
