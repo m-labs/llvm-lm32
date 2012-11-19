@@ -6,8 +6,10 @@
 
 define void @bitap() {
 entry:
-        %RMask.i = alloca [256 x i32], align 16         ; <[256 x i32]*> [#uses=1]
-        %buffer = alloca [147456 x i8], align 16                ; <[147456 x i8]*> [#uses=0]
+;        %RMask.i = alloca [256 x i32], align 16         ; <[256 x i32]*> [#uses=1]
+;        %buffer = alloca [147456 x i8], align 16                ; <[147456 x i8]*> [#uses=0]
+        %RMask.i = alloca [256 x i32], align 4         ; <[256 x i32]*> [#uses=1]
+        %buffer = alloca [147456 x i8], align 4                ; <[147456 x i8]*> [#uses=0]
         br i1 false, label %bb19, label %bb.preheader
 bb.preheader:           ; preds = %entry
         ret void

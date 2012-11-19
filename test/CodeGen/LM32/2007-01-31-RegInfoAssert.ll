@@ -5,6 +5,7 @@
 
 define void @f1() {
 	%D = alloca %struct.rtx_def, align 1
+;	%D = alloca %struct.rtx_def, align 4
 	%tmp1 = bitcast %struct.rtx_def* %D to i32*
 	%tmp7 = load i32* %tmp1
 	%tmp14 = lshr i32 %tmp7, 1

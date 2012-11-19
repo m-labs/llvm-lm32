@@ -23,7 +23,8 @@ entry:
         %y_addr = alloca i8**           ; <i8***> [#uses=1]
         %retval = alloca i32, align 4           ; <i32*> [#uses=2]
         %tmp = alloca i32, align 4              ; <i32*> [#uses=2]
-        %foo = alloca i8*, align 8              ; <i8**> [#uses=9]
+;        %foo = alloca i8*, align 8              ; <i8**> [#uses=9]
+        %foo = alloca i8*, align 4              ; <i8**> [#uses=9]
         %"alloca point" = bitcast i32 0 to i32          ; <i32> [#uses=0]
         store i32 %x, i32* %x_addr
         store i8** %y, i8*** %y_addr

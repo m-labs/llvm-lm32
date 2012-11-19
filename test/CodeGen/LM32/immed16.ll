@@ -6,31 +6,36 @@ target datalayout = "E-p:32:32:128-f64:64:128-f32:32:128-i64:32:128-i32:32:128-i
 target triple = "spu"
 
 define i16 @test_1() {
-  %x = alloca i16, align 16
+;  %x = alloca i16, align 16
+  %x = alloca i16, align 4
   store i16 419, i16* %x        ;; ILH via pattern
   ret i16 0
 }
 
 define i16 @test_2() {
-  %x = alloca i16, align 16
+;  %x = alloca i16, align 16
+  %x = alloca i16, align 4
   store i16 1023, i16* %x       ;; ILH via pattern
   ret i16 0
 }
 
 define i16 @test_3() {
-  %x = alloca i16, align 16
+;  %x = alloca i16, align 16
+  %x = alloca i16, align 4
   store i16 -1023, i16* %x      ;; ILH via pattern
   ret i16 0
 }
 
 define i16 @test_4() {
-  %x = alloca i16, align 16
+;  %x = alloca i16, align 16
+  %x = alloca i16, align 4
   store i16 32767, i16* %x      ;; ILH via pattern
   ret i16 0
 }
 
 define i16 @test_5() {
-  %x = alloca i16, align 16
+;  %x = alloca i16, align 16
+  %x = alloca i16, align 4
   store i16 -32768, i16* %x     ;; ILH via pattern
   ret i16 0
 }

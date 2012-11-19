@@ -10,7 +10,8 @@ target triple = "spu"
 
 define double @__floatunsidf(i32 %arg_a) nounwind {
 entry:
-	%in = alloca %struct.fp_number_type, align 16
+;	%in = alloca %struct.fp_number_type, align 16
+	%in = alloca %struct.fp_number_type, align 4
 	%0 = getelementptr %struct.fp_number_type* %in, i32 0, i32 1
 	store i32 0, i32* %0, align 4
 	%1 = icmp eq i32 %arg_a, 0
@@ -18,7 +19,8 @@ entry:
 	br i1 %1, label %bb, label %bb1
 
 bb:		; preds = %entry
-	store i32 2, i32* %2, align 8
+;	store i32 2, i32* %2, align 8
+	store i32 2, i32* %2, align 4
 	br label %bb7
 
 bb1:		; preds = %entry

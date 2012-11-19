@@ -8,7 +8,8 @@
 
 define fastcc void @ParseContent(i8* %buf, i32 %bufsize) {
 entry:
-	%items = alloca [7000 x i8*], align 16		; <[10000 x i8*]*> [#uses=0]
+;	%items = alloca [7000 x i8*], align 16		; <[10000 x i8*]*> [#uses=0]
+	%items = alloca [7000 x i8*], align 4		; <[10000 x i8*]*> [#uses=0]
 	%tmp86 = add i32 0, -1		; <i32> [#uses=1]
 	br i1 false, label %cond_true94, label %cond_next99
 

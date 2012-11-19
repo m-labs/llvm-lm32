@@ -8,7 +8,8 @@ target triple = "powerpc64-apple-darwin8"
 
 define void @Bork(i64 %range.0.0, i64 %range.0.1, i64 %size) {
 entry:
-	%effectiveRange = alloca %struct.Range, align 8		; <%struct.Range*> [#uses=2]
+;	%effectiveRange = alloca %struct.Range, align 8		; <%struct.Range*> [#uses=2]
+	%effectiveRange = alloca %struct.Range, align 4		; <%struct.Range*> [#uses=2]
 	%tmp4 = call i8* @llvm.stacksave()		; <i8*> [#uses=1]
 	%size1 = trunc i64 %size to i32		; <i32> [#uses=1]
 	%tmp17 = alloca i8*, i32 %size1		; <i8**> [#uses=1]
@@ -26,7 +27,8 @@ unwind:		; preds = %cond_true, %entry
         resume { i8*, i32 } %exn
 
 invcont23:		; preds = %cond_true
-	%tmp27 = load i64* %tmp26, align 8		; <i64> [#uses=1]
+;	%tmp27 = load i64* %tmp26, align 8		; <i64> [#uses=1]
+	%tmp27 = load i64* %tmp26, align 4		; <i64> [#uses=1]
 	%tmp28 = sub i64 %range_addr.1.0, %tmp27		; <i64> [#uses=1]
 	br label %bb30
 
