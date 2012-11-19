@@ -23,6 +23,10 @@ def SDT_LM32CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 // -1 indicates variadic/arbitrary number of arguments.
 def SDT_LM32Call : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
 
+def SDT_LM32SelectCC     : SDTypeProfile<1, 4, [SDTCisVT<0, i32>,
+                                                SDTCisVT<1, i32>, 
+                                                SDTCisVT<3, i32>,
+                                                SDTCisVT<4, i32>]>;
 //===----------------------------------------------------------------------===//
 // LM32 specific nodes
 //===----------------------------------------------------------------------===//
@@ -48,6 +52,8 @@ def LM32Call    : SDNode<"LM32ISD::JmpLink", SDT_LM32Call,
 def LM32Hi    : SDNode<"LM32ISD::Hi", SDTIntUnaryOp>;
 def LM32Lo    : SDNode<"LM32ISD::Lo", SDTIntUnaryOp>;
 
+
+def LM32selectcc: SDNode<"LM32ISD::LM32Select_CC", SDT_LM32SelectCC>;
 
 //===----------------------------------------------------------------------===//
 // LM32 Instruction Predicate Definitions.
@@ -215,6 +221,14 @@ def ADJCALLSTACKUP   : LM32Pseudo<(outs),
                                     (ins uimm16:$amt1, simm16:$amt2),
                                     "#ADJCALLSTACKUP $amt1",
                                     [(callseq_end timm:$amt1, timm:$amt2)]>;
+}
+
+// GPR:$R0 is intended to be R0
+let usesCustomInserter = 1 in {
+  def SelectCC_Opc : LM32Pseudo<(outs GPR:$dst),
+    (ins GPR:$CC, GPR:$T, GPR:$F, GPR:$R0),
+    "; SELECT_CC PSEUDO!",
+    [(set GPR:$dst, (LM32selectcc GPR:$CC, GPR:$T, GPR:$F, GPR:$R0))]>;
 }
 
 //===----------------------------------------------------------------------===//

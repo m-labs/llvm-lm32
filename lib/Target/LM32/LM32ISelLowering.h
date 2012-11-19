@@ -78,8 +78,8 @@ namespace llvm {
       // Handle gp_rel (small data/bss sections) relocation.
       GPRel,
 
-      // Select CC Pseudo Instruction
-      Select_CC,
+      // Select CC Pseudo Instruction for custom insertion.
+      LM32Select_CC,
 
       // Integer Compare
       ICmp,

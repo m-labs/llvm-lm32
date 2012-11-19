@@ -38,14 +38,14 @@ using namespace llvm;
 
 const char *LM32TargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
-    case LM32ISD::JmpLink    : return "LM32ISD::JmpLink";
-    case LM32ISD::GPRel      : return "LM32ISD::GPRel";
-    case LM32ISD::ICmp       : return "LM32ISD::ICmp";
-    case LM32ISD::RetFlag    : return "LM32ISD::RetFlag";
-    case LM32ISD::Select_CC  : return "LM32ISD::Select_CC";
-    case LM32ISD::Hi         : return "LM32ISD::Hi";
-    case LM32ISD::Lo         : return "LM32ISD::Lo";
-    default                    : return NULL;
+    case LM32ISD::JmpLink       : return "LM32ISD::JmpLink";
+    case LM32ISD::GPRel         : return "LM32ISD::GPRel";
+    case LM32ISD::ICmp          : return "LM32ISD::ICmp";
+    case LM32ISD::RetFlag       : return "LM32ISD::RetFlag";
+    case LM32ISD::LM32Select_CC : return "LM32ISD::LM32Select_CC";
+    case LM32ISD::Hi            : return "LM32ISD::Hi";
+    case LM32ISD::Lo            : return "LM32ISD::Lo";
+    default                     : return NULL;
   }
 }
 
@@ -108,31 +108,35 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
   setOperationAction(ISD::BITCAST, MVT::f32, Expand);
   setOperationAction(ISD::BITCAST, MVT::i32, Expand);
 
-  // Expand SELECT_CC
-//FIXME: need to implement branches
-  setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
-
   // LM32 doesn't have MUL_LOHI
   setOperationAction(ISD::SMUL_LOHI, MVT::i32, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i32, Expand);
   setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
 
-//FIXME: WHAT is this?
-  // MBlaze: Used by legalize types to correctly generate the setcc result.
+  // Expand SELECT_CC to a compare, branch, and set
+  setOperationAction(ISD::SELECT_CC, MVT::i32, Custom);
+  //setOperationAction(ISD::SELECT_CC, MVT::i32, Expand);
+  // SETCC result is i1. Promotes it to I32 so SETCC will work with SELECT_CC
+  // Used by legalize types to correctly generate the setcc result.
   // Without this, every float setcc comes with a AND/OR with the result,
   // we don't want this, since the fpcmp result goes to a flag register,
   // which is used implicitly by brcond and select operations.
-  AddPromotedToType(ISD::SETCC, MVT::i1, MVT::i32);
+//  AddPromotedToType(ISD::SETCC, MVT::i1, MVT::i32);
 //  AddPromotedToType(ISD::SELECT, MVT::i1, MVT::i32);
 //  AddPromotedToType(ISD::SELECT_CC, MVT::i1, MVT::i32);
+  
+  // Stop the combiner recombining select and set_cc. From DAGCombiner.cpp:
+  /// Check against MVT::Other for SELECT_CC, which is a workaround for targets
+  /// having to say they don't support SELECT_CC on every type the DAG knows
+  /// about, since there is no way to mark an opcode illegal at all value types
+  setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
 
-  setOperationAction(ISD::SETCC,            MVT::i64, Expand);
-  setOperationAction(ISD::SETCC,            MVT::f32, Expand);
-  setOperationAction(ISD::SETCC,            MVT::f64, Expand);
+  setOperationAction(ISD::SETCC, MVT::i1, Promote);
+  setOperationAction(ISD::SETCC, MVT::i64, Expand);
+  setOperationAction(ISD::SETCC, MVT::f32, Expand);
+  setOperationAction(ISD::SETCC, MVT::f64, Expand);
 
-
-  // LM32 Custom Operations
   // Custom legalize GlobalAddress nodes into LO/HI parts.
   setOperationAction(ISD::GlobalAddress,      MVT::i32,   Custom);
   setOperationAction(ISD::GlobalTLSAddress,   MVT::i32,   Custom);
@@ -247,33 +251,10 @@ LM32TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                   const {
   switch (MI->getOpcode()) {
   default: assert(false && "Unexpected instr type to insert");
-/*
 
-  case LM32::ShiftRL:
-  case LM32::ShiftRA:
-  case LM32::ShiftL:
-    return EmitCustomShift(MI, MBB);
-
-  case LM32::Select_FCC:
-  case LM32::Select_CC:
+//  case LM32::Select_FCC:
+  case LM32::SelectCC_Opc:
     return EmitCustomSelect(MI, MBB);
-
-  case LM32::CAS32:
-  case LM32::SWP32:
-  case LM32::LAA32:
-  case LM32::LAS32:
-  case LM32::LAD32:
-  case LM32::LAO32:
-  case LM32::LAX32:
-  case LM32::LAN32:
-    return EmitCustomAtomic(MI, MBB);
-
-  case LM32::MEMBARRIER:
-    // The Microblaze does not need memory barriers. Just delete the pseudo
-    // instruction and finish.
-    MI->eraseFromParent();
-    return MBB;
-*/
   }
 }
 
@@ -294,58 +275,42 @@ LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
   //  thisMBB:
   //  ...
   //   TrueVal = ...
-  //   setcc r1, r2, r3
-  //   bNE   r1, r0, copy1MBB
-  //   fallthrough --> copy0MBB
+  //   isTrue = cmpXX r1, r2, r3
+  //   BE   isTrue, 1, sinkMBB
+  //   fallthrough --> flsMBB
   MachineFunction *F = MBB->getParent();
   MachineBasicBlock *flsBB = F->CreateMachineBasicBlock(LLVM_BB);
-  MachineBasicBlock *dneBB = F->CreateMachineBasicBlock(LLVM_BB);
-
-  unsigned Opc;
-  switch (MI->getOperand(4).getImm()) {
-  default: llvm_unreachable("Unknown branch condition");
-//FIXME:
-#if 0
-  case LM32CC::EQ: Opc = LM32::BEQID; break;
-  case LM32CC::NE: Opc = LM32::BNEID; break;
-  case LM32CC::GT: Opc = LM32::BGTID; break;
-  case LM32CC::LT: Opc = LM32::BLTID; break;
-  case LM32CC::GE: Opc = LM32::BGEID; break;
-  case LM32CC::LE: Opc = LM32::BLEID; break;
-#endif
-  }
-
+  MachineBasicBlock *sinkBB = F->CreateMachineBasicBlock(LLVM_BB);
   F->insert(It, flsBB);
-  F->insert(It, dneBB);
+  F->insert(It, sinkBB);
 
-  // Transfer the remainder of MBB and its successor edges to dneBB.
-  dneBB->splice(dneBB->begin(), MBB,
+  // Transfer the remainder of MBB and its successor edges to sinkBB.
+  sinkBB->splice(sinkBB->begin(), MBB,
                 llvm::next(MachineBasicBlock::iterator(MI)),
                 MBB->end());
-  dneBB->transferSuccessorsAndUpdatePHIs(MBB);
+  sinkBB->transferSuccessorsAndUpdatePHIs(MBB);
 
   MBB->addSuccessor(flsBB);
-  MBB->addSuccessor(dneBB);
-  flsBB->addSuccessor(dneBB);
+  MBB->addSuccessor(sinkBB);
+  flsBB->addSuccessor(sinkBB);
 
-  BuildMI(MBB, dl, TII->get(Opc))
-    .addReg(MI->getOperand(3).getReg())
-    .addMBB(dneBB);
+  // If the compare returned true (1) then branch to
+  // the end bypassing the false BB.
+  BuildMI(MBB, dl, TII->get(LM32::BNE))
+    .addReg(MI->getOperand(1).getReg())
+    .addReg(MI->getOperand(4).getReg())
+    .addMBB(sinkBB);
 
   //  sinkMBB:
-  //   %Result = phi [ %FalseValue, copy0MBB ], [ %TrueValue, thisMBB ]
+  //   %Result = phi [ %FalseValue, flsMBB ], [ %TrueValue, MBB ]
   //  ...
-  //BuildMI(dneBB, dl, TII->get(LM32::PHI), MI->getOperand(0).getReg())
-  //  .addReg(MI->getOperand(1).getReg()).addMBB(flsBB)
-  //  .addReg(MI->getOperand(2).getReg()).addMBB(BB);
-
-  BuildMI(*dneBB, dneBB->begin(), dl,
+  BuildMI(*sinkBB, sinkBB->begin(), dl,
           TII->get(LM32::PHI), MI->getOperand(0).getReg())
-    .addReg(MI->getOperand(2).getReg()).addMBB(flsBB)
-    .addReg(MI->getOperand(1).getReg()).addMBB(MBB);
+    .addReg(MI->getOperand(3).getReg()).addMBB(flsBB)
+    .addReg(MI->getOperand(2).getReg()).addMBB(MBB);
 
   MI->eraseFromParent();   // The pseudo instruction is gone now.
-  return dneBB;
+  return sinkBB;
 }
 
 
@@ -353,29 +318,26 @@ LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
 //  Misc Lower Operation implementation
 //===----------------------------------------------------------------------===//
 //
-
-SDValue LM32TargetLowering::LowerSELECT_CC(SDValue Op,
-                                             SelectionDAG &DAG) const {
+// Select with condition operator - This selects between a true value and a 
+// false value (ops #2 and #3) based on the boolean result of comparing the lhs 
+// and rhs (ops #0 and #1) of a conditional expression with the condition code 
+// in op #4, a CondCodeSDNode.
+// Modeled on Mips and MBlaze.
+// Create a LM32 specific SDNode for select_cc that uses a custom inserter.
+SDValue
+LM32TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue LHS = Op.getOperand(0);
   SDValue RHS = Op.getOperand(1);
+  SDValue CC = Op.getOperand(4);
   SDValue TrueVal = Op.getOperand(2);
   SDValue FalseVal = Op.getOperand(3);
   DebugLoc dl = Op.getDebugLoc();
-  unsigned Opc;
+  EVT ResultTy = getSetCCResultType(Op.getOperand(0).getValueType());
 
-DAG.viewGraph();
-
-  SDValue CompareFlag;
-  if (LHS.getValueType() == MVT::i32) {
-    Opc = LM32ISD::Select_CC;
-    CompareFlag = DAG.getNode(LM32ISD::ICmp, dl, MVT::i32, LHS, RHS)
-                    .getValue(1);
-  } else {
-    llvm_unreachable("Cannot lower select_cc with unknown type");
-  }
-
-  return DAG.getNode(Opc, dl, TrueVal.getValueType(), TrueVal, FalseVal,
-                     CompareFlag);
+  SDValue Cond = DAG.getNode(ISD::SETCC, dl, ResultTy, LHS, RHS, CC);
+  // Note it appears we need to add R0 here.  Attempting to use MI.addReg(0)
+  // in the custom inserter resulted in a virtual register which wasn't liked.
+  return DAG.getNode(LM32ISD::LM32Select_CC, dl, TrueVal.getValueType(), Cond, TrueVal, FalseVal, DAG.getRegister(LM32::R0, MVT::i32));
 }
 
 // Modeled on Sparc LowerGlobalAddress.
