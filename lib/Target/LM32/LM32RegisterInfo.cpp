@@ -250,8 +250,9 @@ needsStackRealignment(const MachineFunction &MF) const {
   assert(((MFI->getMaxAlignment() <= StackAlign) || 
             MF.getTarget().Options.RealignStack) && 
             "Unable to align stack to requested alignment.");
-  bool requiresRealignment = ((MFI->getMaxAlignment() > StackAlign) ||
-                               F->hasFnAttr(Attribute::StackAlignment));
+  bool requiresRealignment = 
+               ((MFI->getMaxAlignment() > StackAlign) ||
+                 F->getFnAttributes().hasAttribute(Attributes::StackAlignment));
 
   // FIXME: Currently we don't support stack realignment for functions with
   //        variable-sized allocas.

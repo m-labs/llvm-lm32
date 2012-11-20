@@ -19,9 +19,9 @@
 #include "LM32ISelLowering.h"
 #include "LM32SelectionDAGInfo.h"
 #include "LM32FrameLowering.h"
+#include "llvm/DataLayout.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetFrameLowering.h"
 
 
@@ -30,7 +30,7 @@ namespace llvm {
   
   class LM32TargetMachine : public LLVMTargetMachine {
     LM32Subtarget        Subtarget;
-    const TargetData       DataLayout;       // Calculates type size & alignment
+    const DataLayout     Layout;       // Calculates type size & alignment
     LM32InstrInfo        InstrInfo;
     LM32FrameLowering    FrameLowering;
     LM32TargetLowering   TLInfo;
@@ -68,8 +68,8 @@ namespace llvm {
       return &TSInfo;
     }
   
-    virtual const TargetData *getTargetData() const {
-      return &DataLayout;
+    virtual const DataLayout *getDataLayout() const {
+      return &Layout;
     }
   
     // Pass Pipeline Configuration
