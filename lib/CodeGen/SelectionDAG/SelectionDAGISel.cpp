@@ -45,6 +45,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
@@ -216,8 +217,9 @@ namespace llvm {
   ScheduleDAGSDNodes* createDefaultScheduler(SelectionDAGISel *IS,
                                              CodeGenOpt::Level OptLevel) {
     const TargetLowering &TLI = IS->getTargetLowering();
+    const TargetSubtargetInfo &ST = IS->TM.getSubtarget<TargetSubtargetInfo>();
 
-    if (OptLevel == CodeGenOpt::None ||
+    if (OptLevel == CodeGenOpt::None || ST.enableMachineScheduler() ||
         TLI.getSchedulingPreference() == Sched::Source)
       return createSourceListDAGScheduler(IS, OptLevel);
     if (TLI.getSchedulingPreference() == Sched::RegPressure)
@@ -474,6 +476,11 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
     MRI.replaceRegWith(From, To);
   }
 
+  // Freeze the set of reserved registers now that MachineFrameInfo has been
+  // set up. All the information required by getReservedRegs() should be
+  // available now.
+  MRI.freezeReservedRegs(*MF);
+
   // Release function-specific state. SDB and CurDAG are already cleared
   // at this point.
   FuncInfo->clear();
@@ -554,7 +561,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
 #endif
   {
     BlockNumber = FuncInfo->MBB->getNumber();
-    BlockName = MF->getFunction()->getName().str() + ":" +
+    BlockName = MF->getName().str() + ":" +
                 FuncInfo->MBB->getBasicBlock()->getName().str();
   }
   DEBUG(dbgs() << "Initial selection DAG: BB#" << BlockNumber
@@ -979,7 +986,7 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
   // Initialize the Fast-ISel state, if needed.
   FastISel *FastIS = 0;
   if (TM.Options.EnableFastISel)
-    FastIS = TLI.createFastISel(*FuncInfo);
+    FastIS = TLI.createFastISel(*FuncInfo, LibInfo);
 
   // Iterate over all basic blocks in the function.
   ReversePostOrderTraversal<const Function*> RPOT(&Fn);
@@ -1209,7 +1216,12 @@ SelectionDAGISel::FinishBasicBlock() {
       CodeGenAndEmitDAG();
     }
 
+    uint32_t UnhandledWeight = 0;
+    for (unsigned j = 0, ej = SDB->BitTestCases[i].Cases.size(); j != ej; ++j)
+      UnhandledWeight += SDB->BitTestCases[i].Cases[j].ExtraWeight;
+
     for (unsigned j = 0, ej = SDB->BitTestCases[i].Cases.size(); j != ej; ++j) {
+      UnhandledWeight -= SDB->BitTestCases[i].Cases[j].ExtraWeight;
       // Set the current basic block to the mbb we wish to insert the code into
       FuncInfo->MBB = SDB->BitTestCases[i].Cases[j].ThisBB;
       FuncInfo->InsertPt = FuncInfo->MBB->end();
@@ -1217,12 +1229,14 @@ SelectionDAGISel::FinishBasicBlock() {
       if (j+1 != ej)
         SDB->visitBitTestCase(SDB->BitTestCases[i],
                               SDB->BitTestCases[i].Cases[j+1].ThisBB,
+                              UnhandledWeight,
                               SDB->BitTestCases[i].Reg,
                               SDB->BitTestCases[i].Cases[j],
                               FuncInfo->MBB);
       else
         SDB->visitBitTestCase(SDB->BitTestCases[i],
                               SDB->BitTestCases[i].Default,
+                              UnhandledWeight,
                               SDB->BitTestCases[i].Reg,
                               SDB->BitTestCases[i].Cases[j],
                               FuncInfo->MBB);
@@ -1794,10 +1808,13 @@ WalkChainUsers(const SDNode *ChainedNode,
         User->getOpcode() == ISD::HANDLENODE)  // Root of the graph.
       continue;
 
-    if (User->getOpcode() == ISD::CopyToReg ||
-        User->getOpcode() == ISD::CopyFromReg ||
-        User->getOpcode() == ISD::INLINEASM ||
-        User->getOpcode() == ISD::EH_LABEL) {
+    unsigned UserOpcode = User->getOpcode();
+    if (UserOpcode == ISD::CopyToReg ||
+        UserOpcode == ISD::CopyFromReg ||
+        UserOpcode == ISD::INLINEASM ||
+        UserOpcode == ISD::EH_LABEL ||
+        UserOpcode == ISD::LIFETIME_START ||
+        UserOpcode == ISD::LIFETIME_END) {
       // If their node ID got reset to -1 then they've already been selected.
       // Treat them like a MachineOpcode.
       if (User->getNodeId() == -1)
@@ -1994,7 +2011,7 @@ MorphNode(SDNode *Node, unsigned TargetOpc, SDVTList VTList,
   return Res;
 }
 
-/// CheckPatternPredicate - Implements OP_CheckPatternPredicate.
+/// CheckSame - Implements OP_CheckSame.
 LLVM_ATTRIBUTE_ALWAYS_INLINE static bool
 CheckSame(const unsigned char *MatcherTable, unsigned &MatcherIndex,
           SDValue N,
@@ -2213,6 +2230,8 @@ SelectCodeCommon(SDNode *NodeToMatch, const unsigned char *MatcherTable,
   case ISD::CopyFromReg:
   case ISD::CopyToReg:
   case ISD::EH_LABEL:
+  case ISD::LIFETIME_START:
+  case ISD::LIFETIME_END:
     NodeToMatch->setNodeId(-1); // Mark selected.
     return 0;
   case ISD::AssertSext:
@@ -2981,7 +3000,7 @@ void SelectionDAGISel::CannotYetSelect(SDNode *N) {
       N->getOpcode() != ISD::INTRINSIC_WO_CHAIN &&
       N->getOpcode() != ISD::INTRINSIC_VOID) {
     N->printrFull(Msg, CurDAG);
-    Msg << "\nIn function: " << MF->getFunction()->getName();
+    Msg << "\nIn function: " << MF->getName();
   } else {
     bool HasInputChain = N->getOperand(0).getValueType() == MVT::Other;
     unsigned iid =

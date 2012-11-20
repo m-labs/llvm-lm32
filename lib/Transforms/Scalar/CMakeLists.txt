@@ -1,7 +1,6 @@
 add_llvm_library(LLVMScalarOpts
   ADCE.cpp
   BasicBlockPlacement.cpp
-  BoundsChecking.cpp
   CodeGenPrepare.cpp
   ConstantProp.cpp
   CorrelatedValuePropagation.cpp
@@ -26,6 +25,7 @@ add_llvm_library(LLVMScalarOpts
   Reassociate.cpp
   Reg2Mem.cpp
   SCCP.cpp
+  SROA.cpp
   Scalar.cpp
   ScalarReplAggregates.cpp
   SimplifyCFGPass.cpp

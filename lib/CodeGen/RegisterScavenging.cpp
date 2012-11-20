@@ -43,7 +43,7 @@ void RegScavenger::setUsed(unsigned Reg) {
 
 bool RegScavenger::isAliasUsed(unsigned Reg) const {
   for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
-    if (isUsed(*AI))
+    if (isUsed(*AI, *AI == Reg))
       return true;
   return false;
 }
@@ -91,9 +91,6 @@ void RegScavenger::enterBasicBlock(MachineBasicBlock *mbb) {
     RegsAvailable.resize(NumPhysRegs);
     KillRegs.resize(NumPhysRegs);
     DefRegs.resize(NumPhysRegs);
-
-    // Create reserved registers bitvector.
-    ReservedRegs = TRI->getReservedRegs(MF);
 
     // Create callee-saved registers bitvector.
     CalleeSavedRegs.resize(NumPhysRegs);
@@ -225,9 +222,9 @@ void RegScavenger::getRegsUsed(BitVector &used, bool includeReserved) {
   used = RegsAvailable;
   used.flip();
   if (includeReserved)
-    used |= ReservedRegs;
+    used |= MRI->getReservedRegs();
   else
-    used.reset(ReservedRegs);
+    used.reset(MRI->getReservedRegs());
 }
 
 unsigned RegScavenger::FindUnusedReg(const TargetRegisterClass *RC) const {

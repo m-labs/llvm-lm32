@@ -18,7 +18,7 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
@@ -112,26 +112,18 @@ unsigned AsmPrinter::GetSizeOfEncodedValue(unsigned Encoding) const {
   
   switch (Encoding & 0x07) {
   default: llvm_unreachable("Invalid encoded value.");
-  case dwarf::DW_EH_PE_absptr: return TM.getTargetData()->getPointerSize();
+  case dwarf::DW_EH_PE_absptr: return TM.getDataLayout()->getPointerSize();
   case dwarf::DW_EH_PE_udata2: return 2;
   case dwarf::DW_EH_PE_udata4: return 4;
   case dwarf::DW_EH_PE_udata8: return 8;
   }
 }
 
-void AsmPrinter::EmitReference(const MCSymbol *Sym, unsigned Encoding) const {
+void AsmPrinter::EmitTTypeReference(const GlobalValue *GV, unsigned Encoding)const{
   const TargetLoweringObjectFile &TLOF = getObjFileLowering();
   
   const MCExpr *Exp =
-    TLOF.getExprForDwarfReference(Sym, Encoding, OutStreamer);
-  OutStreamer.EmitAbsValue(Exp, GetSizeOfEncodedValue(Encoding));
-}
-
-void AsmPrinter::EmitReference(const GlobalValue *GV, unsigned Encoding)const{
-  const TargetLoweringObjectFile &TLOF = getObjFileLowering();
-  
-  const MCExpr *Exp =
-    TLOF.getExprForDwarfGlobalReference(GV, Mang, MMI, Encoding, OutStreamer);
+    TLOF.getTTypeGlobalReference(GV, Mang, MMI, Encoding, OutStreamer);
   OutStreamer.EmitValue(Exp, GetSizeOfEncodedValue(Encoding), /*addrspace*/0);
 }
 

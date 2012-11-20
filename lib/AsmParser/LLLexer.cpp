@@ -456,11 +456,12 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(private);
   KEYWORD(linker_private);
   KEYWORD(linker_private_weak);
-  KEYWORD(linker_private_weak_def_auto);
+  KEYWORD(linker_private_weak_def_auto); // FIXME: For backwards compatibility.
   KEYWORD(internal);
   KEYWORD(available_externally);
   KEYWORD(linkonce);
   KEYWORD(linkonce_odr);
+  KEYWORD(linkonce_odr_auto_hide);
   KEYWORD(weak);
   KEYWORD(weak_odr);
   KEYWORD(appending);
@@ -509,6 +510,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(asm);
   KEYWORD(sideeffect);
   KEYWORD(alignstack);
+  KEYWORD(inteldialect);
   KEYWORD(gc);
 
   KEYWORD(ccc);
@@ -523,6 +525,9 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(msp430_intrcc);
   KEYWORD(ptx_kernel);
   KEYWORD(ptx_device);
+  KEYWORD(spir_kernel);
+  KEYWORD(spir_func);
+  KEYWORD(intel_ocl_bicc);
 
   KEYWORD(cc);
   KEYWORD(c);
@@ -553,6 +558,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(naked);
   KEYWORD(nonlazybind);
   KEYWORD(address_safety);
+  KEYWORD(minsize);
 
   KEYWORD(type);
   KEYWORD(opaque);
@@ -738,7 +744,7 @@ lltok::Kind LLLexer::Lex0x() {
 ///    HexFP128Constant  0xL[0-9A-Fa-f]+
 ///    HexPPC128Constant 0xM[0-9A-Fa-f]+
 lltok::Kind LLLexer::LexDigitOrNegative() {
-  // If the letter after the negative is a number, this is probably a label.
+  // If the letter after the negative is not a number, this is probably a label.
   if (!isdigit(TokStart[0]) && !isdigit(CurPtr[0])) {
     // Okay, this is not a number after the -, it's probably a label.
     if (const char *End = isLabelTail(CurPtr)) {

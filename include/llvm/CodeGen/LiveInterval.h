@@ -29,6 +29,7 @@
 #include <climits>
 
 namespace llvm {
+  class CoalescerPair;
   class LiveIntervals;
   class MachineInstr;
   class MachineRegisterInfo;
@@ -40,15 +41,6 @@ namespace llvm {
   /// definition and use points.
   ///
   class VNInfo {
-  private:
-    enum {
-      HAS_PHI_KILL    = 1,
-      IS_PHI_DEF      = 1 << 1,
-      IS_UNUSED       = 1 << 2
-    };
-
-    unsigned char flags;
-
   public:
     typedef BumpPtrAllocator Allocator;
 
@@ -60,60 +52,30 @@ namespace llvm {
 
     /// VNInfo constructor.
     VNInfo(unsigned i, SlotIndex d)
-      : flags(0), id(i), def(d)
+      : id(i), def(d)
     { }
 
     /// VNInfo construtor, copies values from orig, except for the value number.
     VNInfo(unsigned i, const VNInfo &orig)
-      : flags(orig.flags), id(i), def(orig.def)
+      : id(i), def(orig.def)
     { }
 
     /// Copy from the parameter into this VNInfo.
     void copyFrom(VNInfo &src) {
-      flags = src.flags;
       def = src.def;
-    }
-
-    /// Used for copying value number info.
-    unsigned getFlags() const { return flags; }
-    void setFlags(unsigned flags) { this->flags = flags; }
-
-    /// Merge flags from another VNInfo
-    void mergeFlags(const VNInfo *VNI) {
-      flags = (flags | VNI->flags) & ~IS_UNUSED;
-    }
-
-    /// Returns true if one or more kills are PHI nodes.
-    /// Obsolete, do not use!
-    bool hasPHIKill() const { return flags & HAS_PHI_KILL; }
-    /// Set the PHI kill flag on this value.
-    void setHasPHIKill(bool hasKill) {
-      if (hasKill)
-        flags |= HAS_PHI_KILL;
-      else
-        flags &= ~HAS_PHI_KILL;
     }
 
     /// Returns true if this value is defined by a PHI instruction (or was,
     /// PHI instrucions may have been eliminated).
-    bool isPHIDef() const { return flags & IS_PHI_DEF; }
-    /// Set the "phi def" flag on this value.
-    void setIsPHIDef(bool phiDef) {
-      if (phiDef)
-        flags |= IS_PHI_DEF;
-      else
-        flags &= ~IS_PHI_DEF;
-    }
+    /// PHI-defs begin at a block boundary, all other defs begin at register or
+    /// EC slots.
+    bool isPHIDef() const { return def.isBlock(); }
 
     /// Returns true if this value is unused.
-    bool isUnused() const { return flags & IS_UNUSED; }
-    /// Set the "is unused" flag on this value.
-    void setIsUnused(bool unused) {
-      if (unused)
-        flags |= IS_UNUSED;
-      else
-        flags &= ~IS_UNUSED;
-    }
+    bool isUnused() const { return !def.isValid(); }
+
+    /// Mark this value as unused.
+    void markUnused() { def = SlotIndex(); }
   };
 
   /// LiveRange structure - This represents a simple register range in the
@@ -152,9 +114,6 @@ namespace llvm {
 
     void dump() const;
     void print(raw_ostream &os) const;
-
-  private:
-    LiveRange(); // DO NOT IMPLEMENT
   };
 
   template <> struct isPodLike<LiveRange> { static const bool value = true; };
@@ -314,11 +273,6 @@ namespace llvm {
     void MergeValueInAsValue(const LiveInterval &RHS,
                              const VNInfo *RHSValNo, VNInfo *LHSValNo);
 
-    /// Copy - Copy the specified live interval. This copies all the fields
-    /// except for the register of the interval.
-    void Copy(const LiveInterval &RHS, MachineRegisterInfo *MRI,
-              VNInfo::Allocator &VNInfoAllocator);
-
     bool empty() const { return ranges.empty(); }
 
     /// beginIndex - Return the lowest numbered slot covered by interval.
@@ -350,12 +304,6 @@ namespace llvm {
       const_iterator r = find(index.getRegSlot(true));
       return r != end() && r->end == index;
     }
-
-    /// killedInRange - Return true if the interval has kills in [Start,End).
-    /// Note that the kill point is considered the end of a live range, so it is
-    /// not contained in the live range. If a live range ends at End, it won't
-    /// be counted as a kill by this method.
-    bool killedInRange(SlotIndex Start, SlotIndex End) const;
 
     /// getLiveRangeContaining - Return the live range that contains the
     /// specified index, or null if there is none.
@@ -404,6 +352,14 @@ namespace llvm {
         return false;
       return overlapsFrom(other, other.begin());
     }
+
+    /// overlaps - Return true if the two intervals have overlapping segments
+    /// that are not coalescable according to CP.
+    ///
+    /// Overlapping segments where one interval is defined by a coalescable
+    /// copy are allowed.
+    bool overlaps(const LiveInterval &Other, const CoalescerPair &CP,
+                  const SlotIndexes&) const;
 
     /// overlaps - Return true if the live interval overlaps a range specified
     /// by [Start, End).
@@ -508,7 +464,7 @@ namespace llvm {
                              VNInfo *LHSValNo = 0,
                              const VNInfo *RHSValNo = 0);
 
-    LiveInterval& operator=(const LiveInterval& rhs); // DO NOT IMPLEMENT
+    LiveInterval& operator=(const LiveInterval& rhs) LLVM_DELETED_FUNCTION;
 
   };
 
@@ -540,7 +496,9 @@ namespace llvm {
       if (I == E)
         return;
       // Is this an instruction live-in segment?
-      if (SlotIndex::isEarlierInstr(I->start, Idx)) {
+      // If Idx is the start index of a basic block, include live-in segments
+      // that start at Idx.getBaseIndex().
+      if (I->start <= Idx.getBaseIndex()) {
         EarlyVal = I->valno;
         EndPoint = I->end;
         // Move to the potentially live-out segment.
@@ -549,6 +507,12 @@ namespace llvm {
           if (++I == E)
             return;
         }
+        // Special case: A PHIDef value can have its def in the middle of a
+        // segment if the value happens to be live out of the layout
+        // predecessor.
+        // Such a value is not live-in.
+        if (EarlyVal->def == Idx.getBaseIndex())
+          EarlyVal = 0;
       }
       // I now points to the segment that may be live-through, or defined by
       // this instr. Ignore segments starting after the current instr.

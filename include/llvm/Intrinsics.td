@@ -121,21 +121,30 @@ def llvm_metadata_ty   : LLVMType<MetadataVT>;                    // !{...}
 def llvm_x86mmx_ty     : LLVMType<x86mmx>;
 def llvm_ptrx86mmx_ty  : LLVMPointerType<llvm_x86mmx_ty>;         // <1 x i64>*
 
+def llvm_v2i1_ty       : LLVMType<v2i1>;     //  2 x i1
+def llvm_v4i1_ty       : LLVMType<v4i1>;     //  4 x i1
+def llvm_v8i1_ty       : LLVMType<v8i1>;     //  8 x i1
+def llvm_v16i1_ty      : LLVMType<v16i1>;    // 16 x i1
 def llvm_v2i8_ty       : LLVMType<v2i8>;     //  2 x i8
 def llvm_v4i8_ty       : LLVMType<v4i8>;     //  4 x i8
 def llvm_v8i8_ty       : LLVMType<v8i8>;     //  8 x i8
 def llvm_v16i8_ty      : LLVMType<v16i8>;    // 16 x i8
 def llvm_v32i8_ty      : LLVMType<v32i8>;    // 32 x i8
+def llvm_v1i16_ty      : LLVMType<v1i16>;    //  1 x i16
 def llvm_v2i16_ty      : LLVMType<v2i16>;    //  2 x i16
 def llvm_v4i16_ty      : LLVMType<v4i16>;    //  4 x i16
 def llvm_v8i16_ty      : LLVMType<v8i16>;    //  8 x i16
 def llvm_v16i16_ty     : LLVMType<v16i16>;   // 16 x i16
+def llvm_v1i32_ty      : LLVMType<v1i32>;    //  1 x i32
 def llvm_v2i32_ty      : LLVMType<v2i32>;    //  2 x i32
 def llvm_v4i32_ty      : LLVMType<v4i32>;    //  4 x i32
 def llvm_v8i32_ty      : LLVMType<v8i32>;    //  8 x i32
+def llvm_v16i32_ty     : LLVMType<v16i32>;   // 16 x i32
 def llvm_v1i64_ty      : LLVMType<v1i64>;    //  1 x i64
 def llvm_v2i64_ty      : LLVMType<v2i64>;    //  2 x i64
 def llvm_v4i64_ty      : LLVMType<v4i64>;    //  4 x i64
+def llvm_v8i64_ty      : LLVMType<v8i64>;    //  8 x i64
+def llvm_v16i64_ty     : LLVMType<v16i64>;   // 16 x i64
 
 def llvm_v2f32_ty      : LLVMType<v2f32>;    //  2 x float
 def llvm_v4f32_ty      : LLVMType<v4f32>;    //  4 x float
@@ -261,6 +270,11 @@ let Properties = [IntrReadMem] in {
   def int_exp  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_exp2 : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
   def int_fabs : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_floor : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_ceil  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_trunc : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_rint  : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
+  def int_nearbyint : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
 }
 
 let Properties = [IntrNoMem] in {
@@ -275,9 +289,9 @@ let Properties = [IntrNoMem] in {
 
 // NOTE: these are internal interfaces.
 def int_setjmp     : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty]>;
-def int_longjmp    : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty]>;
+def int_longjmp    : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty], [IntrNoReturn]>;
 def int_sigsetjmp  : Intrinsic<[llvm_i32_ty] , [llvm_ptr_ty, llvm_i32_ty]>;
-def int_siglongjmp : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty]>;
+def int_siglongjmp : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty], [IntrNoReturn]>;
 
 // Internal interface for object size checking
 def int_objectsize : Intrinsic<[llvm_anyint_ty], [llvm_ptr_ty, llvm_i1_ty],
@@ -309,7 +323,7 @@ let Properties = [IntrNoMem] in {
 let Properties = [IntrNoMem] in {
   def int_dbg_declare      : Intrinsic<[],
                                        [llvm_metadata_ty, llvm_metadata_ty]>;
-  def int_dbg_value  	   : Intrinsic<[],
+  def int_dbg_value        : Intrinsic<[],
                                        [llvm_metadata_ty, llvm_i64_ty,
                                         llvm_metadata_ty]>;
 }
@@ -335,7 +349,7 @@ let Properties = [IntrNoMem] in {
 }
 def int_eh_sjlj_functioncontext : Intrinsic<[], [llvm_ptr_ty]>;
 def int_eh_sjlj_setjmp          : Intrinsic<[llvm_i32_ty], [llvm_ptr_ty]>;
-def int_eh_sjlj_longjmp         : Intrinsic<[], [llvm_ptr_ty]>;
+def int_eh_sjlj_longjmp         : Intrinsic<[], [llvm_ptr_ty], [IntrNoReturn]>;
 
 //===---------------- Generic Variable Attribute Intrinsics----------------===//
 //
@@ -454,7 +468,6 @@ def int_convertuu  : Intrinsic<[llvm_anyint_ty],
 include "llvm/IntrinsicsPowerPC.td"
 include "llvm/IntrinsicsX86.td"
 include "llvm/IntrinsicsARM.td"
-include "llvm/IntrinsicsCellSPU.td"
 include "llvm/IntrinsicsXCore.td"
 include "llvm/IntrinsicsHexagon.td"
 include "llvm/IntrinsicsNVVM.td"

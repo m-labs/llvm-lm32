@@ -33,7 +33,7 @@ def XCoreBranchLink     : SDNode<"XCoreISD::BL",SDT_XCoreBranchLink,
                              SDNPVariadic]>;
 
 def XCoreRetsp       : SDNode<"XCoreISD::RETSP", SDTBrind,
-                         [SDNPHasChain, SDNPOptInGlue]>;
+                         [SDNPHasChain, SDNPOptInGlue, SDNPMayLoad]>;
 
 def SDT_XCoreBR_JT    : SDTypeProfile<0, 2,
                                       [SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
@@ -58,7 +58,7 @@ def cprelwrapper : SDNode<"XCoreISD::CPRelativeWrapper", SDT_XCoreAddress,
 
 def SDT_XCoreStwsp    : SDTypeProfile<0, 2, [SDTCisInt<1>]>;
 def XCoreStwsp        : SDNode<"XCoreISD::STWSP", SDT_XCoreStwsp,
-                               [SDNPHasChain]>;
+                               [SDNPHasChain, SDNPMayStore]>;
 
 // These are target-independent nodes, but have target-specific formats.
 def SDT_XCoreCallSeqStart : SDCallSeqStart<[ SDTCisVT<0, i32> ]>;
@@ -948,10 +948,10 @@ def ENDIN_l2r : _FL2R<(outs GRRegs:$dst), (ins GRRegs:$src),
 // dgetreg
 def MSYNC_1r : _F1R<(outs), (ins GRRegs:$i),
                     "msync res[$i]",
-		    [(int_xcore_msync GRRegs:$i)]>;
+                    [(int_xcore_msync GRRegs:$i)]>;
 def MJOIN_1r : _F1R<(outs), (ins GRRegs:$i),
                     "mjoin res[$i]",
-		    [(int_xcore_mjoin GRRegs:$i)]>;
+                    [(int_xcore_mjoin GRRegs:$i)]>;
 
 let isBranch=1, isIndirectBranch=1, isTerminator=1, isBarrier = 1 in
 def BAU_1r : _F1R<(outs), (ins GRRegs:$addr),
@@ -1036,7 +1036,7 @@ def GETET_0R : _F0R<(outs), (ins),
 
 def SSYNC_0r : _F0R<(outs), (ins),
                     "ssync",
-		    [(int_xcore_ssync)]>;
+                    [(int_xcore_ssync)]>;
 
 let isBranch=1, isIndirectBranch=1, isTerminator=1, isBarrier = 1,
     hasSideEffects = 1 in

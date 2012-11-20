@@ -44,7 +44,7 @@ void x86DisassemblerDebug(const char *file,
   dbgs() << file << ":" << line << ": " << s;
 }
 
-const char *x86DisassemblerGetInstrName(unsigned Opcode, void *mii) {
+const char *x86DisassemblerGetInstrName(unsigned Opcode, const void *mii) {
   const MCInstrInfo *MII = static_cast<const MCInstrInfo *>(mii);
   return MII->getName(Opcode);
 }
@@ -95,8 +95,8 @@ const EDInstInfo *X86GenericDisassembler::getEDInfo() const {
 ///                   be a pointer to a MemoryObject.
 /// @param byte     - A pointer to the byte to be read.
 /// @param address  - The address to be read.
-static int regionReader(void* arg, uint8_t* byte, uint64_t address) {
-  MemoryObject* region = static_cast<MemoryObject*>(arg);
+static int regionReader(const void* arg, uint8_t* byte, uint64_t address) {
+  const MemoryObject* region = static_cast<const MemoryObject*>(arg);
   return region->readByte(address, byte);
 }
 
@@ -135,10 +135,10 @@ X86GenericDisassembler::getInstruction(MCInst &instr,
   
   int ret = decodeInstruction(&internalInstr,
                               regionReader,
-                              (void*)&region,
+                              (const void*)&region,
                               loggerFn,
                               (void*)&vStream,
-                              (void*)MII,
+                              (const void*)MII,
                               address,
                               fMode);
 
@@ -327,7 +327,7 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
   if (type == TYPE_RELv) {
     isBranch = true;
     pcrel = insn.startLocation +
-            insn.displacementOffset + insn.displacementSize;
+            insn.immediateOffset + insn.immediateSize;
     switch (insn.displacementSize) {
     default:
       break;
@@ -356,15 +356,15 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
       // Special case those X86 instructions that use the imm8 as a set of
       // bits, bit count, etc. and are not sign-extend.
       if (Opcode != X86::BLENDPSrri && Opcode != X86::BLENDPDrri &&
-	  Opcode != X86::PBLENDWrri && Opcode != X86::MPSADBWrri &&
-	  Opcode != X86::DPPSrri && Opcode != X86::DPPDrri &&
-	  Opcode != X86::INSERTPSrr && Opcode != X86::VBLENDPSYrri &&
-	  Opcode != X86::VBLENDPSYrmi && Opcode != X86::VBLENDPDYrri &&
-	  Opcode != X86::VBLENDPDYrmi && Opcode != X86::VPBLENDWrri &&
-	  Opcode != X86::VMPSADBWrri && Opcode != X86::VDPPSYrri &&
-	  Opcode != X86::VDPPSYrmi && Opcode != X86::VDPPDrri &&
-	  Opcode != X86::VINSERTPSrr)
-	type = TYPE_MOFFS8;
+          Opcode != X86::PBLENDWrri && Opcode != X86::MPSADBWrri &&
+          Opcode != X86::DPPSrri && Opcode != X86::DPPDrri &&
+          Opcode != X86::INSERTPSrr && Opcode != X86::VBLENDPSYrri &&
+          Opcode != X86::VBLENDPSYrmi && Opcode != X86::VBLENDPDYrri &&
+          Opcode != X86::VBLENDPDYrmi && Opcode != X86::VPBLENDWrri &&
+          Opcode != X86::VMPSADBWrri && Opcode != X86::VDPPSYrri &&
+          Opcode != X86::VDPPSYrmi && Opcode != X86::VDPPDrri &&
+          Opcode != X86::VINSERTPSrr)
+        type = TYPE_MOFFS8;
       break;
     case ENCODING_IW:
       type = TYPE_MOFFS16;
@@ -379,6 +379,8 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
   }
 
   switch (type) {
+  case TYPE_XMM32:
+  case TYPE_XMM64:
   case TYPE_XMM128:
     mcInst.addOperand(MCOperand::CreateReg(X86::XMM0 + (immediate >> 4)));
     return;
@@ -762,8 +764,7 @@ static bool translateOperand(MCInst &mcInst, const OperandSpecifier &operand,
     translateRegister(mcInst, insn.vvvv);
     return false;
   case ENCODING_DUP:
-    return translateOperand(mcInst,
-                            insn.spec->operands[operand.type - TYPE_DUP0],
+    return translateOperand(mcInst, insn.operands[operand.type - TYPE_DUP0],
                             insn, Dis);
   }
 }
@@ -789,8 +790,8 @@ static bool translateInstruction(MCInst &mcInst,
   insn.numImmediatesTranslated = 0;
   
   for (index = 0; index < X86_MAX_OPERANDS; ++index) {
-    if (insn.spec->operands[index].encoding != ENCODING_NONE) {
-      if (translateOperand(mcInst, insn.spec->operands[index], insn, Dis)) {
+    if (insn.operands[index].encoding != ENCODING_NONE) {
+      if (translateOperand(mcInst, insn.operands[index], insn, Dis)) {
         return true;
       }
     }

@@ -489,9 +489,6 @@ private:
   /// @brief Can the next token be the start of a simple key?
   bool IsSimpleKeyAllowed;
 
-  /// @brief Is the next token required to start a simple key?
-  bool IsSimpleKeyRequired;
-
   /// @brief True if an error has occurred.
   bool Failed;
 
@@ -704,7 +701,6 @@ Scanner::Scanner(StringRef Input, SourceMgr &sm)
   , FlowLevel(0)
   , IsStartOfStream(true)
   , IsSimpleKeyAllowed(true)
-  , IsSimpleKeyRequired(false)
   , Failed(false) {
   InputBuffer = MemoryBuffer::getMemBuffer(Input, "YAML");
   SM.AddNewSourceBuffer(InputBuffer, SMLoc());
@@ -907,6 +903,7 @@ bool Scanner::consume(uint32_t Expected) {
 void Scanner::skip(uint32_t Distance) {
   Current += Distance;
   Column += Distance;
+  assert(Current <= End && "Skipped past the end");
 }
 
 bool Scanner::isBlankOrBreak(StringRef::iterator Position) {
@@ -1243,6 +1240,12 @@ bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
       }
     }
   }
+
+  if (Current == End) {
+    setError("Expected quote at end of scalar", Current);
+    return false;
+  }
+
   skip(1); // Skip ending quote.
   Token T;
   T.Kind = Token::TK_Scalar;

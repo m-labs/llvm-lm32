@@ -16,15 +16,6 @@ define i32 @test_load(i32* %a) address_safety {
 ; CHECK:   icmp ne i8
 ; CHECK:   br i1 %{{.*}}, label %{{.*}}, label %{{.*}}
 ;
-; The actual load comes next because ASan adds the last instrumentation block
-; to the end of the function.
-; CHECK:   %tmp1 = load i32* %a
-; CHECK:   ret i32 %tmp1
-
-; The crash block reports the error.
-; CHECK:   call void @__asan_report_load4(i64 %[[LOAD_ADDR]]) noreturn
-; CHECK:   unreachable
-;
 ; First instrumentation block refines the shadow test.
 ; CHECK:   and i64 %[[LOAD_ADDR]], 7
 ; CHECK:   add i64 %{{.*}}, 3
@@ -32,6 +23,15 @@ define i32 @test_load(i32* %a) address_safety {
 ; CHECK:   icmp sge i8 %{{.*}}, %[[LOAD_SHADOW]]
 ; CHECK:   br i1 %{{.*}}, label %{{.*}}, label %{{.*}}
 ;
+; The crash block reports the error.
+; CHECK:   call void @__asan_report_load4(i64 %[[LOAD_ADDR]])
+; CHECK:   unreachable
+;
+; The actual load.
+; CHECK:   %tmp1 = load i32* %a
+; CHECK:   ret i32 %tmp1
+
+
 
 entry:
   %tmp1 = load i32* %a
@@ -49,15 +49,6 @@ define void @test_store(i32* %a) address_safety {
 ; CHECK:   icmp ne i8
 ; CHECK:   br i1 %{{.*}}, label %{{.*}}, label %{{.*}}
 ;
-; The actual store comes next because ASan adds the last instrumentation block
-; to the end of the function.
-; CHECK:   store i32 42, i32* %a
-; CHECK:   ret void
-;
-; The crash block reports the error.
-; CHECK:   call void @__asan_report_store4(i64 %[[STORE_ADDR]]) noreturn
-; CHECK:   unreachable
-;
 ; First instrumentation block refines the shadow test.
 ; CHECK:   and i64 %[[STORE_ADDR]], 7
 ; CHECK:   add i64 %{{.*}}, 3
@@ -65,8 +56,36 @@ define void @test_store(i32* %a) address_safety {
 ; CHECK:   icmp sge i8 %{{.*}}, %[[STORE_SHADOW]]
 ; CHECK:   br i1 %{{.*}}, label %{{.*}}, label %{{.*}}
 ;
+; The crash block reports the error.
+; CHECK:   call void @__asan_report_store4(i64 %[[STORE_ADDR]])
+; CHECK:   unreachable
+;
+; The actual load.
+; CHECK:   store i32 42, i32* %a
+; CHECK:   ret void
+;
 
 entry:
   store i32 42, i32* %a
   ret void
 }
+
+; Check that asan leaves just one alloca.
+
+declare void @alloca_test_use([10 x i8]*)
+define void @alloca_test() address_safety {
+entry:
+  %x = alloca [10 x i8], align 1
+  %y = alloca [10 x i8], align 1
+  %z = alloca [10 x i8], align 1
+  call void @alloca_test_use([10 x i8]* %x)
+  call void @alloca_test_use([10 x i8]* %y)
+  call void @alloca_test_use([10 x i8]* %z)
+  ret void
+}
+
+; CHECK: define void @alloca_test()
+; CHECK: = alloca
+; CHECK-NOT: = alloca
+; CHECK: ret void
+

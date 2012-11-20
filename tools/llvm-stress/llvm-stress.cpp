@@ -126,6 +126,10 @@ public:
   /// C'tor
   Modifier(BasicBlock *Block, PieceTable *PT, Random *R):
     BB(Block),PT(PT),Ran(R),Context(BB->getContext()) {}
+
+  /// virtual D'tor to silence warnings.
+  virtual ~Modifier() {}
+
   /// Add a new instruction.
   virtual void Act() = 0;
   /// Add N new instructions,
@@ -709,7 +713,9 @@ int main(int argc, char **argv) {
   PassManager Passes;
   Passes.add(createVerifierPass());
   Passes.add(createPrintModulePass(&Out->os()));
+  Passes.doInitialization();
   Passes.run(*M.get());
+  Passes.doFinalization();
   Out->keep();
 
   return 0;

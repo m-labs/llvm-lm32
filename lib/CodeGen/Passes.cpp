@@ -22,6 +22,7 @@
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/CommandLine.h"
@@ -49,8 +50,8 @@ static cl::opt<bool> DisableSSC("disable-ssc", cl::Hidden,
     cl::desc("Disable Stack Slot Coloring"));
 static cl::opt<bool> DisableMachineDCE("disable-machine-dce", cl::Hidden,
     cl::desc("Disable Machine Dead Code Elimination"));
-static cl::opt<bool> EnableEarlyIfConversion("enable-early-ifcvt", cl::Hidden,
-    cl::desc("Enable Early If-conversion"));
+static cl::opt<bool> DisableEarlyIfConversion("disable-early-ifcvt", cl::Hidden,
+    cl::desc("Disable Early If-conversion"));
 static cl::opt<bool> DisableMachineLICM("disable-machine-licm", cl::Hidden,
     cl::desc("Disable Machine LICM"));
 static cl::opt<bool> DisableMachineCSE("disable-machine-cse", cl::Hidden,
@@ -87,6 +88,10 @@ static cl::opt<std::string>
 PrintMachineInstrs("print-machineinstrs", cl::ValueOptional,
                    cl::desc("Print machine instrs"),
                    cl::value_desc("pass-name"), cl::init("option-unspecified"));
+
+// Experimental option to run live inteerval analysis early.
+static cl::opt<bool> EarlyLiveIntervals("early-live-intervals", cl::Hidden,
+    cl::desc("Run live interval analysis earlier in the pipeline"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -157,7 +162,7 @@ static AnalysisID overridePass(AnalysisID StandardID, AnalysisID TargetID) {
     return applyDisable(TargetID, DisableMachineDCE);
 
   if (StandardID == &EarlyIfConverterID)
-    return applyDisable(TargetID, !EnableEarlyIfConversion);
+    return applyDisable(TargetID, DisableEarlyIfConversion);
 
   if (StandardID == &MachineLICMID)
     return applyDisable(TargetID, DisableMachineLICM);
@@ -237,7 +242,9 @@ TargetPassConfig::TargetPassConfig(TargetMachine *tm, PassManagerBase &pm)
   disablePass(&EarlyIfConverterID);
 
   // Temporarily disable experimental passes.
-  substitutePass(&MachineSchedulerID, 0);
+  const TargetSubtargetInfo &ST = TM->getSubtarget<TargetSubtargetInfo>();
+  if (!ST.enableMachineScheduler())
+    disablePass(&MachineSchedulerID);
 }
 
 /// Insert InsertedPassID pass after TargetPassID.
@@ -443,8 +450,8 @@ void TargetPassConfig::addMachinePasses() {
     const PassInfo *TPI = PR->getPassInfo(PrintMachineInstrs.getValue());
     const PassInfo *IPI = PR->getPassInfo(StringRef("print-machineinstrs"));
     assert (TPI && IPI && "Pass ID not registered!");
-    const char *TID = (char *)(TPI->getTypeInfo());
-    const char *IID = (char *)(IPI->getTypeInfo());
+    const char *TID = (const char *)(TPI->getTypeInfo());
+    const char *IID = (const char *)(IPI->getTypeInfo());
     insertPass(TID, IID);
   }
 
@@ -452,13 +459,13 @@ void TargetPassConfig::addMachinePasses() {
   printAndVerify("After Instruction Selection");
 
   // Expand pseudo-instructions emitted by ISel.
-  addPass(&ExpandISelPseudosID);
+  if (addPass(&ExpandISelPseudosID))
+    printAndVerify("After ExpandISelPseudos");
 
   // Add passes that optimize machine instructions in SSA form.
   if (getOptLevel() != CodeGenOpt::None) {
     addMachineSSAOptimization();
-  }
-  else {
+  } else {
     // If the target requests it, assign local variables to stack slots relative
     // to one another and simplify frame index references where possible.
     addPass(&LocalStackSlotAllocationID);
@@ -523,6 +530,10 @@ void TargetPassConfig::addMachineSSAOptimization() {
   // Optimize PHIs before DCE: removing dead PHI cycles may make more
   // instructions dead.
   addPass(&OptimizePHIsID);
+
+  // This pass merges large allocas. StackSlotColoring is a different pass
+  // which merges spill slots.
+  addPass(&StackColoringID);
 
   // If the target requests it, assign local variables to stack slots relative
   // to one another and simplify frame index references where possible.
@@ -648,6 +659,11 @@ void TargetPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
     addPass(&MachineLoopInfoID);
     addPass(&PHIEliminationID);
   }
+
+  // Eventually, we want to run LiveIntervals before PHI elimination.
+  if (EarlyLiveIntervals)
+    addPass(&LiveIntervalsID);
+
   addPass(&TwoAddressInstructionPassID);
 
   if (EnableStrongPHIElim)

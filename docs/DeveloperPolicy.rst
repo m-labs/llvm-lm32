@@ -137,6 +137,9 @@ reviewees. If someone is kind enough to review your code, you should return the
 favor for someone else.  Note that anyone is welcome to review and give feedback
 on a patch, but only people with Subversion write access can approve it.
 
+There is a web based code review tool that can optionally be used
+for code reviews. See :doc:`Phabricator`.
+
 Code Owners
 -----------
 
@@ -152,33 +155,10 @@ committed are reviewed after they go in: you don't want everyone to assume
 someone else will review it, allowing the patch to go unreviewed.  To solve this
 problem, we have a notion of an 'owner' for a piece of the code.  The sole
 responsibility of a code owner is to ensure that a commit to their area of the
-code is appropriately reviewed, either by themself or by someone else.  The
-current code owners are:
-
-* **Evan Cheng**: Code generator and all targets
-
-* **Greg Clayton**: LLDB
-
-* **Doug Gregor**: Clang Frontend Libraries
-
-* **Howard Hinnant**: libc++
-
-* **Anton Korobeynikov**: Exception handling, debug information, and Windows
-  codegen
-
-* **Ted Kremenek**: Clang Static Analyzer
-
-* **Chris Lattner**: Everything not covered by someone else
-
-* **John McCall**: Clang LLVM IR generation
-
-* **Jakob Olesen**: Register allocators and TableGen
-
-* **Duncan Sands**: dragonegg and llvm-gcc 4.2
-
-* **Peter Collingbourne**: libclc
-
-* **Tobias Grosser**: polly
+code is appropriately reviewed, either by themself or by someone else.  The list
+of current code owners can be found in the file
+`CODE_OWNERS.TXT <http://llvm.org/viewvc/llvm-project/llvm/trunk/CODE_OWNERS.TXT?view=markup>`_
+in the root of the LLVM source tree.
 
 Note that code ownership is completely different than reviewers: anyone can
 review a piece of code, and we welcome code review from anyone who is
@@ -200,8 +180,8 @@ Developers are required to create test cases for any bugs fixed and any new
 features added.  Some tips for getting your testcase approved:
 
 * All feature and regression test cases are added to the ``llvm/test``
-  directory. The appropriate sub-directory should be selected (see the `Testing
-  Guide <TestingGuide.html>`_ for details).
+  directory. The appropriate sub-directory should be selected (see the
+  :doc:`Testing Guide <TestingGuide>` for details).
 
 * Test cases should be written in `LLVM assembly language <LangRef.html>`_
   unless the feature or regression being tested requires another language
@@ -302,7 +282,7 @@ If you have recently been granted commit access, these policies apply:
 #. You are granted *commit-after-approval* to all parts of LLVM.  To get
    approval, submit a `patch`_ to `llvm-commits
    <http://lists.cs.uiuc.edu/mailman/listinfo/llvm-commits>`_. When approved
-   you may commit it yourself.</li>
+   you may commit it yourself.
 
 #. You are allowed to commit patches without approval which you think are
    obvious. This is clearly a subjective decision --- we simply expect you to

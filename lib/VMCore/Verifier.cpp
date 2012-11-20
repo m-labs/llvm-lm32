@@ -400,8 +400,8 @@ void Verifier::visitGlobalValue(GlobalValue &GV) {
             "Only global arrays can have appending linkage!", GVar);
   }
 
-  Assert1(!GV.hasLinkerPrivateWeakDefAutoLinkage() || GV.hasDefaultVisibility(),
-          "linker_private_weak_def_auto can only have default visibility!",
+  Assert1(!GV.hasLinkOnceODRAutoHideLinkage() || GV.hasDefaultVisibility(),
+          "linkonce_odr_auto_hide can only have default visibility!",
           &GV);
 }
 
@@ -526,40 +526,60 @@ void Verifier::visitMDNode(MDNode &MD, Function *F) {
 // value of the specified type.  The value V is printed in error messages.
 void Verifier::VerifyParameterAttrs(Attributes Attrs, Type *Ty,
                                     bool isReturnValue, const Value *V) {
-  if (Attrs == Attribute::None)
+  if (!Attrs.hasAttributes())
     return;
 
-  Attributes FnCheckAttr = Attrs & Attribute::FunctionOnly;
-  Assert1(!FnCheckAttr, "Attribute " + Attribute::getAsString(FnCheckAttr) +
-          " only applies to the function!", V);
+  Assert1(!Attrs.hasFunctionOnlyAttrs(),
+          "Some attributes in '" + Attrs.getAsString() +
+          "' only apply to functions!", V);
 
-  if (isReturnValue) {
-    Attributes RetI = Attrs & Attribute::ParameterOnly;
-    Assert1(!RetI, "Attribute " + Attribute::getAsString(RetI) +
-            " does not apply to return values!", V);
-  }
+  if (isReturnValue)
+    Assert1(!Attrs.hasParameterOnlyAttrs(),
+            "Attributes 'byval', 'nest', 'sret', and 'nocapture' "
+            "do not apply to return values!", V);
 
-  for (unsigned i = 0;
-       i < array_lengthof(Attribute::MutuallyIncompatible); ++i) {
-    Attributes MutI = Attrs & Attribute::MutuallyIncompatible[i];
-    Assert1(MutI.isEmptyOrSingleton(), "Attributes " +
-            Attribute::getAsString(MutI) + " are incompatible!", V);
-  }
+  // Check for mutually incompatible attributes.
+  Assert1(!((Attrs.hasAttribute(Attributes::ByVal) &&
+             Attrs.hasAttribute(Attributes::Nest)) ||
+            (Attrs.hasAttribute(Attributes::ByVal) &&
+             Attrs.hasAttribute(Attributes::StructRet)) ||
+            (Attrs.hasAttribute(Attributes::Nest) &&
+             Attrs.hasAttribute(Attributes::StructRet))), "Attributes "
+          "'byval, nest, and sret' are incompatible!", V);
 
-  Attributes TypeI = Attrs & Attribute::typeIncompatible(Ty);
-  Assert1(!TypeI, "Wrong type for attribute " +
-          Attribute::getAsString(TypeI), V);
+  Assert1(!((Attrs.hasAttribute(Attributes::ByVal) &&
+             Attrs.hasAttribute(Attributes::Nest)) ||
+            (Attrs.hasAttribute(Attributes::ByVal) &&
+             Attrs.hasAttribute(Attributes::InReg)) ||
+            (Attrs.hasAttribute(Attributes::Nest) &&
+             Attrs.hasAttribute(Attributes::InReg))), "Attributes "
+          "'byval, nest, and inreg' are incompatible!", V);
 
-  Attributes ByValI = Attrs & Attribute::ByVal;
-  if (PointerType *PTy = dyn_cast<PointerType>(Ty)) {
-    Assert1(!ByValI || PTy->getElementType()->isSized(),
-            "Attribute " + Attribute::getAsString(ByValI) +
-            " does not support unsized types!", V);
-  } else {
-    Assert1(!ByValI,
-            "Attribute " + Attribute::getAsString(ByValI) +
-            " only applies to parameters with pointer type!", V);
-  }
+  Assert1(!(Attrs.hasAttribute(Attributes::ZExt) &&
+            Attrs.hasAttribute(Attributes::SExt)), "Attributes "
+          "'zeroext and signext' are incompatible!", V);
+
+  Assert1(!(Attrs.hasAttribute(Attributes::ReadNone) &&
+            Attrs.hasAttribute(Attributes::ReadOnly)), "Attributes "
+          "'readnone and readonly' are incompatible!", V);
+
+  Assert1(!(Attrs.hasAttribute(Attributes::NoInline) &&
+            Attrs.hasAttribute(Attributes::AlwaysInline)), "Attributes "
+          "'noinline and alwaysinline' are incompatible!", V);
+
+  Assert1(!AttrBuilder(Attrs).
+            hasAttributes(Attributes::typeIncompatible(Ty)),
+          "Wrong types for attribute: " +
+          Attributes::typeIncompatible(Ty).getAsString(), V);
+
+  if (PointerType *PTy = dyn_cast<PointerType>(Ty))
+    Assert1(!Attrs.hasAttribute(Attributes::ByVal) ||
+            PTy->getElementType()->isSized(),
+            "Attribute 'byval' does not support unsized types!", V);
+  else
+    Assert1(!Attrs.hasAttribute(Attributes::ByVal),
+            "Attribute 'byval' only applies to parameters with pointer type!",
+            V);
 }
 
 // VerifyFunctionAttrs - Check parameter attributes against a function type.
@@ -585,26 +605,50 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT,
 
     VerifyParameterAttrs(Attr.Attrs, Ty, Attr.Index == 0, V);
 
-    if (Attr.Attrs & Attribute::Nest) {
+    if (Attr.Attrs.hasAttribute(Attributes::Nest)) {
       Assert1(!SawNest, "More than one parameter has attribute nest!", V);
       SawNest = true;
     }
 
-    if (Attr.Attrs & Attribute::StructRet)
+    if (Attr.Attrs.hasAttribute(Attributes::StructRet))
       Assert1(Attr.Index == 1, "Attribute sret not on first parameter!", V);
   }
 
   Attributes FAttrs = Attrs.getFnAttributes();
-  Attributes NotFn = FAttrs & (~Attribute::FunctionOnly);
-  Assert1(!NotFn, "Attribute " + Attribute::getAsString(NotFn) +
-          " does not apply to the function!", V);
+  AttrBuilder NotFn(FAttrs);
+  NotFn.removeFunctionOnlyAttrs();
+  Assert1(!NotFn.hasAttributes(), "Attributes '" +
+          Attributes::get(V->getContext(), NotFn).getAsString() +
+          "' do not apply to the function!", V);
 
-  for (unsigned i = 0;
-       i < array_lengthof(Attribute::MutuallyIncompatible); ++i) {
-    Attributes MutI = FAttrs & Attribute::MutuallyIncompatible[i];
-    Assert1(MutI.isEmptyOrSingleton(), "Attributes " +
-            Attribute::getAsString(MutI) + " are incompatible!", V);
-  }
+  // Check for mutually incompatible attributes.
+  Assert1(!((FAttrs.hasAttribute(Attributes::ByVal) &&
+             FAttrs.hasAttribute(Attributes::Nest)) ||
+            (FAttrs.hasAttribute(Attributes::ByVal) &&
+             FAttrs.hasAttribute(Attributes::StructRet)) ||
+            (FAttrs.hasAttribute(Attributes::Nest) &&
+             FAttrs.hasAttribute(Attributes::StructRet))), "Attributes "
+          "'byval, nest, and sret' are incompatible!", V);
+
+  Assert1(!((FAttrs.hasAttribute(Attributes::ByVal) &&
+             FAttrs.hasAttribute(Attributes::Nest)) ||
+            (FAttrs.hasAttribute(Attributes::ByVal) &&
+             FAttrs.hasAttribute(Attributes::InReg)) ||
+            (FAttrs.hasAttribute(Attributes::Nest) &&
+             FAttrs.hasAttribute(Attributes::InReg))), "Attributes "
+          "'byval, nest, and inreg' are incompatible!", V);
+
+  Assert1(!(FAttrs.hasAttribute(Attributes::ZExt) &&
+            FAttrs.hasAttribute(Attributes::SExt)), "Attributes "
+          "'zeroext and signext' are incompatible!", V);
+
+  Assert1(!(FAttrs.hasAttribute(Attributes::ReadNone) &&
+            FAttrs.hasAttribute(Attributes::ReadOnly)), "Attributes "
+          "'readnone and readonly' are incompatible!", V);
+
+  Assert1(!(FAttrs.hasAttribute(Attributes::NoInline) &&
+            FAttrs.hasAttribute(Attributes::AlwaysInline)), "Attributes "
+          "'noinline and alwaysinline' are incompatible!", V);
 }
 
 static bool VerifyAttributeCount(const AttrListPtr &Attrs, unsigned Params) {
@@ -661,6 +705,7 @@ void Verifier::visitFunction(Function &F) {
   case CallingConv::Cold:
   case CallingConv::X86_FastCall:
   case CallingConv::X86_ThisCall:
+  case CallingConv::Intel_OCL_BI:
   case CallingConv::PTX_Kernel:
   case CallingConv::PTX_Device:
     Assert1(!F.isVarArg(),
@@ -1093,7 +1138,7 @@ void Verifier::visitBitCastInst(BitCastInst &I) {
 
   // BitCast implies a no-op cast of type only. No bits change.
   // However, you can't cast pointers to anything but pointers.
-  Assert1(DestTy->isPointerTy() == DestTy->isPointerTy(),
+  Assert1(SrcTy->isPointerTy() == DestTy->isPointerTy(),
           "Bitcast requires both operands to be pointer or neither", &I);
   Assert1(SrcBitSize == DestBitSize, "Bitcast requires types of same width",&I);
 
@@ -1170,9 +1215,8 @@ void Verifier::VerifyCallSite(CallSite CS) {
 
       VerifyParameterAttrs(Attr, CS.getArgument(Idx-1)->getType(), false, I);
 
-      Attributes VArgI = Attr & Attribute::VarArgsIncompatible;
-      Assert1(!VArgI, "Attribute " + Attribute::getAsString(VArgI) +
-              " cannot be used for vararg call arguments!", I);
+      Assert1(!Attr.hasIncompatibleWithVarArgsAttrs(),
+              "Attribute 'sret' cannot be used for vararg call arguments!", I);
     }
 
   // Verify that there's no metadata unless it's a direct call to an intrinsic.
@@ -1331,34 +1375,31 @@ void Verifier::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     "GEP base pointer is not a vector or a vector of pointers", &GEP);
   Assert1(cast<PointerType>(TargetTy)->getElementType()->isSized(),
           "GEP into unsized type!", &GEP);
+  Assert1(GEP.getPointerOperandType()->isVectorTy() ==
+          GEP.getType()->isVectorTy(), "Vector GEP must return a vector value",
+          &GEP);
 
   SmallVector<Value*, 16> Idxs(GEP.idx_begin(), GEP.idx_end());
   Type *ElTy =
     GetElementPtrInst::getIndexedType(GEP.getPointerOperandType(), Idxs);
   Assert1(ElTy, "Invalid indices for GEP pointer type!", &GEP);
 
-  if (GEP.getPointerOperandType()->isPointerTy()) {
-    // Validate GEPs with scalar indices.
-    Assert2(GEP.getType()->isPointerTy() &&
-           cast<PointerType>(GEP.getType())->getElementType() == ElTy,
-           "GEP is not of right type for indices!", &GEP, ElTy);
-  } else {
-    // Validate GEPs with a vector index.
-    Assert1(Idxs.size() == 1, "Invalid number of indices!", &GEP);
-    Value *Index = Idxs[0];
-    Type  *IndexTy = Index->getType();
-    Assert1(IndexTy->isVectorTy(),
-      "Vector GEP must have vector indices!", &GEP);
-    Assert1(GEP.getType()->isVectorTy(),
-      "Vector GEP must return a vector value", &GEP);
-    Type *ElemPtr = cast<VectorType>(GEP.getType())->getElementType();
-    Assert1(ElemPtr->isPointerTy(),
-      "Vector GEP pointer operand is not a pointer!", &GEP);
-    unsigned IndexWidth = cast<VectorType>(IndexTy)->getNumElements();
-    unsigned GepWidth = cast<VectorType>(GEP.getType())->getNumElements();
-    Assert1(IndexWidth == GepWidth, "Invalid GEP index vector width", &GEP);
-    Assert1(ElTy == cast<PointerType>(ElemPtr)->getElementType(),
-      "Vector GEP type does not match pointer type!", &GEP);
+  Assert2(GEP.getType()->getScalarType()->isPointerTy() &&
+          cast<PointerType>(GEP.getType()->getScalarType())->getElementType()
+          == ElTy, "GEP is not of right type for indices!", &GEP, ElTy);
+
+  if (GEP.getPointerOperandType()->isVectorTy()) {
+    // Additional checks for vector GEPs.
+    unsigned GepWidth = GEP.getPointerOperandType()->getVectorNumElements();
+    Assert1(GepWidth == GEP.getType()->getVectorNumElements(),
+            "Vector GEP result width doesn't match operand's", &GEP);
+    for (unsigned i = 0, e = Idxs.size(); i != e; ++i) {
+      Type *IndexTy = Idxs[i]->getType();
+      Assert1(IndexTy->isVectorTy(),
+              "Vector GEP must have vector indices!", &GEP);
+      unsigned IndexWidth = IndexTy->getVectorNumElements();
+      Assert1(IndexWidth == GepWidth, "Invalid GEP index vector width", &GEP);
+    }
   }
   visitInstruction(GEP);
 }
@@ -1378,6 +1419,15 @@ void Verifier::visitLoadInst(LoadInst &LI) {
             "Load cannot have Release ordering", &LI);
     Assert1(LI.getAlignment() != 0,
             "Atomic load must specify explicit alignment", &LI);
+    if (!ElTy->isPointerTy()) {
+      Assert2(ElTy->isIntegerTy(),
+              "atomic store operand must have integer type!",
+              &LI, ElTy);
+      unsigned Size = ElTy->getPrimitiveSizeInBits();
+      Assert2(Size >= 8 && !(Size & (Size - 1)),
+              "atomic store operand must be power-of-two byte-sized integer",
+              &LI, ElTy);
+    }
   } else {
     Assert1(LI.getSynchScope() == CrossThread,
             "Non-atomic load cannot have SynchronizationScope specified", &LI);
@@ -1444,6 +1494,15 @@ void Verifier::visitStoreInst(StoreInst &SI) {
             "Store cannot have Acquire ordering", &SI);
     Assert1(SI.getAlignment() != 0,
             "Atomic store must specify explicit alignment", &SI);
+    if (!ElTy->isPointerTy()) {
+      Assert2(ElTy->isIntegerTy(),
+              "atomic store operand must have integer type!",
+              &SI, ElTy);
+      unsigned Size = ElTy->getPrimitiveSizeInBits();
+      Assert2(Size >= 8 && !(Size & (Size - 1)),
+              "atomic store operand must be power-of-two byte-sized integer",
+              &SI, ElTy);
+    }
   } else {
     Assert1(SI.getSynchScope() == CrossThread,
             "Non-atomic store cannot have SynchronizationScope specified", &SI);
@@ -1471,6 +1530,13 @@ void Verifier::visitAtomicCmpXchgInst(AtomicCmpXchgInst &CXI) {
   PointerType *PTy = dyn_cast<PointerType>(CXI.getOperand(0)->getType());
   Assert1(PTy, "First cmpxchg operand must be a pointer.", &CXI);
   Type *ElTy = PTy->getElementType();
+  Assert2(ElTy->isIntegerTy(),
+          "cmpxchg operand must have integer type!",
+          &CXI, ElTy);
+  unsigned Size = ElTy->getPrimitiveSizeInBits();
+  Assert2(Size >= 8 && !(Size & (Size - 1)),
+          "cmpxchg operand must be power-of-two byte-sized integer",
+          &CXI, ElTy);
   Assert2(ElTy == CXI.getOperand(1)->getType(),
           "Expected value type does not match pointer operand type!",
           &CXI, ElTy);
@@ -1488,6 +1554,13 @@ void Verifier::visitAtomicRMWInst(AtomicRMWInst &RMWI) {
   PointerType *PTy = dyn_cast<PointerType>(RMWI.getOperand(0)->getType());
   Assert1(PTy, "First atomicrmw operand must be a pointer.", &RMWI);
   Type *ElTy = PTy->getElementType();
+  Assert2(ElTy->isIntegerTy(),
+          "atomicrmw operand must have integer type!",
+          &RMWI, ElTy);
+  unsigned Size = ElTy->getPrimitiveSizeInBits();
+  Assert2(Size >= 8 && !(Size & (Size - 1)),
+          "atomicrmw operand must be power-of-two byte-sized integer",
+          &RMWI, ElTy);
   Assert2(ElTy == RMWI.getOperand(1)->getType(),
           "Argument value type does not match pointer operand type!",
           &RMWI, ElTy);
@@ -1536,7 +1609,7 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
   // landing pad block may be branched to only by the unwind edge of an invoke.
   for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
     const InvokeInst *II = dyn_cast<InvokeInst>((*I)->getTerminator());
-    Assert1(II && II->getUnwindDest() == BB,
+    Assert1(II && II->getUnwindDest() == BB && II->getNormalDest() != BB,
             "Block containing LandingPadInst must be jumped to "
             "only by the unwind edge of an invoke.", &LPI);
   }
@@ -1575,6 +1648,13 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
 
 void Verifier::verifyDominatesUse(Instruction &I, unsigned i) {
   Instruction *Op = cast<Instruction>(I.getOperand(i));
+  // If the we have an invalid invoke, don't try to compute the dominance.
+  // We already reject it in the invoke specific checks and the dominance
+  // computation doesn't handle multiple edges.
+  if (InvokeInst *II = dyn_cast<InvokeInst>(Op)) {
+    if (II->getNormalDest() == II->getUnwindDest())
+      return;
+  }
 
   const Use &U = I.getOperandUse(i);
   Assert2(InstsInThisBlock.count(Op) || DT->dominates(Op, U),

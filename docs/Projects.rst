@@ -102,7 +102,7 @@ Follow these simple steps to start your project:
    ``--prefix=<directory>``
        Tell your project where it should get installed.
 
-That's it!  Now all you have to do is type ``gmake`` (or ``make`` if your on a
+That's it!  Now all you have to do is type ``gmake`` (or ``make`` if you're on a
 GNU/Linux system) in the root of your object directory, and your project should
 build.
 
@@ -156,9 +156,9 @@ Underneath your top level directory, you should have the following directories:
 * LLVM provides a ``tcl`` procedure that is used by ``Dejagnu`` to run tests.
   It can be found in ``llvm/lib/llvm-dg.exp``.  This test procedure uses ``RUN``
   lines in the actual test case to determine how to run the test.  See the
-  `TestingGuide <TestingGuide.html>`_ for more details. You can easily write
-  Makefile support similar to the Makefiles in ``llvm/test`` to use ``Dejagnu``
-  to run your project's tests.
+  :doc:`TestingGuide` for more details. You can easily write Makefile
+  support similar to the Makefiles in ``llvm/test`` to use ``Dejagnu`` to
+  run your project's tests.
 
 * LLVM contains an optional package called ``llvm-test``, which provides
   benchmarks and programs that are known to compile with the Clang front

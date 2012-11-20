@@ -10,6 +10,10 @@
 // This pass expands a branch or jump instruction into a long branch if its
 // offset is too large to fit into its immediate field.
 //
+// FIXME: 
+// 1. Fix pc-region jump instructions which cross 256MB segment boundaries. 
+// 2. If program has inline assembly statements whose size cannot be
+//    determined accurately, load branch target addresses from the GOT. 
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "mips-long-branch"
@@ -48,7 +52,7 @@ namespace {
   typedef MachineBasicBlock::reverse_iterator ReverseIter;
 
   struct MBBInfo {
-    uint64_t Size;
+    uint64_t Size, Address;
     bool HasLongBranch;
     MachineInstr *Br;
 
@@ -61,7 +65,10 @@ namespace {
     static char ID;
     MipsLongBranch(TargetMachine &tm)
       : MachineFunctionPass(ID), TM(tm),
-        TII(static_cast<const MipsInstrInfo*>(tm.getInstrInfo())) {}
+        TII(static_cast<const MipsInstrInfo*>(tm.getInstrInfo())),
+        IsPIC(TM.getRelocationModel() == Reloc::PIC_),
+        ABI(TM.getSubtarget<MipsSubtarget>().getTargetABI()),
+        LongBranchSeqSize(!IsPIC ? 2 : (ABI == MipsSubtarget::N64 ? 13 : 9)) {}
 
     virtual const char *getPassName() const {
       return "Mips Long Branch";
@@ -73,9 +80,6 @@ namespace {
     void splitMBB(MachineBasicBlock *MBB);
     void initMBBInfo();
     int64_t computeOffset(const MachineInstr *Br);
-    bool offsetFitsIntoField(const MachineInstr *Br);
-    unsigned addLongBranch(MachineBasicBlock &MBB, Iter Pos,
-                           MachineBasicBlock *Tgt, DebugLoc DL, bool Nop);
     void replaceBranch(MachineBasicBlock &MBB, Iter Br, DebugLoc DL,
                        MachineBasicBlock *MBBOpnd);
     void expandToLongBranch(MBBInfo &Info);
@@ -84,6 +88,9 @@ namespace {
     const MipsInstrInfo *TII;
     MachineFunction *MF;
     SmallVector<MBBInfo, 16> MBBInfos;
+    bool IsPIC;
+    unsigned ABI;
+    unsigned LongBranchSeqSize;
   };
 
   char MipsLongBranch::ID = 0;
@@ -178,7 +185,9 @@ void MipsLongBranch::initMBBInfo() {
     ReverseIter Br = getNonDebugInstr(MBB->rbegin(), End);
 
     if ((Br != End) && !Br->isIndirectBranch() &&
-        (Br->isConditionalBranch() || Br->isUnconditionalBranch()))
+        (Br->isConditionalBranch() ||
+         (Br->isUnconditionalBranch() &&
+          TM.getRelocationModel() == Reloc::PIC_)))
       MBBInfos[I].Br = (++Br).base();
   }
 }
@@ -204,82 +213,11 @@ int64_t MipsLongBranch::computeOffset(const MachineInstr *Br) {
   return -Offset + 4;
 }
 
-// Insert the following sequence:
-// (pic or N64)
-//  lw $at, global_reg_slot
-//  lw $at, got($L1)($at)
-//  addiu $at, $at, lo($L1)
-//  jr $at
-//  noop
-// (static and !N64)
-//  lui $at, hi($L1)
-//  addiu $at, $at, lo($L1)
-//  jr $at
-//  noop
-unsigned MipsLongBranch::addLongBranch(MachineBasicBlock &MBB, Iter Pos,
-                                       MachineBasicBlock *Tgt, DebugLoc DL,
-                                       bool Nop) {
-  MF->getInfo<MipsFunctionInfo>()->setEmitNOAT();
-  bool IsPIC = (TM.getRelocationModel() == Reloc::PIC_);
-  unsigned ABI = TM.getSubtarget<MipsSubtarget>().getTargetABI();
-  bool N64 = (ABI == MipsSubtarget::N64);
-  unsigned NumInstrs;
-
-  if (IsPIC || N64) {
-    bool HasMips64 = TM.getSubtarget<MipsSubtarget>().hasMips64();
-    unsigned AT = N64 ? Mips::AT_64 : Mips::AT;
-    unsigned Load = N64 ? Mips::LD_P8 : Mips::LW;
-    unsigned ADDiu = N64 ? Mips::DADDiu : Mips::ADDiu;
-    unsigned JR = N64 ? Mips::JR64 : Mips::JR;
-    unsigned GOTFlag = HasMips64 ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT;
-    unsigned OFSTFlag = HasMips64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
-    const MipsRegisterInfo *MRI =
-      static_cast<const MipsRegisterInfo*>(TM.getRegisterInfo());
-    unsigned SP = MRI->getFrameRegister(*MF);
-    unsigned GlobalRegFI = MF->getInfo<MipsFunctionInfo>()->getGlobalRegFI();
-    int64_t Offset = MF->getFrameInfo()->getObjectOffset(GlobalRegFI);
-
-    if (isInt<16>(Offset)) {
-      BuildMI(MBB, Pos, DL, TII->get(Load), AT).addReg(SP).addImm(Offset);
-      NumInstrs = 1;
-    } else {
-      unsigned ADDu = N64 ? Mips::DADDu : Mips::ADDu;
-      MipsAnalyzeImmediate::Inst LastInst(0, 0);
-
-      MF->getInfo<MipsFunctionInfo>()->setEmitNOAT();
-      NumInstrs = Mips::loadImmediate(Offset, N64, *TII, MBB, Pos, DL, true,
-                                      &LastInst) + 2;
-      BuildMI(MBB, Pos, DL, TII->get(ADDu), AT).addReg(SP).addReg(AT);
-      BuildMI(MBB, Pos, DL, TII->get(Load), AT).addReg(AT)
-        .addImm(SignExtend64<16>(LastInst.ImmOpnd));
-    }
-
-    BuildMI(MBB, Pos, DL, TII->get(Load), AT).addReg(AT).addMBB(Tgt, GOTFlag);
-    BuildMI(MBB, Pos, DL, TII->get(ADDiu), AT).addReg(AT).addMBB(Tgt, OFSTFlag);
-    BuildMI(MBB, Pos, DL, TII->get(JR)).addReg(Mips::AT, RegState::Kill);
-    NumInstrs += 3;
-  } else {
-    BuildMI(MBB, Pos, DL, TII->get(Mips::LUi), Mips::AT)
-      .addMBB(Tgt, MipsII::MO_ABS_HI);
-    BuildMI(MBB, Pos, DL, TII->get(Mips::ADDiu), Mips::AT)
-      .addReg(Mips::AT).addMBB(Tgt, MipsII::MO_ABS_LO);
-    BuildMI(MBB, Pos, DL, TII->get(Mips::JR)).addReg(Mips::AT, RegState::Kill);
-    NumInstrs = 3;
-  }
-
-  if (Nop) {
-    BuildMI(MBB, Pos, DL, TII->get(Mips::NOP))->setIsInsideBundle();
-    ++NumInstrs;
-  }
-
-  return NumInstrs;
-}
-
 // Replace Br with a branch which has the opposite condition code and a
 // MachineBasicBlock operand MBBOpnd.
 void MipsLongBranch::replaceBranch(MachineBasicBlock &MBB, Iter Br,
                                    DebugLoc DL, MachineBasicBlock *MBBOpnd) {
-  unsigned NewOpc = Mips::GetOppositeBranchOpc(Br->getOpcode());
+  unsigned NewOpc = TII->GetOppositeBranchOpc(Br->getOpcode());
   const MCInstrDesc &NewDesc = TII->get(NewOpc);
 
   MachineInstrBuilder MIB = BuildMI(MBB, Br, DL, NewDesc);
@@ -302,59 +240,143 @@ void MipsLongBranch::replaceBranch(MachineBasicBlock &MBB, Iter Br,
 
 // Expand branch instructions to long branches.
 void MipsLongBranch::expandToLongBranch(MBBInfo &I) {
-  I.HasLongBranch = true;
-
-  MachineBasicBlock *MBB = I.Br->getParent(), *Tgt = getTargetMBB(*I.Br);
+  MachineBasicBlock::iterator Pos;
+  MachineBasicBlock *MBB = I.Br->getParent(), *TgtMBB = getTargetMBB(*I.Br);
   DebugLoc DL = I.Br->getDebugLoc();
+  const BasicBlock *BB = MBB->getBasicBlock();
+  MachineFunction::iterator FallThroughMBB = ++MachineFunction::iterator(MBB);
+  MachineBasicBlock *LongBrMBB = MF->CreateMachineBasicBlock(BB);
 
-  if (I.Br->isUnconditionalBranch()) {
-    // Unconditional branch before transformation:
-    //   b $tgt
-    //   delay-slot-instr
+  MF->insert(FallThroughMBB, LongBrMBB);
+  MBB->removeSuccessor(TgtMBB);
+  MBB->addSuccessor(LongBrMBB);
+
+  if (IsPIC) {
+    MachineBasicBlock *BalTgtMBB = MF->CreateMachineBasicBlock(BB);
+    MF->insert(FallThroughMBB, BalTgtMBB);
+    LongBrMBB->addSuccessor(BalTgtMBB);
+    BalTgtMBB->addSuccessor(TgtMBB);
+
+    int64_t TgtAddress = MBBInfos[TgtMBB->getNumber()].Address;
+    unsigned BalTgtMBBSize = 5;
+    int64_t Offset = TgtAddress - (I.Address + I.Size - BalTgtMBBSize * 4);
+    int64_t Lo = SignExtend64<16>(Offset & 0xffff);
+    int64_t Hi = SignExtend64<16>(((Offset + 0x8000) >> 16) & 0xffff);
+
+    if (ABI != MipsSubtarget::N64) {
+      // $longbr:
+      //  addiu $sp, $sp, -8
+      //  sw $ra, 0($sp)
+      //  bal $baltgt
+      //  lui $at, %hi($tgt - $baltgt)
+      // $baltgt:
+      //  addiu $at, $at, %lo($tgt - $baltgt)
+      //  addu $at, $ra, $at
+      //  lw $ra, 0($sp)
+      //  jr $at
+      //  addiu $sp, $sp, 8
+      // $fallthrough:
+      //
+
+      Pos = LongBrMBB->begin();
+
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::ADDiu), Mips::SP)
+        .addReg(Mips::SP).addImm(-8);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::SW)).addReg(Mips::RA)
+        .addReg(Mips::SP).addImm(0);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::BAL_BR)).addMBB(BalTgtMBB);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::LUi), Mips::AT).addImm(Hi)
+        ->setIsInsideBundle();
+
+      Pos = BalTgtMBB->begin();
+
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::ADDiu), Mips::AT)
+        .addReg(Mips::AT).addImm(Lo);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::ADDu), Mips::AT)
+        .addReg(Mips::RA).addReg(Mips::AT);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::LW), Mips::RA)
+        .addReg(Mips::SP).addImm(0);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::JR)).addReg(Mips::AT);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::ADDiu), Mips::SP)
+        .addReg(Mips::SP).addImm(8)->setIsInsideBundle();
+    } else {
+      // $longbr:
+      //  daddiu $sp, $sp, -16
+      //  sd $ra, 0($sp)
+      //  lui64 $at, %highest($tgt - $baltgt)
+      //  daddiu $at, $at, %higher($tgt - $baltgt)
+      //  dsll $at, $at, 16
+      //  daddiu $at, $at, %hi($tgt - $baltgt)
+      //  bal $baltgt
+      //  dsll $at, $at, 16
+      // $baltgt:
+      //  daddiu $at, $at, %lo($tgt - $baltgt)
+      //  daddu $at, $ra, $at
+      //  ld $ra, 0($sp)
+      //  jr64 $at
+      //  daddiu $sp, $sp, 16
+      // $fallthrough:
+      //
+
+      int64_t Higher = SignExtend64<16>(((Offset + 0x80008000) >> 32) & 0xffff);
+      int64_t Highest =
+        SignExtend64<16>(((Offset + 0x800080008000LL) >> 48) & 0xffff);
+
+      Pos = LongBrMBB->begin();
+
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::DADDiu), Mips::SP_64)
+        .addReg(Mips::SP_64).addImm(-16);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::SD)).addReg(Mips::RA_64)
+        .addReg(Mips::SP_64).addImm(0);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::LUi64), Mips::AT_64)
+        .addImm(Highest);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::DADDiu), Mips::AT_64)
+        .addReg(Mips::AT_64).addImm(Higher);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::DSLL), Mips::AT_64)
+        .addReg(Mips::AT_64).addImm(16);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::DADDiu), Mips::AT_64)
+        .addReg(Mips::AT_64).addImm(Hi);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::BAL_BR)).addMBB(BalTgtMBB);
+      BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::DSLL), Mips::AT_64)
+        .addReg(Mips::AT_64).addImm(16)->setIsInsideBundle();
+
+      Pos = BalTgtMBB->begin();
+
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::DADDiu), Mips::AT_64)
+        .addReg(Mips::AT_64).addImm(Lo);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::DADDu), Mips::AT_64)
+        .addReg(Mips::RA_64).addReg(Mips::AT_64);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::LD), Mips::RA_64)
+        .addReg(Mips::SP_64).addImm(0);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::JR64)).addReg(Mips::AT_64);
+      BuildMI(*BalTgtMBB, Pos, DL, TII->get(Mips::DADDiu), Mips::SP_64)
+        .addReg(Mips::SP_64).addImm(16)->setIsInsideBundle();
+    }
+
+    assert(BalTgtMBBSize == BalTgtMBB->size());
+    assert(LongBrMBB->size() + BalTgtMBBSize == LongBranchSeqSize);
+  } else {
+    // $longbr:
+    //  j $tgt
+    //  nop
+    // $fallthrough:
     //
-    // after transformation:
-    //   delay-slot-instr
-    //   lw $at, global_reg_slot
-    //   lw $at, %got($tgt)($at)
-    //   addiu $at, $at, %lo($tgt)
-    //   jr $at
-    //   nop
-    I.Size += (addLongBranch(*MBB, llvm::next(Iter(I.Br)), Tgt, DL, true)
-               - 1) * 4;
+    Pos = LongBrMBB->begin();
+    LongBrMBB->addSuccessor(TgtMBB);
+    BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::J)).addMBB(TgtMBB);
+    BuildMI(*LongBrMBB, Pos, DL, TII->get(Mips::NOP))->setIsInsideBundle();
 
-    // Remove branch and clear InsideBundle bit of the next instruction.
-    llvm::next(MachineBasicBlock::instr_iterator(I.Br))
-      ->setIsInsideBundle(false);
-    I.Br->eraseFromParent();
-    return;
+    assert(LongBrMBB->size() == LongBranchSeqSize);
   }
 
-  assert(I.Br->isConditionalBranch() && "Conditional branch expected.");
-
-  // Conditional branch before transformation:
-  //   b cc, $tgt
-  //   delay-slot-instr
-  //  FallThrough:
-  //
-  // after transformation:
-  //   b !cc, FallThrough
-  //   delay-slot-instr
-  //  NewMBB:
-  //   lw $at, global_reg_slot
-  //   lw $at, %got($tgt)($at)
-  //   addiu $at, $at, %lo($tgt)
-  //   jr $at
-  //   noop
-  //  FallThrough:
-
-  MachineBasicBlock *NewMBB = MF->CreateMachineBasicBlock(MBB->getBasicBlock());
-  MF->insert(llvm::next(MachineFunction::iterator(MBB)), NewMBB);
-  MBB->removeSuccessor(Tgt);
-  MBB->addSuccessor(NewMBB);
-  NewMBB->addSuccessor(Tgt);
-
-  I.Size += addLongBranch(*NewMBB, NewMBB->begin(), Tgt, DL, true) * 4;
-  replaceBranch(*MBB, I.Br, DL, *MBB->succ_begin());
+  if (I.Br->isUnconditionalBranch()) {
+    // Change branch destination.
+    assert(I.Br->getDesc().getNumOperands() == 1);
+    I.Br->RemoveOperand(0);
+    I.Br->addOperand(MachineOperand::CreateMBB(LongBrMBB));
+  } else
+    // Change branch destination and reverse condition.
+    replaceBranch(*MBB, I.Br, DL, FallThroughMBB);
 }
 
 static void emitGPDisp(MachineFunction &F, const MipsInstrInfo *TII) {
@@ -380,7 +402,6 @@ bool MipsLongBranch::runOnMachineFunction(MachineFunction &F) {
   MF = &F;
   initMBBInfo();
 
-  bool IsPIC = (TM.getRelocationModel() == Reloc::PIC_);
   SmallVector<MBBInfo, 16>::iterator I, E = MBBInfos.end();
   bool EverMadeChange = false, MadeChange = true;
 
@@ -393,26 +414,34 @@ bool MipsLongBranch::runOnMachineFunction(MachineFunction &F) {
       if (!I->Br || I->HasLongBranch)
         continue;
 
-      if (!ForceLongBranch) {
-        int64_t Offset = computeOffset(I->Br);
+      // Check if offset fits into 16-bit immediate field of branches.
+      if (!ForceLongBranch && isInt<16>(computeOffset(I->Br) / 4))
+        continue;
 
-        // Check if offset fits into 16-bit immediate field of branches.
-        if ((I->Br->isConditionalBranch() || IsPIC) && isInt<16>(Offset / 4))
-          continue;
-
-        // Check if offset fits into 26-bit immediate field of jumps (J).
-        if (I->Br->isUnconditionalBranch() && !IsPIC && isInt<26>(Offset / 4))
-          continue;
-      }
-
-      expandToLongBranch(*I);
+      I->HasLongBranch = true;
+      I->Size += LongBranchSeqSize * 4;
       ++LongBranches;
       EverMadeChange = MadeChange = true;
     }
   }
 
-  if (EverMadeChange)
-    MF->RenumberBlocks();
+  if (!EverMadeChange)
+    return true;
+
+  // Compute basic block addresses.
+  if (TM.getRelocationModel() == Reloc::PIC_) {
+    uint64_t Address = 0;
+
+    for (I = MBBInfos.begin(); I != E; Address += I->Size, ++I)
+      I->Address = Address;
+  }
+
+  // Do the expansion.
+  for (I = MBBInfos.begin(); I != E; ++I)
+    if (I->HasLongBranch)
+      expandToLongBranch(*I);
+
+  MF->RenumberBlocks();
 
   return true;
 }

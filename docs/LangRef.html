@@ -25,7 +25,6 @@
           <li><a href="#linkage_private">'<tt>private</tt>' Linkage</a></li>
           <li><a href="#linkage_linker_private">'<tt>linker_private</tt>' Linkage</a></li>
           <li><a href="#linkage_linker_private_weak">'<tt>linker_private_weak</tt>' Linkage</a></li>
-          <li><a href="#linkage_linker_private_weak_def_auto">'<tt>linker_private_weak_def_auto</tt>' Linkage</a></li>
           <li><a href="#linkage_internal">'<tt>internal</tt>' Linkage</a></li>
           <li><a href="#linkage_available_externally">'<tt>available_externally</tt>' Linkage</a></li>
           <li><a href="#linkage_linkonce">'<tt>linkonce</tt>' Linkage</a></li>
@@ -34,6 +33,7 @@
           <li><a href="#linkage_appending">'<tt>appending</tt>' Linkage</a></li>
           <li><a href="#linkage_externweak">'<tt>extern_weak</tt>' Linkage</a></li>
           <li><a href="#linkage_linkonce_odr">'<tt>linkonce_odr</tt>' Linkage</a></li>
+          <li><a href="#linkage_linkonce_odr_auto_hide">'<tt>linkonce_odr_auto_hide</tt>' Linkage</a></li>
           <li><a href="#linkage_weak">'<tt>weak_odr</tt>' Linkage</a></li>
           <li><a href="#linkage_external">'<tt>external</tt>' Linkage</a></li>
           <li><a href="#linkage_dllimport">'<tt>dllimport</tt>' Linkage</a></li>
@@ -103,6 +103,7 @@
       <li><a href="#metadata">Metadata Nodes and Metadata Strings</a>
         <ol>
           <li><a href="#tbaa">'<tt>tbaa</tt>' Metadata</a></li>
+          <li><a href="#tbaa.struct">'<tt>tbaa.struct</tt>' Metadata</a></li>
           <li><a href="#fpmath">'<tt>fpmath</tt>' Metadata</a></li>
           <li><a href="#range">'<tt>range</tt>' Metadata</a></li>
         </ol>
@@ -255,9 +256,17 @@
           <li><a href="#int_cos">'<tt>llvm.cos.*</tt>' Intrinsic</a></li>
           <li><a href="#int_pow">'<tt>llvm.pow.*</tt>' Intrinsic</a></li>
           <li><a href="#int_exp">'<tt>llvm.exp.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_exp2">'<tt>llvm.exp2.*</tt>' Intrinsic</a></li>
           <li><a href="#int_log">'<tt>llvm.log.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_log10">'<tt>llvm.log10.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_log2">'<tt>llvm.log2.*</tt>' Intrinsic</a></li>
           <li><a href="#int_fma">'<tt>llvm.fma.*</tt>' Intrinsic</a></li>
           <li><a href="#int_fabs">'<tt>llvm.fabs.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_floor">'<tt>llvm.floor.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_ceil">'<tt>llvm.ceil.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_trunc">'<tt>llvm.trunc.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_rint">'<tt>llvm.rint.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_nearbyint">'<tt>llvm.nearbyint.*</tt>' Intrinsic</a></li>
         </ol>
       </li>
       <li><a href="#int_manip">Bit Manipulation Intrinsics</a>
@@ -533,7 +542,7 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
 <p>This example is made up of a <a href="#globalvars">global variable</a> named
    "<tt>.str</tt>", an external declaration of the "<tt>puts</tt>" function,
    a <a href="#functionstructure">function definition</a> for
-   "<tt>main</tt>" and <a href="#namedmetadatastructure">named metadata</a> 
+   "<tt>main</tt>" and <a href="#namedmetadatastructure">named metadata</a>
    "<tt>foo</tt>".</p>
 
 <p>In general, a module is made up of a list of global values (where both
@@ -574,15 +583,6 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
       <tt>linker_private_weak</tt> symbols are subject to coalescing by the
       linker. The symbols are removed by the linker from the final linked image
       (executable or dynamic library).</dd>
-
-  <dt><tt><b><a name="linkage_linker_private_weak_def_auto">linker_private_weak_def_auto</a></b></tt></dt>
-  <dd>Similar to "<tt>linker_private_weak</tt>", but it's known that the address
-      of the object is not taken. For instance, functions that had an inline
-      definition, but the compiler decided not to inline it. Note,
-      unlike <tt>linker_private</tt> and <tt>linker_private_weak</tt>,
-      <tt>linker_private_weak_def_auto</tt> may have only <tt>default</tt>
-      visibility.  The symbols are removed by the linker from the final linked
-      image (executable or dynamic library).</dd>
 
   <dt><tt><b><a name="linkage_internal">internal</a></b></tt></dt>
   <dd>Similar to private, but the value shows as a local symbol
@@ -651,6 +651,14 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
       and <tt>weak_odr</tt> linkage types to indicate that the global will only
       be merged with equivalent globals.  These linkage types are otherwise the
       same as their non-<tt>odr</tt> versions.</dd>
+
+  <dt><tt><b><a name="linkage_linkonce_odr_auto_hide">linkonce_odr_auto_hide</a></b></tt></dt>
+  <dd>Similar to "<tt>linkonce_odr</tt>", but nothing in the translation unit
+      takes the address of this definition. For instance, functions that had an
+      inline definition, but the compiler decided not to inline it.
+      <tt>linkonce_odr_auto_hide</tt> may have only <tt>default</tt> visibility.
+      The symbols are removed by the linker from the final linked image
+      (executable or dynamic library).</dd>
 
   <dt><tt><b><a name="linkage_external">external</a></b></tt></dt>
   <dd>If none of the above identifiers are used, the global is externally
@@ -721,10 +729,10 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
       target to use whatever tricks it wants to produce fast code for the
       target, without having to conform to an externally specified ABI
       (Application Binary Interface).
-      <a href="CodeGenerator.html#tailcallopt">Tail calls can only be optimized
-      when this or the GHC convention is used.</a>  This calling convention
-      does not support varargs and requires the prototype of all callees to
-      exactly match the prototype of the function definition.</dd>
+      <a href="CodeGenerator.html#id80">Tail calls can only be optimized
+      when this, the GHC or the HiPE convention is used.</a> This calling
+      convention does not support varargs and requires the prototype of all
+      callees to exactly match the prototype of the function definition.</dd>
 
   <dt><b>"<tt>coldcc</tt>" - The cold calling convention</b>:</dt>
   <dd>This calling convention attempts to make code in the caller as efficient
@@ -741,7 +749,7 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
       disabling callee save registers. This calling convention should not be
       used lightly but only for specific situations such as an alternative to
       the <em>register pinning</em> performance technique often used when
-      implementing functional programming languages.At the moment only X86
+      implementing functional programming languages. At the moment only X86
       supports this convention and it has the following limitations:
       <ul>
         <li>On <em>X86-32</em> only supports up to 4 bit type parameters. No
@@ -750,9 +758,24 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
             6 floating point parameters.</li>
       </ul>
       This calling convention supports
-      <a href="CodeGenerator.html#tailcallopt">tail call optimization</a> but
+      <a href="CodeGenerator.html#id80">tail call optimization</a> but
       requires both the caller and callee are using it.
   </dd>
+
+  <dt><b>"<tt>cc <em>11</em></tt>" - The HiPE calling convention</b>:</dt>
+  <dd>This calling convention has been implemented specifically for use by the
+      <a href="http://www.it.uu.se/research/group/hipe/">High-Performance Erlang
+      (HiPE)</a> compiler, <em>the</em> native code compiler of the
+      <a href="http://www.erlang.org/download.shtml">Ericsson's Open Source
+      Erlang/OTP system</a>. It uses more registers for argument passing than
+      the ordinary C calling convention and defines no callee-saved registers.
+      The calling convention properly supports
+      <a href="CodeGenerator.html#id80">tail call optimization</a> but requires
+      that both the caller and the callee use it. It uses a <em>register
+      pinning</em> mechanism, similar to GHC's convention, for keeping
+      frequently accessed runtime components pinned to specific hardware
+      registers. At the moment only X86 supports this convention (both 32 and 64
+      bit).</dd>
 
   <dt><b>"<tt>cc &lt;<em>n</em>&gt;</tt>" - Numbered convention</b>:</dt>
   <dd>Any calling convention may be specified by number, allowing
@@ -1095,7 +1118,7 @@ declare signext i8 @returns_signed_char()
       <tt><a href="#readonly">readonly</a></tt> functions should not write to
       <tt>byval</tt> parameters). This is not a valid attribute for return
       values.</p>
-      
+
       <p>The byval attribute also supports specifying an alignment with
       the align attribute.  It indicates the alignment of the stack slot to
       form and the known alignment of the pointer specified to the call site. If
@@ -1106,9 +1129,9 @@ declare signext i8 @returns_signed_char()
   <dd>This indicates that the pointer parameter specifies the address of a
       structure that is the return value of the function in the source program.
       This pointer must be guaranteed by the caller to be valid: loads and
-      stores to the structure may be assumed by the callee to not to trap.  This
-      may only be applied to the first parameter. This is not a valid attribute
-      for return values. </dd>
+      stores to the structure may be assumed by the callee to not to trap and
+      to be properly aligned.  This may only be applied to the first parameter.
+      This is not a valid attribute for return values. </dd>
 
   <dt><tt><b><a name="noalias">noalias</a></b></tt></dt>
   <dd>This indicates that pointer values
@@ -1363,11 +1386,13 @@ target datalayout = "<i>layout specification</i>"
       8-bits. If omitted, the natural stack alignment defaults to "unspecified",
       which does not prevent any alignment promotions.</dd>
 
-  <dt><tt>p:<i>size</i>:<i>abi</i>:<i>pref</i></tt></dt>
+  <dt><tt>p[n]:<i>size</i>:<i>abi</i>:<i>pref</i></tt></dt>
   <dd>This specifies the <i>size</i> of a pointer and its <i>abi</i> and
-      <i>preferred</i> alignments. All sizes are in bits. Specifying
-      the <i>pref</i> alignment is optional. If omitted, the
-      preceding <tt>:</tt> should be omitted too.</dd>
+      <i>preferred</i> alignments for address space <i>n</i>. All sizes are in
+      bits. Specifying the <i>pref</i> alignment is optional. If omitted, the
+      preceding <tt>:</tt> should be omitted too. The address space,
+      <i>n</i> is optional, and if not specified, denotes the default address
+      space 0. The value of <i>n</i> must be in the range [1,2^23).</dd>
 
   <dt><tt>i<i>size</i>:<i>abi</i>:<i>pref</i></tt></dt>
   <dd>This specifies the alignment for an integer type of a given bit
@@ -1408,6 +1433,10 @@ target datalayout = "<i>layout specification</i>"
 <ul>
   <li><tt>E</tt> - big endian</li>
   <li><tt>p:64:64:64</tt> - 64-bit pointers with 64-bit alignment</li>
+  <li><tt>p1:32:32:32</tt> - 32-bit pointers with 32-bit alignment for
+  address space 1</li>
+  <li><tt>p2:16:32:32</tt> - 16-bit pointers with 32-bit alignment for
+  address space 2</li>
   <li><tt>i1:8:8</tt> - i1 is 8-bit (byte) aligned</li>
   <li><tt>i8:8:8</tt> - i8 is 8-bit (byte) aligned</li>
   <li><tt>i16:16:16</tt> - i16 is 16-bit aligned</li>
@@ -1432,7 +1461,7 @@ target datalayout = "<i>layout specification</i>"
   <li>If no match is found, and the type sought is an integer type, then the
       smallest integer type that is larger than the bitwidth of the sought type
       is used. If none of the specifications are larger than the bitwidth then
-      the the largest integer type is used. For example, given the default
+      the largest integer type is used. For example, given the default
       specifications above, the i7 type will use the alignment of i8 (next
       largest) while both i65 and i256 will use the alignment of i64 (largest
       specified).</li>
@@ -1447,12 +1476,12 @@ target datalayout = "<i>layout specification</i>"
    this is not a specification from the frontend of what alignment the code
    generator should use.</p>
 
-<p>Instead, if specified, the target data layout is required to match what the 
-   ultimate <em>code generator</em> expects.  This string is used by the 
+<p>Instead, if specified, the target data layout is required to match what the
+   ultimate <em>code generator</em> expects.  This string is used by the
    mid-level optimizers to
-   improve code, and this only works if it matches what the ultimate code 
+   improve code, and this only works if it matches what the ultimate code
    generator uses.  If you would like to generate IR that does not embed this
-   target-specific detail into the IR, then you don't have to specify the 
+   target-specific detail into the IR, then you don't have to specify the
    string.  This will disable some optimizations that require precise layout
    information, but this also prevents those optimizations from introducing
    target specificity into the IR.</p>
@@ -1600,7 +1629,7 @@ any write to the same byte, except:</p>
       addresses which do not behave like normal memory.  It does not generally
       provide cross-thread synchronization.)
   <li>Otherwise, if there is no write to the same byte that happens before
-    <var>R<sub>byte</sub></var>, <var>R<sub>byte</sub></var> returns 
+    <var>R<sub>byte</sub></var>, <var>R<sub>byte</sub></var> returns
     <tt>undef</tt> for that byte.
   <li>Otherwise, if <var>R<sub>byte</sub></var> may see exactly one write,
       <var>R<sub>byte</sub></var> returns the value written by that
@@ -2099,11 +2128,11 @@ in signal handlers).</p>
    Structures in registers are accessed using the
    '<tt><a href="#i_extractvalue">extractvalue</a></tt>' and
    '<tt><a href="#i_insertvalue">insertvalue</a></tt>' instructions.</p>
-  
-<p>Structures may optionally be "packed" structures, which indicate that the 
+
+<p>Structures may optionally be "packed" structures, which indicate that the
   alignment of the struct is one byte, and that there is no padding between
   the elements.  In non-packed structs, padding between field types is inserted
-  as defined by the TargetData string in the module, which is required to match
+  as defined by the DataLayout string in the module, which is required to match
   what the underlying code generator expects.</p>
 
 <p>Structures can either be "literal" or "identified".  A literal structure is
@@ -2113,13 +2142,13 @@ in signal handlers).</p>
   no way to write one.  Identified types can be recursive, can be opaqued, and are
   never uniqued.
 </p>
-  
+
 <h5>Syntax:</h5>
 <pre>
   %T1 = type { &lt;type list&gt; }     <i>; Identified normal struct type</i>
   %T2 = type &lt;{ &lt;type list&gt; }&gt;   <i>; Identified packed struct type</i>
 </pre>
-  
+
 <h5>Examples:</h5>
 <table class="layout">
   <tr class="layout">
@@ -2140,7 +2169,7 @@ in signal handlers).</p>
 </table>
 
 </div>
-  
+
 <!-- _______________________________________________________________________ -->
 <h4>
   <a name="t_opaque">Opaque Structure Types</a>
@@ -2181,7 +2210,7 @@ in signal handlers).</p>
 <h5>Overview:</h5>
 <p>The pointer type is used to specify memory locations.
    Pointers are commonly used to reference objects in memory.</p>
-   
+
 <p>Pointer types may have an optional address space attribute defining the
    numbered address space where the pointed-to object resides. The default
    address space is number zero. The semantics of non-zero address
@@ -2780,7 +2809,7 @@ second_end:
       make it fit in <tt>TYPE</tt>.</dd>
 
   <dt><b><tt>inttoptr (CST to TYPE)</tt></b></dt>
-  <dd>Convert a integer constant to a pointer constant.  TYPE must be a pointer
+  <dd>Convert an integer constant to a pointer constant.  TYPE must be a pointer
       type.  CST must be of integer type. The CST value is zero extended,
       truncated, or unchanged to make it fit in a pointer size. This one is
       <i>really</i> dangerous!</dd>
@@ -2894,8 +2923,18 @@ call void asm sideeffect "eieio", ""()
 call void asm alignstack "eieio", ""()
 </pre>
 
-<p>If both keywords appear the '<tt>sideeffect</tt>' keyword must come
-   first.</p>
+<p>Inline asms also support using non-standard assembly dialects.  The assumed
+   dialect is ATT.  When the '<tt>inteldialect</tt>' keyword is present, the
+   inline asm is using the Intel dialect.  Currently, ATT and Intel are the
+   only supported dialects.  An example is:</p>
+
+<pre class="doc_code">
+call void asm inteldialect "eieio", ""()
+</pre>
+
+<p>If multiple keywords appear the '<tt>sideeffect</tt>' keyword must come
+   first, the '<tt>alignstack</tt>' keyword second and the
+   '<tt>inteldialect</tt>' keyword last.</p>
 
 <!--
 <p>TODO: The format of the asm and constraints string still need to be
@@ -2963,7 +3002,7 @@ call void asm sideeffect "something bad", ""()<b>, !srcloc !42</b>
 </pre>
 </div>
 
-<p>A <a href="#namedmetadatastructure">named metadata</a> is a collection of 
+<p>A <a href="#namedmetadatastructure">named metadata</a> is a collection of
    metadata nodes, which can be looked up in the module symbol table. For
    example:</p>
 
@@ -2973,7 +3012,7 @@ call void asm sideeffect "something bad", ""()<b>, !srcloc !42</b>
 </pre>
 </div>
 
-<p>Metadata can be used as function arguments. Here <tt>llvm.dbg.value</tt> 
+<p>Metadata can be used as function arguments. Here <tt>llvm.dbg.value</tt>
    function is using two metadata arguments:</p>
 
 <div class="doc_code">
@@ -3042,9 +3081,47 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 
 <!-- _______________________________________________________________________ -->
 <h4>
+  <a name="tbaa.struct">'<tt>tbaa.struct</tt>' Metadata</a>
+</h4>
+
+<div>
+
+<p>The <a href="#int_memcpy"><tt>llvm.memcpy</tt></a> is often used to implement
+aggregate assignment operations in C and similar languages, however it is
+defined to copy a contiguous region of memory, which is more than strictly
+necessary for aggregate types which contain holes due to padding. Also, it
+doesn't contain any TBAA information about the fields of the aggregate.</p>
+
+<p><tt>!tbaa.struct</tt> metadata can describe which memory subregions in a memcpy
+are padding and what the TBAA tags of the struct are.</p>
+
+<p>The current metadata format is very simple. <tt>!tbaa.struct</tt> metadata nodes
+   are a list of operands which are in conceptual groups of three. For each
+   group of three, the first operand gives the byte offset of a field in bytes,
+   the second gives its size in bytes, and the third gives its
+   tbaa tag. e.g.:</p>
+
+<div class="doc_code">
+<pre>
+!4 = metadata !{ i64 0, i64 4, metadata !1, i64 8, i64 4, metadata !2 }
+</pre>
+</div>
+
+<p>This describes a struct with two fields. The first is at offset 0 bytes
+   with size 4 bytes, and has tbaa tag !1. The second is at offset 8 bytes
+   and has size 4 bytes and has tbaa tag !2.</p>
+
+<p>Note that the fields need not be contiguous. In this example, there is a
+   4 byte gap between the two fields. This gap represents padding which
+   does not carry useful data and need not be preserved.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
   <a name="fpmath">'<tt>fpmath</tt>' Metadata</a>
 </h4>
- 
+
 <div>
 
 <p><tt>fpmath</tt> metadata may be attached to any instruction of floating point
@@ -3460,13 +3537,13 @@ cast formed of bitcast or getelementptr.  For example, a legal use of it is:</p>
    control flow, not values (the one exception being the
    '<a href="#i_invoke"><tt>invoke</tt></a>' instruction).</p>
 
-<p>The terminator instructions are: 
-   '<a href="#i_ret"><tt>ret</tt></a>', 
+<p>The terminator instructions are:
+   '<a href="#i_ret"><tt>ret</tt></a>',
    '<a href="#i_br"><tt>br</tt></a>',
-   '<a href="#i_switch"><tt>switch</tt></a>', 
+   '<a href="#i_switch"><tt>switch</tt></a>',
    '<a href="#i_indirectbr"><tt>indirectbr</tt></a>',
-   '<a href="#i_invoke"><tt>invoke</tt></a>', 
-   '<a href="#i_resume"><tt>resume</tt></a>', and 
+   '<a href="#i_invoke"><tt>invoke</tt></a>',
+   '<a href="#i_resume"><tt>resume</tt></a>', and
    '<a href="#i_unreachable"><tt>unreachable</tt></a>'.</p>
 
 <!-- _______________________________________________________________________ -->
@@ -3765,7 +3842,7 @@ IfUnequal:
 </div>
 
  <!-- _______________________________________________________________________ -->
- 
+
 <h4>
   <a name="i_resume">'<tt>resume</tt>' Instruction</a>
 </h4>
@@ -4364,7 +4441,7 @@ IfUnequal:
    vectors, each vector element of <tt>op1</tt> is shifted by the corresponding
    shift amount in <tt>op2</tt>.</p>
 
-<p>If the <tt>nuw</tt> keyword is present, then the shift produces a 
+<p>If the <tt>nuw</tt> keyword is present, then the shift produces a
    <a href="#poisonvalues">poison value</a> if it shifts out any non-zero bits.  If
    the <tt>nsw</tt> keyword is present, then the shift produces a
    <a href="#poisonvalues">poison value</a> if it shifts out any bits that disagree
@@ -4997,7 +5074,7 @@ IfUnequal:
    href="#memorymodel">defined</a> results when they may see multiple atomic
    stores.  The type of the pointee must be an integer type whose bit width
    is a power of two greater than or equal to eight and less than or equal
-   to a target-specific size limit. <code>align</code> must be explicitly 
+   to a target-specific size limit. <code>align</code> must be explicitly
    specified on atomic loads, and the load has undefined behavior if the
    alignment is not set to a value which is at least the size in bytes of
    the pointee. <code>!nontemporal</code> does not have any defined semantics
@@ -5005,7 +5082,7 @@ IfUnequal:
 
 <p>The optional constant <tt>align</tt> argument specifies the alignment of the
    operation (that is, the alignment of the memory address). A value of 0 or an
-   omitted <tt>align</tt> argument means that the operation has the preferential
+   omitted <tt>align</tt> argument means that the operation has the abi
    alignment for the target. It is the responsibility of the code emitter to
    ensure that the alignment information is correct. Overestimating the
    alignment results in undefined behavior. Underestimating the alignment may
@@ -5078,7 +5155,7 @@ IfUnequal:
    href="#memorymodel">defined</a> results when they may see multiple atomic
    stores. The type of the pointee must be an integer type whose bit width
    is a power of two greater than or equal to eight and less than or equal
-   to a target-specific size limit. <code>align</code> must be explicitly 
+   to a target-specific size limit. <code>align</code> must be explicitly
    specified on atomic stores, and the store has undefined behavior if the
    alignment is not set to a value which is at least the size in bytes of
    the pointee. <code>!nontemporal</code> does not have any defined semantics
@@ -5086,7 +5163,7 @@ IfUnequal:
 
 <p>The optional constant "align" argument specifies the alignment of the
    operation (that is, the alignment of the memory address). A value of 0 or an
-   omitted "align" argument means that the operation has the preferential
+   omitted "align" argument means that the operation has the abi
    alignment for the target. It is the responsibility of the code emitter to
    ensure that the alignment information is correct. Overestimating the
    alignment results in an undefined behavior. Underestimating the alignment may
@@ -5340,7 +5417,7 @@ specified by the <var>operation</var> argument:</p>
 <pre>
   &lt;result&gt; = getelementptr &lt;pty&gt;* &lt;ptrval&gt;{, &lt;ty&gt; &lt;idx&gt;}*
   &lt;result&gt; = getelementptr inbounds &lt;pty&gt;* &lt;ptrval&gt;{, &lt;ty&gt; &lt;idx&gt;}*
-  &lt;result&gt; = getelementptr &lt;ptr vector&gt; ptrval, &lt;vector index type&gt; idx 
+  &lt;result&gt; = getelementptr &lt;ptr vector&gt; ptrval, &lt;vector index type&gt; idx
 </pre>
 
 <h5>Overview:</h5>
@@ -5364,9 +5441,11 @@ specified by the <var>operation</var> argument:</p>
 
 <p>The type of each index argument depends on the type it is indexing into.
    When indexing into a (optionally packed) structure, only <tt>i32</tt>
-   integer <b>constants</b> are allowed.  When indexing into an array, pointer
-   or vector, integers of any width are allowed, and they are not required to be
-   constant.  These integers are treated as signed values where relevant.</p>
+   integer <b>constants</b> are allowed (when using a vector of indices they
+   must all be the <b>same</b> <tt>i32</tt> integer constant).  When indexing
+   into an array, pointer or vector, integers of any width are allowed, and
+   they are not required to be constant.  These integers are treated as signed
+   values where relevant.</p>
 
 <p>For example, let's consider a C code fragment and how it gets compiled to
    LLVM:</p>
@@ -5465,9 +5544,8 @@ define i32* @foo(%struct.ST* %s) {
     %iptr = getelementptr [10 x i32]* @arr, i16 0, i16 0
 </pre>
 
-<p>In cases where the pointer argument is a vector of pointers, only a
-   single index may be used, and the number of vector elements has to be
-   the same.  For example: </p>
+<p>In cases where the pointer argument is a vector of pointers, each index must
+   be a vector with the same number of elements.  For example: </p>
 <pre class="doc_code">
  %A = getelementptr <4 x i8*> %ptrs, <4 x i64> %offsets,
 </pre>
@@ -7445,6 +7523,39 @@ LLVM</a>.</p>
 
 <!-- _______________________________________________________________________ -->
 <h4>
+  <a name="int_exp2">'<tt>llvm.exp2.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.exp2</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.exp2.f32(float  %Val)
+  declare double    @llvm.exp2.f64(double %Val)
+  declare x86_fp80  @llvm.exp2.f80(x86_fp80  %Val)
+  declare fp128     @llvm.exp2.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.exp2.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.exp2.*</tt>' intrinsics perform the exp2 function.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>exp2</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
   <a name="int_log">'<tt>llvm.log.*</tt>' Intrinsic</a>
 </h4>
 
@@ -7472,6 +7583,72 @@ LLVM</a>.</p>
 
 <h5>Semantics:</h5>
 <p>This function returns the same values as the libm <tt>log</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_log10">'<tt>llvm.log10.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.log10</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.log10.f32(float  %Val)
+  declare double    @llvm.log10.f64(double %Val)
+  declare x86_fp80  @llvm.log10.f80(x86_fp80  %Val)
+  declare fp128     @llvm.log10.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.log10.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.log10.*</tt>' intrinsics perform the log10 function.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>log10</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_log2">'<tt>llvm.log2.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.log2</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.log2.f32(float  %Val)
+  declare double    @llvm.log2.f64(double %Val)
+  declare x86_fp80  @llvm.log2.f80(x86_fp80  %Val)
+  declare fp128     @llvm.log2.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.log2.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.log2.*</tt>' intrinsics perform the log2 function.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>log2</tt> functions
    would, and handles error conditions in the same way.</p>
 
 </div>
@@ -7541,6 +7718,177 @@ LLVM</a>.</p>
 <h5>Semantics:</h5>
 <p>This function returns the same values as the libm <tt>fabs</tt> functions
    would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_floor">'<tt>llvm.floor.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.floor</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.floor.f32(float  %Val)
+  declare double    @llvm.floor.f64(double %Val)
+  declare x86_fp80  @llvm.floor.f80(x86_fp80  %Val)
+  declare fp128     @llvm.floor.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.floor.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.floor.*</tt>' intrinsics return the floor of
+   the operand.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>floor</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_ceil">'<tt>llvm.ceil.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.ceil</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.ceil.f32(float  %Val)
+  declare double    @llvm.ceil.f64(double %Val)
+  declare x86_fp80  @llvm.ceil.f80(x86_fp80  %Val)
+  declare fp128     @llvm.ceil.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.ceil.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.ceil.*</tt>' intrinsics return the ceiling of
+   the operand.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>ceil</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_trunc">'<tt>llvm.trunc.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.trunc</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.trunc.f32(float  %Val)
+  declare double    @llvm.trunc.f64(double %Val)
+  declare x86_fp80  @llvm.trunc.f80(x86_fp80  %Val)
+  declare fp128     @llvm.trunc.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.trunc.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.trunc.*</tt>' intrinsics returns the operand rounded to the
+   nearest integer not larger in magnitude than the operand.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>trunc</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_rint">'<tt>llvm.rint.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.rint</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.rint.f32(float  %Val)
+  declare double    @llvm.rint.f64(double %Val)
+  declare x86_fp80  @llvm.rint.f80(x86_fp80  %Val)
+  declare fp128     @llvm.rint.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.rint.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.rint.*</tt>' intrinsics returns the operand rounded to the
+   nearest integer. It may raise an inexact floating-point exception if the
+   operand isn't an integer.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>rint</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_nearbyint">'<tt>llvm.nearbyint.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.nearbyint</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.nearbyint.f32(float  %Val)
+  declare double    @llvm.nearbyint.f64(double %Val)
+  declare x86_fp80  @llvm.nearbyint.f80(x86_fp80  %Val)
+  declare fp128     @llvm.nearbyint.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.nearbyint.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.nearbyint.*</tt>' intrinsics returns the operand rounded to the
+   nearest integer.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>nearbyint</tt>
+   functions would, and handles error conditions in the same way.</p>
 
 </div>
 
@@ -8075,7 +8423,7 @@ intrinsic function should be used instead.</p>
    format. This means that it is
    a dense encoding (in memory) but does not support computation in the
    format.</p>
-   
+
 <p>This means that code must first load the half-precision floating point
    value as an i16, then convert it to float with <a
    href="#int_convert_from_fp16"><tt>llvm.convert.from.fp16</tt></a>.
@@ -8609,7 +8957,7 @@ intrinsic function should be used instead.</p>
    is a boolean and determines whether <tt>llvm.objectsize</tt> returns 0 (if
    true) or -1 (if false) when the object size is unknown.
    The second argument only accepts constants.</p>
-   
+
 <h5>Semantics:</h5>
 <p>The <tt>llvm.objectsize</tt> intrinsic is lowered to a constant representing
    the size of the object concerned. If the size cannot be determined at compile

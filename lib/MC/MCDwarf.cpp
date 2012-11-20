@@ -19,6 +19,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/LEB128.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/ADT/Hashing.h"
@@ -198,7 +199,7 @@ static inline void EmitDwarfLineTable(MCStreamer *MCOS,
   // Set the value of the symbol, as we are at the end of the section.
   MCOS->EmitLabel(SectionEnd);
 
-  // Switch back the the dwarf line section.
+  // Switch back the dwarf line section.
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfLineSection());
 
   const MCAsmInfo &asmInfo = MCOS->getContext().getAsmInfo();
@@ -361,7 +362,7 @@ void MCDwarfLineAddr::Encode(int64_t LineDelta, uint64_t AddrDelta,
       OS << char(dwarf::DW_LNS_const_add_pc);
     else {
       OS << char(dwarf::DW_LNS_advance_pc);
-      MCObjectWriter::EncodeULEB128(AddrDelta, OS);
+      encodeULEB128(AddrDelta, OS);
     }
     OS << char(dwarf::DW_LNS_extended_op);
     OS << char(1);
@@ -376,7 +377,7 @@ void MCDwarfLineAddr::Encode(int64_t LineDelta, uint64_t AddrDelta,
   // it with DW_LNS_advance_line.
   if (Temp >= DWARF2_LINE_RANGE) {
     OS << char(dwarf::DW_LNS_advance_line);
-    MCObjectWriter::EncodeSLEB128(LineDelta, OS);
+    encodeSLEB128(LineDelta, OS);
 
     LineDelta = 0;
     Temp = 0 - DWARF2_LINE_BASE;
@@ -412,7 +413,7 @@ void MCDwarfLineAddr::Encode(int64_t LineDelta, uint64_t AddrDelta,
 
   // Otherwise use DW_LNS_advance_pc.
   OS << char(dwarf::DW_LNS_advance_pc);
-  MCObjectWriter::EncodeULEB128(AddrDelta, OS);
+  encodeULEB128(AddrDelta, OS);
 
   if (NeedCopy)
     OS << char(dwarf::DW_LNS_copy);
@@ -424,9 +425,11 @@ void MCDwarfFile::print(raw_ostream &OS) const {
   OS << '"' << getName() << '"';
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void MCDwarfFile::dump() const {
   print(dbgs());
 }
+#endif
 
 // Utility function to write a tuple for .debug_abbrev.
 static void EmitAbbrev(MCStreamer *MCOS, uint64_t Name, uint64_t Form) {
@@ -481,7 +484,8 @@ static void EmitGenDwarfAbbrev(MCStreamer *MCOS) {
 // .debug_aranges section.  Which contains a header and a table of pairs of
 // PointerSize'ed values for the address and size of section(s) with line table
 // entries (just the default .text in our case) and a terminating pair of zeros.
-static void EmitGenDwarfAranges(MCStreamer *MCOS) {
+static void EmitGenDwarfAranges(MCStreamer *MCOS,
+                                const MCSymbol *InfoSectionSymbol) {
   MCContext &context = MCOS->getContext();
 
   // Create a symbol at the end of the section that we are creating the dwarf
@@ -520,8 +524,11 @@ static void EmitGenDwarfAranges(MCStreamer *MCOS) {
   // The 2 byte version, which is 2.
   MCOS->EmitIntValue(2, 2);
   // The 4 byte offset to the compile unit in the .debug_info from the start
-  // of the .debug_info, it is at the start of that section so this is zero.
-  MCOS->EmitIntValue(0, 4);
+  // of the .debug_info.
+  if (InfoSectionSymbol)
+    MCOS->EmitSymbolValue(InfoSectionSymbol, 4);
+  else
+    MCOS->EmitIntValue(0, 4);
   // The 1 byte size of an address.
   MCOS->EmitIntValue(AddrSize, 1);
   // The 1 byte size of a segment descriptor, we use a value of zero.
@@ -702,15 +709,21 @@ void MCGenDwarfInfo::Emit(MCStreamer *MCOS, const MCSymbol *LineSectionSymbol) {
   // Create the dwarf sections in this order (.debug_line already created).
   MCContext &context = MCOS->getContext();
   const MCAsmInfo &AsmInfo = context.getAsmInfo();
+  bool CreateDwarfSectionSymbols =
+      AsmInfo.doesDwarfUseRelocationsAcrossSections();
+  if (!CreateDwarfSectionSymbols)
+    LineSectionSymbol = NULL;
+  MCSymbol *AbbrevSectionSymbol = NULL;
+  MCSymbol *InfoSectionSymbol = NULL;
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfInfoSection());
+  if (CreateDwarfSectionSymbols) {
+    InfoSectionSymbol = context.CreateTempSymbol();
+    MCOS->EmitLabel(InfoSectionSymbol);
+  }
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfAbbrevSection());
-  MCSymbol *AbbrevSectionSymbol;
-  if (AsmInfo.doesDwarfUseRelocationsAcrossSections()) {
+  if (CreateDwarfSectionSymbols) {
     AbbrevSectionSymbol = context.CreateTempSymbol();
     MCOS->EmitLabel(AbbrevSectionSymbol);
-  } else {
-    AbbrevSectionSymbol = NULL;
-    LineSectionSymbol = NULL;
   }
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfARangesSection());
 
@@ -719,7 +732,7 @@ void MCGenDwarfInfo::Emit(MCStreamer *MCOS, const MCSymbol *LineSectionSymbol) {
     return;
 
   // Output the data for .debug_aranges section.
-  EmitGenDwarfAranges(MCOS);
+  EmitGenDwarfAranges(MCOS, InfoSectionSymbol);
 
   // Output the data for .debug_abbrev section.
   EmitGenDwarfAbbrev(MCOS);
@@ -1293,20 +1306,17 @@ MCSymbol *FrameEmitterImpl::EmitFDE(MCStreamer &streamer,
     streamer.EmitSymbolValue(&cieStart, 4);
   }
 
-  unsigned fdeEncoding = MOFI->getFDEEncoding(UsingCFI);
-  unsigned size = getSizeForEncoding(streamer, fdeEncoding);
-
   // PC Begin
-  unsigned PCBeginEncoding = IsEH ? fdeEncoding :
-    (unsigned)dwarf::DW_EH_PE_absptr;
-  unsigned PCBeginSize = getSizeForEncoding(streamer, PCBeginEncoding);
-  EmitSymbol(streamer, *frame.Begin, PCBeginEncoding, "FDE initial location");
+  unsigned PCEncoding = IsEH ? MOFI->getFDEEncoding(UsingCFI)
+                             : (unsigned)dwarf::DW_EH_PE_absptr;
+  unsigned PCSize = getSizeForEncoding(streamer, PCEncoding);
+  EmitSymbol(streamer, *frame.Begin, PCEncoding, "FDE initial location");
 
   // PC Range
   const MCExpr *Range = MakeStartMinusEndExpr(streamer, *frame.Begin,
                                               *frame.End, 0);
   if (verboseAsm) streamer.AddComment("FDE address range");
-  streamer.EmitAbsValue(Range, size);
+  streamer.EmitAbsValue(Range, PCSize);
 
   if (IsEH) {
     // Augmentation Data Length
@@ -1329,7 +1339,7 @@ MCSymbol *FrameEmitterImpl::EmitFDE(MCStreamer &streamer,
   EmitCFIInstructions(streamer, frame.Instructions, frame.Begin);
 
   // Padding
-  streamer.EmitValueToAlignment(PCBeginSize);
+  streamer.EmitValueToAlignment(PCSize);
 
   return fdeEnd;
 }

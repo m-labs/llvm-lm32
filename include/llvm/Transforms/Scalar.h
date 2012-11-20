@@ -70,6 +70,12 @@ FunctionPass *createAggressiveDCEPass();
 
 //===----------------------------------------------------------------------===//
 //
+// SROA - Replace aggregates or pieces of aggregates with scalar SSA values.
+//
+FunctionPass *createSROAPass(bool RequiresDomTree = true);
+
+//===----------------------------------------------------------------------===//
+//
 // ScalarReplAggregates - Break up alloca's of aggregates into multiple allocas
 // if possible.
 //
@@ -327,14 +333,6 @@ Pass *createLowerAtomicPass();
 // ValuePropagation - Propagate CFG-derived value information
 //
 Pass *createCorrelatedValuePropagationPass();
-
-//===----------------------------------------------------------------------===//
-//
-// BoundsChecking - This pass instruments the code to perform run-time bounds
-// checking on loads, stores, and other memory intrinsics.
-// Penalty is the maximum run-time that is acceptable for the user.
-//
-FunctionPass *createBoundsCheckingPass(unsigned Penalty = 5);
 
 //===----------------------------------------------------------------------===//
 //

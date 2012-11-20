@@ -23,6 +23,8 @@
 #include "InstPrinter/ARMInstPrinter.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "MCTargetDesc/ARMMCExpr.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Constants.h"
 #include "llvm/DebugInfo.h"
 #include "llvm/Module.h"
@@ -40,9 +42,8 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -302,7 +303,7 @@ void ARMAsmPrinter::EmitFunctionEntryLabel() {
 }
 
 void ARMAsmPrinter::EmitXXStructor(const Constant *CV) {
-  uint64_t Size = TM.getTargetData()->getTypeAllocSize(CV->getType());
+  uint64_t Size = TM.getDataLayout()->getTypeAllocSize(CV->getType());
   assert(Size && "C++ constructor pointer had zero size!");
 
   const GlobalValue *GV = dyn_cast<GlobalValue>(CV->stripPointerCasts());
@@ -389,16 +390,6 @@ void ARMAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
 //===--------------------------------------------------------------------===//
 
 MCSymbol *ARMAsmPrinter::
-GetARMSetPICJumpTableLabel2(unsigned uid, unsigned uid2,
-                            const MachineBasicBlock *MBB) const {
-  SmallString<60> Name;
-  raw_svector_ostream(Name) << MAI->getPrivateGlobalPrefix()
-    << getFunctionNumber() << '_' << uid << '_' << uid2
-    << "_set_" << MBB->getNumber();
-  return OutContext.GetOrCreateSymbol(Name.str());
-}
-
-MCSymbol *ARMAsmPrinter::
 GetARMJTIPICJumpTableLabel2(unsigned uid, unsigned uid2) const {
   SmallString<60> Name;
   raw_svector_ostream(Name) << MAI->getPrivateGlobalPrefix() << "JTI"
@@ -407,7 +398,7 @@ GetARMJTIPICJumpTableLabel2(unsigned uid, unsigned uid2) const {
 }
 
 
-MCSymbol *ARMAsmPrinter::GetARMSJLJEHLabel(void) const {
+MCSymbol *ARMAsmPrinter::GetARMSJLJEHLabel() const {
   SmallString<60> Name;
   raw_svector_ostream(Name) << MAI->getPrivateGlobalPrefix() << "SJLJEH"
     << getFunctionNumber();
@@ -529,10 +520,24 @@ bool ARMAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
       return false;
     }
 
-    // These modifiers are not yet supported.
+    // This modifier is not yet supported.
     case 'h': // A range of VFP/NEON registers suitable for VLD1/VST1.
-    case 'H': // The highest-numbered register of a pair.
       return true;
+    case 'H': { // The highest-numbered register of a pair.
+      const MachineOperand &MO = MI->getOperand(OpNum);
+      if (!MO.isReg())
+        return true;
+      const TargetRegisterClass &RC = ARM::GPRRegClass;
+      const MachineFunction &MF = *MI->getParent()->getParent();
+      const TargetRegisterInfo *TRI = MF.getTarget().getRegisterInfo();
+
+      unsigned RegIdx = TRI->getEncodingValue(MO.getReg());
+      RegIdx |= 1; //The odd register is also the higher-numbered one of a pair.
+
+      unsigned Reg = RC.getRegister(RegIdx);
+      O << ARMInstPrinter::getRegisterName(Reg);
+      return false;
+    }
     }
   }
 
@@ -578,9 +583,24 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
       const TargetLoweringObjectFileMachO &TLOFMacho =
         static_cast<const TargetLoweringObjectFileMachO &>(
           getObjFileLowering());
-      OutStreamer.SwitchSection(TLOFMacho.getTextSection());
-      OutStreamer.SwitchSection(TLOFMacho.getTextCoalSection());
-      OutStreamer.SwitchSection(TLOFMacho.getConstTextCoalSection());
+
+      // Collect the set of sections our functions will go into.
+      SetVector<const MCSection *, SmallVector<const MCSection *, 8>,
+        SmallPtrSet<const MCSection *, 8> > TextSections;
+      // Default text section comes first.
+      TextSections.insert(TLOFMacho.getTextSection());
+      // Now any user defined text sections from function attributes.
+      for (Module::iterator F = M.begin(), e = M.end(); F != e; ++F)
+        if (!F->isDeclaration() && !F->hasAvailableExternallyLinkage())
+          TextSections.insert(TLOFMacho.SectionForGlobal(F, Mang, TM));
+      // Now the coalescable sections.
+      TextSections.insert(TLOFMacho.getTextCoalSection());
+      TextSections.insert(TLOFMacho.getConstTextCoalSection());
+
+      // Emit the sections in the .s file header to fix the order.
+      for (unsigned i = 0, e = TextSections.size(); i != e; ++i)
+        OutStreamer.SwitchSection(TextSections[i]);
+
       if (RelocM == Reloc::DynamicNoPIC) {
         const MCSection *sect =
           OutContext.getMachOSection("__TEXT", "__symbol_stub4",
@@ -729,13 +749,28 @@ void ARMAsmPrinter::emitAttributes() {
     AttrEmitter->EmitAttribute(ARMBuildAttrs::THUMB_ISA_use,
                                ARMBuildAttrs::Allowed);
   } else if (CPUString == "generic") {
-    // FIXME: Why these defaults?
-    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v4T);
+    // For a generic CPU, we assume a standard v7a architecture in Subtarget.
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v7);
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch_profile,
+                               ARMBuildAttrs::ApplicationProfile);
     AttrEmitter->EmitAttribute(ARMBuildAttrs::ARM_ISA_use,
                                ARMBuildAttrs::Allowed);
     AttrEmitter->EmitAttribute(ARMBuildAttrs::THUMB_ISA_use,
-                               ARMBuildAttrs::Allowed);
-  }
+                               ARMBuildAttrs::AllowThumb32);
+  } else if (Subtarget->hasV7Ops()) {
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v7);
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::THUMB_ISA_use,
+                               ARMBuildAttrs::AllowThumb32);
+  } else if (Subtarget->hasV6T2Ops())
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v6T2);
+  else if (Subtarget->hasV6Ops())
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v6);
+  else if (Subtarget->hasV5TEOps())
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v5TE);
+  else if (Subtarget->hasV5TOps())
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v5T);
+  else if (Subtarget->hasV4TOps())
+    AttrEmitter->EmitAttribute(ARMBuildAttrs::CPU_arch, ARMBuildAttrs::v4T);
 
   if (Subtarget->hasNEON() && emitFPU) {
     /* NEON is not exactly a VFP architecture, but GAS emit one of
@@ -879,7 +914,7 @@ MCSymbol *ARMAsmPrinter::GetARMGVSymbol(const GlobalValue *GV) {
 
 void ARMAsmPrinter::
 EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) {
-  int Size = TM.getTargetData()->getTypeAllocSize(MCPV->getType());
+  int Size = TM.getDataLayout()->getTypeAllocSize(MCPV->getType());
 
   ARMConstantPoolValue *ACPV = static_cast<ARMConstantPoolValue*>(MCPV);
 
@@ -1077,16 +1112,6 @@ static void populateADROperands(MCInst &Inst, unsigned Dest,
   Inst.addOperand(MCOperand::CreateReg(ccreg));
 }
 
-void ARMAsmPrinter::EmitPatchedInstruction(const MachineInstr *MI,
-                                           unsigned Opcode) {
-  MCInst TmpInst;
-
-  // Emit the instruction as usual, just patch the opcode.
-  LowerARMMachineInstrToMCInst(MI, TmpInst, *this);
-  TmpInst.setOpcode(Opcode);
-  OutStreamer.EmitInstruction(TmpInst);
-}
-
 void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
   assert(MI->getFlag(MachineInstr::FrameSetup) &&
       "Only instruction which are involved into frame setup code are allowed");
@@ -1136,8 +1161,14 @@ void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
       assert(SrcReg == ARM::SP &&
              "Only stack pointer as a source reg is supported");
       for (unsigned i = StartOp, NumOps = MI->getNumOperands() - NumOffset;
-           i != NumOps; ++i)
-        RegList.push_back(MI->getOperand(i).getReg());
+           i != NumOps; ++i) {
+        const MachineOperand &MO = MI->getOperand(i);
+        // Actually, there should never be any impdef stuff here. Skip it
+        // temporary to workaround PR11902.
+        if (MO.isImplicit())
+          continue;
+        RegList.push_back(MO.getReg());
+      }
       break;
     case ARM::STR_PRE_IMM:
     case ARM::STR_PRE_REG:
@@ -1371,31 +1402,6 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     {
       MCInst TmpInst;
       TmpInst.setOpcode(ARM::Bcc);
-      const GlobalValue *GV = MI->getOperand(0).getGlobal();
-      MCSymbol *GVSym = Mang->getSymbol(GV);
-      const MCExpr *GVSymExpr = MCSymbolRefExpr::Create(GVSym, OutContext);
-      TmpInst.addOperand(MCOperand::CreateExpr(GVSymExpr));
-      // Add predicate operands.
-      TmpInst.addOperand(MCOperand::CreateImm(ARMCC::AL));
-      TmpInst.addOperand(MCOperand::CreateReg(0));
-      OutStreamer.EmitInstruction(TmpInst);
-    }
-    return;
-  }
-  case ARM::t2BMOVPCB_CALL: {
-    {
-      MCInst TmpInst;
-      TmpInst.setOpcode(ARM::tMOVr);
-      TmpInst.addOperand(MCOperand::CreateReg(ARM::LR));
-      TmpInst.addOperand(MCOperand::CreateReg(ARM::PC));
-      // Add predicate operands.
-      TmpInst.addOperand(MCOperand::CreateImm(ARMCC::AL));
-      TmpInst.addOperand(MCOperand::CreateReg(0));
-      OutStreamer.EmitInstruction(TmpInst);
-    }
-    {
-      MCInst TmpInst;
-      TmpInst.setOpcode(ARM::t2B);
       const GlobalValue *GV = MI->getOperand(0).getGlobal();
       MCSymbol *GVSym = Mang->getSymbol(GV);
       const MCExpr *GVSymExpr = MCSymbolRefExpr::Create(GVSym, OutContext);

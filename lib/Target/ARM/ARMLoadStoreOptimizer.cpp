@@ -27,7 +27,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -456,8 +456,7 @@ ARMLoadStoreOpt::MergeLDR_STR(MachineBasicBlock &MBB, unsigned SIndex,
   DebugLoc dl = Loc->getDebugLoc();
   const MachineOperand &PMO = Loc->getOperand(0);
   unsigned PReg = PMO.getReg();
-  unsigned PRegNum = PMO.isUndef() ? UINT_MAX
-    : getARMRegisterNumbering(PReg);
+  unsigned PRegNum = PMO.isUndef() ? UINT_MAX : TRI->getEncodingValue(PReg);
   unsigned Count = 1;
   unsigned Limit = ~0U;
 
@@ -483,8 +482,7 @@ ARMLoadStoreOpt::MergeLDR_STR(MachineBasicBlock &MBB, unsigned SIndex,
     int NewOffset = MemOps[i].Offset;
     const MachineOperand &MO = MemOps[i].MBBI->getOperand(0);
     unsigned Reg = MO.getReg();
-    unsigned RegNum = MO.isUndef() ? UINT_MAX
-      : getARMRegisterNumbering(Reg);
+    unsigned RegNum = MO.isUndef() ? UINT_MAX : TRI->getEncodingValue(Reg);
     // Register numbers must be in ascending order. For VFP / NEON load and
     // store multiples, the registers must also be consecutive and within the
     // limit on the number of registers per instruction.
@@ -1450,7 +1448,7 @@ namespace {
     static char ID;
     ARMPreAllocLoadStoreOpt() : MachineFunctionPass(ID) {}
 
-    const TargetData *TD;
+    const DataLayout *TD;
     const TargetInstrInfo *TII;
     const TargetRegisterInfo *TRI;
     const ARMSubtarget *STI;
@@ -1480,7 +1478,7 @@ namespace {
 }
 
 bool ARMPreAllocLoadStoreOpt::runOnMachineFunction(MachineFunction &Fn) {
-  TD  = Fn.getTarget().getTargetData();
+  TD  = Fn.getTarget().getDataLayout();
   TII = Fn.getTarget().getInstrInfo();
   TRI = Fn.getTarget().getRegisterInfo();
   STI = &Fn.getTarget().getSubtarget<ARMSubtarget>();

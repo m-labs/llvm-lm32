@@ -13,8 +13,10 @@ set(VMCoreSources
   MetadataTest.cpp
   PassManagerTest.cpp
   TypeBuilderTest.cpp
+  TypesTest.cpp
   ValueMapTest.cpp
   VerifierTest.cpp
+  WaymarkTest.cpp
   )
 
 # MSVC9 and 8 cannot compile ValueMapTest.cpp due to their bug.

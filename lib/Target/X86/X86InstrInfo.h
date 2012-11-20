@@ -61,6 +61,9 @@ namespace X86 {
   // Turn condition code into conditional branch opcode.
   unsigned GetCondBranchFromCond(CondCode CC);
 
+  // Turn CMov opcode into condition code.
+  CondCode getCondFromCMovOpc(unsigned Opc);
+
   /// GetOppositeBranchCondition - Return the inverse of the specified cond,
   /// e.g. turning COND_E to COND_NE.
   CondCode GetOppositeBranchCondition(X86::CondCode CC);
@@ -386,6 +389,18 @@ public:
   virtual bool optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg,
                                     unsigned SrcReg2, int CmpMask, int CmpValue,
                                     const MachineRegisterInfo *MRI) const;
+
+  /// optimizeLoadInstr - Try to remove the load by folding it to a register
+  /// operand at the use. We fold the load instructions if and only if the
+  /// def and use are in the same BB. We only look at one load and see
+  /// whether it can be folded into MI. FoldAsLoadDefReg is the virtual register
+  /// defined by the load we are trying to fold. DefMI returns the machine
+  /// instruction that defines FoldAsLoadDefReg, and the function returns
+  /// the machine instruction generated due to folding.
+  virtual MachineInstr* optimizeLoadInstr(MachineInstr *MI,
+                        const MachineRegisterInfo *MRI,
+                        unsigned &FoldAsLoadDefReg,
+                        MachineInstr *&DefMI) const;
 
 private:
   MachineInstr * convertToThreeAddressWithLEA(unsigned MIOpc,

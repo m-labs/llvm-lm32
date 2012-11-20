@@ -14,7 +14,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -515,7 +515,7 @@ static void InitCmpLibcallCCs(ISD::CondCode *CCs) {
 /// NOTE: The constructor takes ownership of TLOF.
 TargetLowering::TargetLowering(const TargetMachine &tm,
                                const TargetLoweringObjectFile *tlof)
-  : TM(tm), TD(TM.getTargetData()), TLOF(*tlof) {
+  : TM(tm), TD(TM.getDataLayout()), TLOF(*tlof) {
   // All operations default to being supported.
   memset(OpActions, 0, sizeof(OpActions));
   memset(LoadExtActions, 0, sizeof(LoadExtActions));
@@ -583,8 +583,13 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   // Default ISD::TRAP to expand (which turns it into abort).
   setOperationAction(ISD::TRAP, MVT::Other, Expand);
 
+  // On most systems, DEBUGTRAP and TRAP have no difference. The "Expand"
+  // here is to inform DAG Legalizer to replace DEBUGTRAP with TRAP.
+  //
+  setOperationAction(ISD::DEBUGTRAP, MVT::Other, Expand);
+
   IsLittleEndian = TD->isLittleEndian();
-  PointerTy = MVT::getIntegerVT(8*TD->getPointerSize());
+  PointerTy = MVT::getIntegerVT(8*TD->getPointerSize(0));
   memset(RegClassForVT, 0,MVT::LAST_VALUETYPE*sizeof(TargetRegisterClass*));
   memset(TargetDAGCombineArray, 0, array_lengthof(TargetDAGCombineArray));
   maxStoresPerMemset = maxStoresPerMemcpy = maxStoresPerMemmove = 8;
@@ -613,6 +618,7 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   ShouldFoldAtomicFences = false;
   InsertFencesForAtomic = false;
   SupportJumpTables = true;
+  MinimumJumpTableEntries = 4;
 
   InitLibcallNames(LibcallRoutineNames);
   InitCmpLibcallCCs(CmpLibcallCCs);
@@ -624,7 +630,7 @@ TargetLowering::~TargetLowering() {
 }
 
 MVT TargetLowering::getShiftAmountTy(EVT LHSTy) const {
-  return MVT::getIntegerVT(8*TD->getPointerSize());
+  return MVT::getIntegerVT(8*TD->getPointerSize(0));
 }
 
 /// canOpTrap - Returns true if the operation can trap for the value type.
@@ -772,7 +778,7 @@ void TargetLowering::computeRegisterProperties() {
       LegalIntReg = IntReg;
     } else {
       RegisterTypeForVT[IntReg] = TransformToType[IntReg] =
-        (MVT::SimpleValueType)LegalIntReg;
+        (const MVT::SimpleValueType)LegalIntReg;
       ValueTypeActions.setTypeAction(IVT, TypePromoteInteger);
     }
   }
@@ -898,10 +904,9 @@ const char *TargetLowering::getTargetNodeName(unsigned Opcode) const {
   return NULL;
 }
 
-
 EVT TargetLowering::getSetCCResultType(EVT VT) const {
   assert(!VT.isVector() && "No default SetCC type for vectors!");
-  return PointerTy.SimpleTy;
+  return getPointerTy(0).SimpleTy;
 }
 
 MVT::SimpleValueType TargetLowering::getCmpLibcallReturnType() const {
@@ -997,9 +1002,9 @@ void llvm::GetReturnInfo(Type* ReturnType, Attributes attr,
     EVT VT = ValueVTs[j];
     ISD::NodeType ExtendKind = ISD::ANY_EXTEND;
 
-    if (attr & Attribute::SExt)
+    if (attr.hasAttribute(Attributes::SExt))
       ExtendKind = ISD::SIGN_EXTEND;
-    else if (attr & Attribute::ZExt)
+    else if (attr.hasAttribute(Attributes::ZExt))
       ExtendKind = ISD::ZERO_EXTEND;
 
     // FIXME: C calling convention requires the return type to be promoted to
@@ -1017,18 +1022,17 @@ void llvm::GetReturnInfo(Type* ReturnType, Attributes attr,
 
     // 'inreg' on function refers to return value
     ISD::ArgFlagsTy Flags = ISD::ArgFlagsTy();
-    if (attr & Attribute::InReg)
+    if (attr.hasAttribute(Attributes::InReg))
       Flags.setInReg();
 
     // Propagate extension type if any
-    if (attr & Attribute::SExt)
+    if (attr.hasAttribute(Attributes::SExt))
       Flags.setSExt();
-    else if (attr & Attribute::ZExt)
+    else if (attr.hasAttribute(Attributes::ZExt))
       Flags.setZExt();
 
-    for (unsigned i = 0; i < NumParts; ++i) {
-      Outs.push_back(ISD::OutputArg(Flags, PartVT, /*isFixed=*/true));
-    }
+    for (unsigned i = 0; i < NumParts; ++i)
+      Outs.push_back(ISD::OutputArg(Flags, PartVT, /*isFixed=*/true, 0, 0));
   }
 }
 
@@ -1062,7 +1066,7 @@ SDValue TargetLowering::getPICJumpTableRelocBase(SDValue Table,
 
   if ((JTEncoding == MachineJumpTableInfo::EK_GPRel64BlockAddress) ||
       (JTEncoding == MachineJumpTableInfo::EK_GPRel32BlockAddress))
-    return DAG.getGLOBAL_OFFSET_TABLE(getPointerTy());
+    return DAG.getGLOBAL_OFFSET_TABLE(getPointerTy(0));
 
   return Table;
 }
@@ -2303,7 +2307,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
         N0.getOpcode() == ISD::AND)
       if (ConstantSDNode *AndRHS =
                   dyn_cast<ConstantSDNode>(N0.getOperand(1))) {
-        EVT ShiftTy = DCI.isBeforeLegalize() ?
+        EVT ShiftTy = DCI.isBeforeLegalizeOps() ?
           getPointerTy() : getShiftAmountTy(N0.getValueType());
         if (Cond == ISD::SETNE && C1 == 0) {// (X & 8) != 0  -->  (X & 8) >> 3
           // Perform the xform if the AND RHS is a single bit.
@@ -2333,7 +2337,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
           const APInt &AndRHSC = AndRHS->getAPIntValue();
           if ((-AndRHSC).isPowerOf2() && (AndRHSC & C1) == C1) {
             unsigned ShiftBits = AndRHSC.countTrailingZeros();
-            EVT ShiftTy = DCI.isBeforeLegalize() ?
+            EVT ShiftTy = DCI.isBeforeLegalizeOps() ?
               getPointerTy() : getShiftAmountTy(N0.getValueType());
             EVT CmpTy = N0.getValueType();
             SDValue Shift = DAG.getNode(ISD::SRL, dl, CmpTy, N0.getOperand(0),
@@ -2361,7 +2365,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
         }
         NewC = NewC.lshr(ShiftBits);
         if (ShiftBits && isLegalICmpImmediate(NewC.getSExtValue())) {
-          EVT ShiftTy = DCI.isBeforeLegalize() ?
+          EVT ShiftTy = DCI.isBeforeLegalizeOps() ?
             getPointerTy() : getShiftAmountTy(N0.getValueType());
           EVT CmpTy = N0.getValueType();
           SDValue Shift = DAG.getNode(ISD::SRL, dl, CmpTy, N0,
@@ -2441,7 +2445,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
   if (N0 == N1) {
     // The sext(setcc()) => setcc() optimization relies on the appropriate
     // constant being emitted.
-    uint64_t EqVal;
+    uint64_t EqVal = 0;
     switch (getBooleanContents(N0.getValueType().isVector())) {
     case UndefinedBooleanContent:
     case ZeroOrOneBooleanContent:
@@ -2464,7 +2468,8 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
     // Otherwise, we can't fold it.  However, we can simplify it to SETUO/SETO
     // if it is not already.
     ISD::CondCode NewCond = UOF == 0 ? ISD::SETO : ISD::SETUO;
-    if (NewCond != Cond)
+    if (NewCond != Cond && (DCI.isBeforeLegalizeOps() ||
+          getCondCodeAction(NewCond, N0.getValueType()) == Legal))
       return DAG.getSetCC(dl, VT, N0, N1, NewCond);
   }
 
@@ -2953,8 +2958,9 @@ TargetLowering::AsmOperandInfoVector TargetLowering::ParseConstraints(
               EVT::getEVT(IntegerType::get(OpTy->getContext(), BitSize), true);
           break;
         }
-      } else if (dyn_cast<PointerType>(OpTy)) {
-        OpInfo.ConstraintVT = MVT::getIntegerVT(8*TD->getPointerSize());
+      } else if (PointerType *PT = dyn_cast<PointerType>(OpTy)) {
+        OpInfo.ConstraintVT = MVT::getIntegerVT(
+            8*TD->getPointerSize(PT->getAddressSpace()));
       } else {
         OpInfo.ConstraintVT = EVT::getEVT(OpTy, true);
       }
@@ -3033,10 +3039,12 @@ TargetLowering::AsmOperandInfoVector TargetLowering::ParseConstraints(
       AsmOperandInfo &Input = ConstraintOperands[OpInfo.MatchingInput];
 
       if (OpInfo.ConstraintVT != Input.ConstraintVT) {
-	std::pair<unsigned, const TargetRegisterClass*> MatchRC =
-	  getRegForInlineAsmConstraint(OpInfo.ConstraintCode, OpInfo.ConstraintVT);
-	std::pair<unsigned, const TargetRegisterClass*> InputRC =
-	  getRegForInlineAsmConstraint(Input.ConstraintCode, Input.ConstraintVT);
+        std::pair<unsigned, const TargetRegisterClass*> MatchRC =
+          getRegForInlineAsmConstraint(OpInfo.ConstraintCode,
+                                       OpInfo.ConstraintVT);
+        std::pair<unsigned, const TargetRegisterClass*> InputRC =
+          getRegForInlineAsmConstraint(Input.ConstraintCode,
+                                       Input.ConstraintVT);
         if ((OpInfo.ConstraintVT.isInteger() !=
              Input.ConstraintVT.isInteger()) ||
             (MatchRC.second != InputRC.second)) {

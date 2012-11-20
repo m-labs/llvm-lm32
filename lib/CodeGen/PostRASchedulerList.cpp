@@ -111,9 +111,6 @@ namespace {
     /// added to the AvailableQueue.
     std::vector<SUnit*> PendingQueue;
 
-    /// Topo - A topological ordering for SUnits.
-    ScheduleDAGTopologicalSort Topo;
-
     /// HazardRec - The hazard recognizer to use.
     ScheduleHazardRecognizer *HazardRec;
 
@@ -198,7 +195,7 @@ SchedulePostRATDList::SchedulePostRATDList(
   AliasAnalysis *AA, const RegisterClassInfo &RCI,
   TargetSubtargetInfo::AntiDepBreakMode AntiDepMode,
   SmallVectorImpl<const TargetRegisterClass*> &CriticalPathRCs)
-  : ScheduleDAGInstrs(MF, MLI, MDT, /*IsPostRA=*/true), Topo(SUnits), AA(AA),
+  : ScheduleDAGInstrs(MF, MLI, MDT, /*IsPostRA=*/true), AA(AA),
     LiveRegs(TRI->getNumRegs())
 {
   const TargetMachine &TM = MF.getTarget();
@@ -240,6 +237,7 @@ void SchedulePostRATDList::exitRegion() {
   ScheduleDAGInstrs::exitRegion();
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dumpSchedule - dump the scheduled Sequence.
 void SchedulePostRATDList::dumpSchedule() const {
   for (unsigned i = 0, e = Sequence.size(); i != e; i++) {
@@ -249,6 +247,7 @@ void SchedulePostRATDList::dumpSchedule() const {
       dbgs() << "**** NOOP ****\n";
   }
 }
+#endif
 
 bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
   TII = Fn.getTarget().getInstrInfo();
@@ -298,7 +297,7 @@ bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
       static int bbcnt = 0;
       if (bbcnt++ % DebugDiv != DebugMod)
         continue;
-      dbgs() << "*** DEBUG scheduling " << Fn.getFunction()->getName()
+      dbgs() << "*** DEBUG scheduling " << Fn.getName()
              << ":BB#" << MBB->getNumber() << " ***\n";
     }
 #endif
@@ -488,7 +487,6 @@ void SchedulePostRATDList::FixupKills(MachineBasicBlock *MBB) {
   DEBUG(dbgs() << "Fixup kills for BB#" << MBB->getNumber() << '\n');
 
   BitVector killedRegs(TRI->getNumRegs());
-  BitVector ReservedRegs = TRI->getReservedRegs(MF);
 
   StartBlockForKills(MBB);
 
@@ -529,7 +527,7 @@ void SchedulePostRATDList::FixupKills(MachineBasicBlock *MBB) {
       MachineOperand &MO = MI->getOperand(i);
       if (!MO.isReg() || !MO.isUse()) continue;
       unsigned Reg = MO.getReg();
-      if ((Reg == 0) || ReservedRegs.test(Reg)) continue;
+      if ((Reg == 0) || MRI.isReserved(Reg)) continue;
 
       bool kill = false;
       if (!killedRegs.test(Reg)) {
@@ -564,7 +562,7 @@ void SchedulePostRATDList::FixupKills(MachineBasicBlock *MBB) {
       MachineOperand &MO = MI->getOperand(i);
       if (!MO.isReg() || !MO.isUse() || MO.isUndef()) continue;
       unsigned Reg = MO.getReg();
-      if ((Reg == 0) || ReservedRegs.test(Reg)) continue;
+      if ((Reg == 0) || MRI.isReserved(Reg)) continue;
 
       LiveRegs.set(Reg);
 
@@ -579,10 +577,14 @@ void SchedulePostRATDList::FixupKills(MachineBasicBlock *MBB) {
 //===----------------------------------------------------------------------===//
 
 /// ReleaseSucc - Decrement the NumPredsLeft count of a successor. Add it to
-/// the PendingQueue if the count reaches zero. Also update its cycle bound.
+/// the PendingQueue if the count reaches zero.
 void SchedulePostRATDList::ReleaseSucc(SUnit *SU, SDep *SuccEdge) {
   SUnit *SuccSU = SuccEdge->getSUnit();
 
+  if (SuccEdge->isWeak()) {
+    --SuccSU->WeakPredsLeft;
+    return;
+  }
 #ifndef NDEBUG
   if (SuccSU->NumPredsLeft == 0) {
     dbgs() << "*** Scheduling failed! ***\n";
@@ -652,8 +654,7 @@ void SchedulePostRATDList::ListScheduleTopDown() {
   // Add all leaves to Available queue.
   for (unsigned i = 0, e = SUnits.size(); i != e; ++i) {
     // It is available if it has no predecessors.
-    bool available = SUnits[i].Preds.empty();
-    if (available) {
+    if (!SUnits[i].NumPredsLeft && !SUnits[i].isAvailable) {
       AvailableQueue.push(&SUnits[i]);
       SUnits[i].isAvailable = true;
     }

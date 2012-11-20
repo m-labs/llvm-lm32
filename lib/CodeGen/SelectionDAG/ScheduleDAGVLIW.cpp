@@ -25,7 +25,7 @@
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -123,6 +123,8 @@ void ScheduleDAGVLIW::releaseSucc(SUnit *SU, const SDep &D) {
     llvm_unreachable(0);
   }
 #endif
+  assert(!D.isWeak() && "unexpected artificial DAG edge");
+
   --SuccSU->NumPredsLeft;
 
   SuccSU->setDepthToAtLeast(SU->getDepth() + D.getLatency());

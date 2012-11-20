@@ -30,10 +30,11 @@ STATISTIC(FilledSlots, "Number of delay slots filled");
 STATISTIC(UsefulSlots, "Number of delay slots filled with instructions that"
                        " are not NOP.");
 
-static cl::opt<bool> EnableDelaySlotFiller(
-  "enable-mips-delay-filler",
+static cl::opt<bool> DisableDelaySlotFiller(
+  "disable-mips-delay-filler",
   cl::init(false),
-  cl::desc("Fill the Mips delay slots useful instructions."),
+  cl::desc("Disable the delay slot filler, which attempts to fill the Mips"
+           "delay slots with useful instructions."),
   cl::Hidden);
 
 // This option can be used to silence complaints by machine verifier passes.
@@ -114,7 +115,9 @@ runOnMachineBasicBlock(MachineBasicBlock &MBB) {
 
       InstrIter D;
 
-      if (EnableDelaySlotFiller && findDelayInstr(MBB, I, D)) {
+      // Delay slot filling is disabled at -O0.
+      if (!DisableDelaySlotFiller && (TM.getOptLevel() != CodeGenOpt::None) &&
+          findDelayInstr(MBB, I, D)) {
         MBB.splice(llvm::next(I), &MBB, D);
         ++UsefulSlots;
       } else
@@ -228,31 +231,48 @@ bool Filler::delayHasHazard(InstrIter candidate,
   return false;
 }
 
+// Helper function for getting a MachineOperand's register number and adding it
+// to RegDefs or RegUses.
+static void insertDefUse(const MachineOperand &MO,
+                         SmallSet<unsigned, 32> &RegDefs,
+                         SmallSet<unsigned, 32> &RegUses,
+                         unsigned ExcludedReg = 0) {
+  unsigned Reg;
+
+  if (!MO.isReg() || !(Reg = MO.getReg()) || (Reg == ExcludedReg))
+    return;
+
+  if (MO.isDef())
+    RegDefs.insert(Reg);
+  else if (MO.isUse())
+    RegUses.insert(Reg);
+}
+
 // Insert Defs and Uses of MI into the sets RegDefs and RegUses.
 void Filler::insertDefsUses(InstrIter MI,
                             SmallSet<unsigned, 32> &RegDefs,
                             SmallSet<unsigned, 32> &RegUses) {
-  // If MI is a call or return, just examine the explicit non-variadic operands.
-  MCInstrDesc MCID = MI->getDesc();
-  unsigned e = MI->isCall() || MI->isReturn() ? MCID.getNumOperands() :
-                                                MI->getNumOperands();
+  unsigned I, E = MI->getDesc().getNumOperands();
 
-  // Add RA to RegDefs to prevent users of RA from going into delay slot.
-  if (MI->isCall())
+  for (I = 0; I != E; ++I)
+    insertDefUse(MI->getOperand(I), RegDefs, RegUses);
+
+  // If MI is a call, add RA to RegDefs to prevent users of RA from going into
+  // delay slot.
+  if (MI->isCall()) {
     RegDefs.insert(Mips::RA);
-
-  for (unsigned i = 0; i != e; ++i) {
-    const MachineOperand &MO = MI->getOperand(i);
-    unsigned Reg;
-
-    if (!MO.isReg() || !(Reg = MO.getReg()))
-      continue;
-
-    if (MO.isDef())
-      RegDefs.insert(Reg);
-    else if (MO.isUse())
-      RegUses.insert(Reg);
+    return;
   }
+
+  // Return if MI is a return.
+  if (MI->isReturn())
+    return;
+
+  // Examine the implicit operands. Exclude register AT which is in the list of
+  // clobbered registers of branch instructions.
+  E = MI->getNumOperands();
+  for (; I != E; ++I)
+    insertDefUse(MI->getOperand(I), RegDefs, RegUses, Mips::AT);
 }
 
 //returns true if the Reg or its alias is in the RegSet.

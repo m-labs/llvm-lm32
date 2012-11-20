@@ -15,9 +15,13 @@
 #ifndef LLVM_DEBUGINFO_DICONTEXT_H
 #define LLVM_DEBUGINFO_DICONTEXT_H
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/RelocVisitor.h"
 #include "llvm/Support/DataTypes.h"
-#include <cstring>
 
 namespace llvm {
 
@@ -25,31 +29,49 @@ class raw_ostream;
 
 /// DILineInfo - a format-neutral container for source line information.
 class DILineInfo {
-  const char *FileName;
-  const char *FunctionName;
+  SmallString<16> FileName;
+  SmallString<16> FunctionName;
   uint32_t Line;
   uint32_t Column;
 public:
   DILineInfo()
     : FileName("<invalid>"), FunctionName("<invalid>"),
       Line(0), Column(0) {}
-  DILineInfo(const char *fileName, const char *functionName,
+  DILineInfo(const SmallString<16> &fileName,
+             const SmallString<16> &functionName,
              uint32_t line, uint32_t column)
     : FileName(fileName), FunctionName(functionName),
       Line(line), Column(column) {}
 
-  const char *getFileName() const { return FileName; }
-  const char *getFunctionName() const { return FunctionName; }
+  const char *getFileName() { return FileName.c_str(); }
+  const char *getFunctionName() { return FunctionName.c_str(); }
   uint32_t getLine() const { return Line; }
   uint32_t getColumn() const { return Column; }
 
   bool operator==(const DILineInfo &RHS) const {
     return Line == RHS.Line && Column == RHS.Column &&
-           std::strcmp(FileName, RHS.FileName) == 0 &&
-           std::strcmp(FunctionName, RHS.FunctionName) == 0;
+           FileName.equals(RHS.FileName) &&
+           FunctionName.equals(RHS.FunctionName);
   }
   bool operator!=(const DILineInfo &RHS) const {
     return !(*this == RHS);
+  }
+};
+
+/// DIInliningInfo - a format-neutral container for inlined code description.
+class DIInliningInfo {
+  SmallVector<DILineInfo, 4> Frames;
+ public:
+  DIInliningInfo() {}
+  DILineInfo getFrame(unsigned Index) const {
+    assert(Index < Frames.size());
+    return Frames[Index];
+  }
+  uint32_t getNumberOfFrames() const {
+    return Frames.size();
+  }
+  void addFrame(const DILineInfo &Frame) {
+    Frames.push_back(Frame);
   }
 };
 
@@ -60,7 +82,8 @@ class DILineInfoSpecifier {
 public:
   enum Specification {
     FileLineInfo = 1 << 0,
-    FunctionName = 1 << 1
+    AbsoluteFilePath = 1 << 1,
+    FunctionName = 1 << 2
   };
   // Use file/line info by default.
   DILineInfoSpecifier(uint32_t flags = FileLineInfo) : Flags(flags) {}
@@ -69,22 +92,26 @@ public:
   }
 };
 
+// In place of applying the relocations to the data we've read from disk we use
+// a separate mapping table to the side and checking that at locations in the
+// dwarf where we expect relocated values. This adds a bit of complexity to the
+// dwarf parsing/extraction at the benefit of not allocating memory for the
+// entire size of the debug info sections.
+typedef DenseMap<uint64_t, std::pair<uint8_t, int64_t> > RelocAddrMap;
+
 class DIContext {
 public:
   virtual ~DIContext();
 
   /// getDWARFContext - get a context for binary DWARF data.
-  static DIContext *getDWARFContext(bool isLittleEndian,
-                                    StringRef infoSection,
-                                    StringRef abbrevSection,
-                                    StringRef aRangeSection = StringRef(),
-                                    StringRef lineSection = StringRef(),
-                                    StringRef stringSection = StringRef());
+  static DIContext *getDWARFContext(object::ObjectFile *);
 
   virtual void dump(raw_ostream &OS) = 0;
 
-  virtual DILineInfo getLineInfoForAddress(uint64_t address,
-      DILineInfoSpecifier specifier = DILineInfoSpecifier()) = 0;
+  virtual DILineInfo getLineInfoForAddress(uint64_t Address,
+      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) = 0;
+  virtual DIInliningInfo getInliningInfoForAddress(uint64_t Address,
+      DILineInfoSpecifier Specifier = DILineInfoSpecifier()) = 0;
 };
 
 }

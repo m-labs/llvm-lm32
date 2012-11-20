@@ -13,8 +13,9 @@
 
 #include "ARMSubtarget.h"
 #include "ARMBaseRegisterInfo.h"
+#include "ARMBaseInstrInfo.h"
 #include "llvm/GlobalValue.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Support/CommandLine.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
@@ -29,6 +30,10 @@ ReserveR9("arm-reserve-r9", cl::Hidden,
 
 static cl::opt<bool>
 DarwinUseMOVT("arm-darwin-use-movt", cl::init(true), cl::Hidden);
+
+static cl::opt<bool>
+UseFusedMulOps("arm-use-mulops",
+               cl::init(true), cl::Hidden);
 
 static cl::opt<bool>
 StrictAlign("arm-strict-align", cl::Hidden,
@@ -49,6 +54,7 @@ ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
   , HasVFPv4(false)
   , HasNEON(false)
   , UseNEONForSinglePrecisionFP(false)
+  , UseMulOps(UseFusedMulOps)
   , SlowFPVMLx(false)
   , HasVMLxForwarding(false)
   , SlowFPBrcc(false)
@@ -63,6 +69,7 @@ ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
   , HasFP16(false)
   , HasD16(false)
   , HasHardwareDivide(false)
+  , HasHardwareDivideInARM(false)
   , HasT2ExtractPack(false)
   , HasDataBarrier(false)
   , Pref32BitThumb(false)
@@ -96,6 +103,9 @@ ARMSubtarget::ARMSubtarget(const std::string &TT, const std::string &CPU,
   // ARM version or CPU and then remove this.
   if (!HasV6T2Ops && hasThumb2())
     HasV4TOps = HasV5TOps = HasV5TEOps = HasV6Ops = HasV6T2Ops = true;
+
+  // Keep a pointer to static instruction cost data for the specified CPU.
+  SchedModel = getSchedModelForCPU(CPUString);
 
   // Initialize scheduling itinerary for the specified CPU.
   InstrItins = getInstrItineraryForCPU(CPUString);
@@ -179,15 +189,7 @@ ARMSubtarget::GVIsIndirectSymbol(const GlobalValue *GV,
 }
 
 unsigned ARMSubtarget::getMispredictionPenalty() const {
-  // If we have a reasonable estimate of the pipeline depth, then we can
-  // estimate the penalty of a misprediction based on that.
-  if (isCortexA8())
-    return 13;
-  else if (isCortexA9())
-    return 8;
-
-  // Otherwise, just return a sensible default.
-  return 10;
+  return SchedModel->MispredictPenalty;
 }
 
 bool ARMSubtarget::enablePostRAScheduler(

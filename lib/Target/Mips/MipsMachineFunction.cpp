@@ -33,11 +33,27 @@ unsigned MipsFunctionInfo::getGlobalBaseReg() {
 
   const MipsSubtarget &ST = MF.getTarget().getSubtarget<MipsSubtarget>();
 
-  const TargetRegisterClass *RC = ST.isABI_N64() ?
-    (const TargetRegisterClass*)&Mips::CPU64RegsRegClass :
-    (const TargetRegisterClass*)&Mips::CPURegsRegClass;
-
+  const TargetRegisterClass *RC;
+  if (ST.inMips16Mode())
+    RC=(const TargetRegisterClass*)&Mips::CPU16RegsRegClass;
+  else
+    RC = ST.isABI_N64() ?
+      (const TargetRegisterClass*)&Mips::CPU64RegsRegClass :
+      (const TargetRegisterClass*)&Mips::CPURegsRegClass;
   return GlobalBaseReg = MF.getRegInfo().createVirtualRegister(RC);
+}
+
+bool MipsFunctionInfo::mips16SPAliasRegSet() const {
+  return Mips16SPAliasReg;
+}
+unsigned MipsFunctionInfo::getMips16SPAliasReg() {
+  // Return if it has already been initialized.
+  if (Mips16SPAliasReg)
+    return Mips16SPAliasReg;
+
+  const TargetRegisterClass *RC;
+  RC=(const TargetRegisterClass*)&Mips::CPU16RegsRegClass;
+  return Mips16SPAliasReg = MF.getRegInfo().createVirtualRegister(RC);
 }
 
 void MipsFunctionInfo::anchor() { }

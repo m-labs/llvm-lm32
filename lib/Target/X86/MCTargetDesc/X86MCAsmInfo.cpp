@@ -34,6 +34,10 @@ AsmWriterFlavor("x86-asm-syntax", cl::init(ATT),
              clEnumValN(Intel, "intel", "Emit Intel-style assembly"),
              clEnumValEnd));
 
+static cl::opt<bool>
+MarkedJTDataRegions("mark-data-regions", cl::init(false),
+  cl::desc("Mark code section jump table data regions."),
+  cl::Hidden);
 
 void X86MCAsmInfoDarwin::anchor() { }
 
@@ -59,6 +63,7 @@ X86MCAsmInfoDarwin::X86MCAsmInfoDarwin(const Triple &T) {
 
   SupportsDebugInformation = true;
   DwarfUsesInlineInfoSection = true;
+  UseDataRegionDirectives = MarkedJTDataRegions;
 
   // Exceptions handling
   ExceptionsType = ExceptionHandling::DwarfCFI;
@@ -91,9 +96,10 @@ X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
   // Exceptions handling
   ExceptionsType = ExceptionHandling::DwarfCFI;
 
-  // OpenBSD has buggy support for .quad in 32-bit mode, just split into two
-  // .words.
-  if (T.getOS() == Triple::OpenBSD && T.getArch() == Triple::x86)
+  // OpenBSD and Bitrig have buggy support for .quad in 32-bit mode, just split
+  // into two .words.
+  if ((T.getOS() == Triple::OpenBSD || T.getOS() == Triple::Bitrig) &&
+       T.getArch() == Triple::x86)
     Data64bitsDirective = 0;
 }
 

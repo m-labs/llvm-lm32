@@ -339,52 +339,20 @@ static void IncorporateWeight(APInt &LHS, const APInt &RHS, unsigned Opcode) {
   }
 }
 
-/// EvaluateRepeatedConstant - Compute C op C op ... op C where the constant C
-/// is repeated Weight times.
-static Constant *EvaluateRepeatedConstant(unsigned Opcode, Constant *C,
-                                          APInt Weight) {
-  // For addition the result can be efficiently computed as the product of the
-  // constant and the weight.
-  if (Opcode == Instruction::Add)
-    return ConstantExpr::getMul(C, ConstantInt::get(C->getContext(), Weight));
-
-  // The weight might be huge, so compute by repeated squaring to ensure that
-  // compile time is proportional to the logarithm of the weight.
-  Constant *Result = 0;
-  Constant *Power = C; // Successively C, C op C, (C op C) op (C op C) etc.
-  // Visit the bits in Weight.
-  while (Weight != 0) {
-    // If the current bit in Weight is non-zero do Result = Result op Power.
-    if (Weight[0])
-      Result = Result ? ConstantExpr::get(Opcode, Result, Power) : Power;
-    // Move on to the next bit if any more are non-zero.
-    Weight = Weight.lshr(1);
-    if (Weight.isMinValue())
-      break;
-    // Square the power.
-    Power = ConstantExpr::get(Opcode, Power, Power);
-  }
-
-  assert(Result && "Only positive weights supported!");
-  return Result;
-}
-
 typedef std::pair<Value*, APInt> RepeatedValue;
 
 /// LinearizeExprTree - Given an associative binary expression, return the leaf
 /// nodes in Ops along with their weights (how many times the leaf occurs).  The
 /// original expression is the same as
 ///   (Ops[0].first op Ops[0].first op ... Ops[0].first)  <- Ops[0].second times
-/// op 
+/// op
 ///   (Ops[1].first op Ops[1].first op ... Ops[1].first)  <- Ops[1].second times
 /// op
 ///   ...
 /// op
 ///   (Ops[N].first op Ops[N].first op ... Ops[N].first)  <- Ops[N].second times
 ///
-/// Note that the values Ops[0].first, ..., Ops[N].first are all distinct, and
-/// they are all non-constant except possibly for the last one, which if it is
-/// constant will have weight one (Ops[N].second === 1).
+/// Note that the values Ops[0].first, ..., Ops[N].first are all distinct.
 ///
 /// This routine may modify the function, in which case it returns 'true'.  The
 /// changes it makes may well be destructive, changing the value computed by 'I'
@@ -455,10 +423,6 @@ static bool LinearizeExprTree(BinaryOperator *I,
   assert(Instruction::isAssociative(Opcode) &&
          Instruction::isCommutative(Opcode) &&
          "Expected an associative and commutative operation!");
-  // If we see an absorbing element then the entire expression must be equal to
-  // it.  For example, if this is a multiplication expression and zero occurs as
-  // an operand somewhere in it then the result of the expression must be zero.
-  Constant *Absorber = ConstantExpr::getBinOpAbsorber(Opcode, I->getType());
 
   // Visit all operands of the expression, keeping track of their weight (the
   // number of paths from the expression root to the operand, or if you like
@@ -506,13 +470,6 @@ static bool LinearizeExprTree(BinaryOperator *I,
       DEBUG(dbgs() << "OPERAND: " << *Op << " (" << Weight << ")\n");
       assert(!Op->use_empty() && "No uses, so how did we get to it?!");
 
-      // If the expression contains an absorbing element then there is no need
-      // to analyze it further: it must evaluate to the absorbing element.
-      if (Op == Absorber && !Weight.isMinValue()) {
-        Ops.push_back(std::make_pair(Absorber, APInt(Bitwidth, 1)));
-        return MadeChange;
-      }
-
       // If this is a binary operation of the right kind with only one use then
       // add its operands to the expression.
       if (BinaryOperator *BO = isReassociableOp(Op, Opcode)) {
@@ -543,6 +500,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
         // Update the number of paths to the leaf.
         IncorporateWeight(It->second, Weight, Opcode);
 
+#if 0   // TODO: Re-enable once PR13021 is fixed.
         // The leaf already has one use from inside the expression.  As we want
         // exactly one such use, drop this new use of the leaf.
         assert(!Op->hasOneUse() && "Only one use, but we got here twice!");
@@ -559,6 +517,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
           Leaves.erase(It);
           continue;
         }
+#endif
 
         // If we still have uses that are not accounted for by the expression
         // then it is not safe to modify the value.
@@ -602,7 +561,6 @@ static bool LinearizeExprTree(BinaryOperator *I,
 
   // The leaves, repeated according to their weights, represent the linearized
   // form of the expression.
-  Constant *Cst = 0; // Accumulate constants here.
   for (unsigned i = 0, e = LeafOrder.size(); i != e; ++i) {
     Value *V = LeafOrder[i];
     LeafMap::iterator It = Leaves.find(V);
@@ -616,31 +574,14 @@ static bool LinearizeExprTree(BinaryOperator *I,
       continue;
     // Ensure the leaf is only output once.
     It->second = 0;
-    // Glob all constants together into Cst.
-    if (Constant *C = dyn_cast<Constant>(V)) {
-      C = EvaluateRepeatedConstant(Opcode, C, Weight);
-      Cst = Cst ? ConstantExpr::get(Opcode, Cst, C) : C;
-      continue;
-    }
-    // Add non-constant
     Ops.push_back(std::make_pair(V, Weight));
-  }
-
-  // Add any constants back into Ops, all globbed together and reduced to having
-  // weight 1 for the convenience of users.
-  Constant *Identity = ConstantExpr::getBinOpIdentity(Opcode, I->getType());
-  if (Cst && Cst != Identity) {
-    // If combining multiple constants resulted in the absorber then the entire
-    // expression must evaluate to the absorber.
-    if (Cst == Absorber)
-      Ops.clear();
-    Ops.push_back(std::make_pair(Cst, APInt(Bitwidth, 1)));
   }
 
   // For nilpotent operations or addition there may be no operands, for example
   // because the expression was "X xor X" or consisted of 2^Bitwidth additions:
   // in both cases the weight reduces to 0 causing the value to be skipped.
   if (Ops.empty()) {
+    Constant *Identity = ConstantExpr::getBinOpIdentity(Opcode, I->getType());
     assert(Identity && "Associative operation without identity!");
     Ops.push_back(std::make_pair(Identity, APInt(Bitwidth, 1)));
   }
@@ -654,8 +595,8 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
                                   SmallVectorImpl<ValueEntry> &Ops) {
   assert(Ops.size() > 1 && "Single values should be used directly!");
 
-  // Since our optimizations never increase the number of operations, the new
-  // expression can always be written by reusing the existing binary operators
+  // Since our optimizations should never increase the number of operations, the
+  // new expression can usually be written reusing the existing binary operators
   // from the original expression tree, without creating any new instructions,
   // though the rewritten expression may have a completely different topology.
   // We take care to not change anything if the new expression will be the same
@@ -668,6 +609,20 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
   SmallVector<BinaryOperator*, 8> NodesToRewrite;
   unsigned Opcode = I->getOpcode();
   BinaryOperator *Op = I;
+
+  /// NotRewritable - The operands being written will be the leaves of the new
+  /// expression and must not be used as inner nodes (via NodesToRewrite) by
+  /// mistake.  Inner nodes are always reassociable, and usually leaves are not
+  /// (if they were they would have been incorporated into the expression and so
+  /// would not be leaves), so most of the time there is no danger of this.  But
+  /// in rare cases a leaf may become reassociable if an optimization kills uses
+  /// of it, or it may momentarily become reassociable during rewriting (below)
+  /// due it being removed as an operand of one of its uses.  Ensure that misuse
+  /// of leaf nodes as inner nodes cannot occur by remembering all of the future
+  /// leaves and refusing to reuse any of them as inner nodes.
+  SmallPtrSet<Value*, 8> NotRewritable;
+  for (unsigned i = 0, e = Ops.size(); i != e; ++i)
+    NotRewritable.insert(Ops[i].Op);
 
   // ExpressionChanged - Non-null if the rewritten expression differs from the
   // original in some non-trivial way, requiring the clearing of optional flags.
@@ -701,12 +656,14 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
       // the old operands with the new ones.
       DEBUG(dbgs() << "RA: " << *Op << '\n');
       if (NewLHS != OldLHS) {
-        if (BinaryOperator *BO = isReassociableOp(OldLHS, Opcode))
+        BinaryOperator *BO = isReassociableOp(OldLHS, Opcode);
+        if (BO && !NotRewritable.count(BO))
           NodesToRewrite.push_back(BO);
         Op->setOperand(0, NewLHS);
       }
       if (NewRHS != OldRHS) {
-        if (BinaryOperator *BO = isReassociableOp(OldRHS, Opcode))
+        BinaryOperator *BO = isReassociableOp(OldRHS, Opcode);
+        if (BO && !NotRewritable.count(BO))
           NodesToRewrite.push_back(BO);
         Op->setOperand(1, NewRHS);
       }
@@ -730,7 +687,8 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
         Op->swapOperands();
       } else {
         // Overwrite with the new right-hand side.
-        if (BinaryOperator *BO = isReassociableOp(Op->getOperand(1), Opcode))
+        BinaryOperator *BO = isReassociableOp(Op->getOperand(1), Opcode);
+        if (BO && !NotRewritable.count(BO))
           NodesToRewrite.push_back(BO);
         Op->setOperand(1, NewRHS);
         ExpressionChanged = Op;
@@ -743,7 +701,8 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
     // Now deal with the left-hand side.  If this is already an operation node
     // from the original expression then just rewrite the rest of the expression
     // into it.
-    if (BinaryOperator *BO = isReassociableOp(Op->getOperand(0), Opcode)) {
+    BinaryOperator *BO = isReassociableOp(Op->getOperand(0), Opcode);
+    if (BO && !NotRewritable.count(BO)) {
       Op = BO;
       continue;
     }
@@ -1444,9 +1403,26 @@ Value *Reassociate::OptimizeExpression(BinaryOperator *I,
                                        SmallVectorImpl<ValueEntry> &Ops) {
   // Now that we have the linearized expression tree, try to optimize it.
   // Start by folding any constants that we found.
-  if (Ops.size() == 1) return Ops[0].Op;
-
+  Constant *Cst = 0;
   unsigned Opcode = I->getOpcode();
+  while (!Ops.empty() && isa<Constant>(Ops.back().Op)) {
+    Constant *C = cast<Constant>(Ops.pop_back_val().Op);
+    Cst = Cst ? ConstantExpr::get(Opcode, C, Cst) : C;
+  }
+  // If there was nothing but constants then we are done.
+  if (Ops.empty())
+    return Cst;
+
+  // Put the combined constant back at the end of the operand list, except if
+  // there is no point.  For example, an add of 0 gets dropped here, while a
+  // multiplication by zero turns the whole expression into zero.
+  if (Cst && Cst != ConstantExpr::getBinOpIdentity(Opcode, I->getType())) {
+    if (Cst == ConstantExpr::getBinOpAbsorber(Opcode, I->getType()))
+      return Cst;
+    Ops.push_back(ValueEntry(0, Cst));
+  }
+
+  if (Ops.size() == 1) return Ops[0].Op;
 
   // Handle destructive annihilation due to identities between elements in the
   // argument list here.
@@ -1581,7 +1557,8 @@ void Reassociate::OptimizeInst(Instruction *I) {
 
   // If this is an interior node of a reassociable tree, ignore it until we
   // get to the root of the tree, to avoid N^2 analysis.
-  if (BO->hasOneUse() && BO->use_back()->getOpcode() == BO->getOpcode())
+  unsigned Opcode = BO->getOpcode();
+  if (BO->hasOneUse() && BO->use_back()->getOpcode() == Opcode)
     return;
 
   // If this is an add tree that is used by a sub instruction, ignore it

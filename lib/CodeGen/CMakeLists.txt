@@ -45,6 +45,7 @@ add_llvm_library(LLVMCodeGen
   MachineCopyPropagation.cpp
   MachineCSE.cpp
   MachineDominators.cpp
+  MachinePostDominators.cpp
   MachineFunction.cpp
   MachineFunctionAnalysis.cpp
   MachineFunctionPass.cpp
@@ -61,6 +62,7 @@ add_llvm_library(LLVMCodeGen
   MachineSSAUpdater.cpp
   MachineScheduler.cpp
   MachineSink.cpp
+  MachineTraceMetrics.cpp
   MachineVerifier.cpp
   OcamlGC.cpp
   OptimizePHIs.cpp
@@ -94,12 +96,14 @@ add_llvm_library(LLVMCodeGen
   SplitKit.cpp
   StackProtector.cpp
   StackSlotColoring.cpp
+  StackColoring.cpp
   StrongPHIElimination.cpp
   TailDuplication.cpp
   TargetFrameLoweringImpl.cpp
   TargetInstrInfoImpl.cpp
   TargetLoweringObjectFileImpl.cpp
   TargetOptionsImpl.cpp
+  TargetSchedule.cpp
   TwoAddressInstructionPass.cpp
   UnreachableBlockElim.cpp
   VirtRegMap.cpp

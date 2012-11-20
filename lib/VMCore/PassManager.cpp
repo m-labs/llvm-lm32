@@ -309,6 +309,14 @@ public:
   /// whether any of the passes modifies the module, and if so, return true.
   bool runOnModule(Module &M);
 
+  /// doInitialization - Run all of the initializers for the module passes.
+  ///
+  bool doInitialization();
+
+  /// doFinalization - Run all of the finalizers for the module passes.
+  ///
+  bool doFinalization();
+
   /// Pass Manager itself does not invalidate any analysis info.
   void getAnalysisUsage(AnalysisUsage &Info) const {
     Info.setPreservesAll();
@@ -393,6 +401,14 @@ public:
   /// run - Execute all of the passes scheduled for execution.  Keep track of
   /// whether any of the passes modifies the module, and if so, return true.
   bool run(Module &M);
+
+  /// doInitialization - Run all of the initializers for the module passes.
+  ///
+  bool doInitialization();
+
+  /// doFinalization - Run all of the finalizers for the module passes.
+  ///
+  bool doFinalization();
 
   /// Pass Manager itself does not invalidate any analysis info.
   void getAnalysisUsage(AnalysisUsage &Info) const {
@@ -593,6 +609,26 @@ void PMTopLevelManager::schedulePass(Pass *P) {
       Pass *AnalysisPass = findAnalysisPass(*I);
       if (!AnalysisPass) {
         const PassInfo *PI = PassRegistry::getPassRegistry()->getPassInfo(*I);
+
+        if (PI == NULL) {
+          // Pass P is not in the global PassRegistry
+          dbgs() << "Pass '"  << P->getPassName() << "' is not initialized." << "\n";
+          dbgs() << "Verify if there is a pass dependency cycle." << "\n";
+          dbgs() << "Required Passes:" << "\n";
+          for (AnalysisUsage::VectorType::const_iterator I2 = RequiredSet.begin(),
+                 E = RequiredSet.end(); I2 != E && I2 != I; ++I2) {
+            Pass *AnalysisPass2 = findAnalysisPass(*I2);
+            if (AnalysisPass2) {
+              dbgs() << "\t" << AnalysisPass2->getPassName() << "\n";
+            }
+            else {
+              dbgs() << "\t"   << "Error: Required pass not found! Possible causes:"  << "\n";
+              dbgs() << "\t\t" << "- Pass misconfiguration (e.g.: missing macros)"    << "\n";
+              dbgs() << "\t\t" << "- Corruption of the global PassRegistry"           << "\n";
+            }
+          }
+        }
+
         assert(PI && "Expected required passes to be initialized");
         AnalysisPass = PI->createPass();
         if (P->getPotentialPassManagerType () ==
@@ -1169,7 +1205,7 @@ void PMDataManager::dumpAnalysisUsage(StringRef Msg, const Pass *P,
   assert(PassDebugging >= Details);
   if (Set.empty())
     return;
-  dbgs() << (void*)P << std::string(getDepth()*2+3, ' ') << Msg << " Analyses:";
+  dbgs() << (const void*)P << std::string(getDepth()*2+3, ' ') << Msg << " Analyses:";
   for (unsigned i = 0; i != Set.size(); ++i) {
     if (i) dbgs() << ',';
     const PassInfo *PInf = PassRegistry::getPassRegistry()->getPassInfo(Set[i]);
@@ -1574,6 +1610,29 @@ MPPassManager::runOnModule(Module &M) {
     FPP->releaseMemoryOnTheFly();
     Changed |= FPP->doFinalization(M);
   }
+
+  return Changed;
+}
+
+/// Run all of the initializers for the module passes.
+///
+bool MPPassManager::doInitialization() {
+  bool Changed = false;
+
+  for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index)
+    Changed |= getContainedPass(Index)->doInitialization();
+
+  return Changed;
+}
+
+/// Run all of the finalizers for the module passes.
+///
+bool MPPassManager::doFinalization() {
+  bool Changed = false;
+
+  for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index)
+    Changed |= getContainedPass(Index)->doFinalization();
+
   return Changed;
 }
 
@@ -1620,6 +1679,25 @@ Pass* MPPassManager::getOnTheFlyPass(Pass *MP, AnalysisID PI, Function &F){
 
 //===----------------------------------------------------------------------===//
 // PassManagerImpl implementation
+
+bool PassManagerImpl::doInitialization() {
+  bool Changed = false;
+
+  for (unsigned Index = 0; Index < getNumContainedManagers(); ++Index)
+    Changed |= getContainedManager(Index)->doInitialization();
+
+  return Changed;
+}
+
+bool PassManagerImpl::doFinalization() {
+  bool Changed = false;
+
+  for (unsigned Index = 0; Index < getNumContainedManagers(); ++Index)
+    Changed |= getContainedManager(Index)->doFinalization();
+
+  return Changed;
+}
+
 //
 /// run - Execute all of the passes scheduled for execution.  Keep track of
 /// whether any of the passes modifies the module, and if so, return true.
@@ -1662,6 +1740,18 @@ void PassManager::add(Pass *P) {
 /// whether any of the passes modifies the module, and if so, return true.
 bool PassManager::run(Module &M) {
   return PM->run(M);
+}
+
+/// doInitialization - Run all of the initializers for the module passes.
+///
+bool PassManager::doInitialization() {
+  return PM->doInitialization();
+}
+
+/// doFinalization - Run all of the finalizers for the module passes.
+///
+bool PassManager::doFinalization() {
+  return PM->doFinalization();
 }
 
 //===----------------------------------------------------------------------===//

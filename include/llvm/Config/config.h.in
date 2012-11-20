@@ -6,6 +6,9 @@
 /* Bug report URL. */
 #undef BUG_REPORT_URL
 
+/* Define if we have libxml2 */
+#undef CLANG_HAVE_LIBXML
+
 /* Relative directory for resource files */
 #undef CLANG_RESOURCE_DIR
 
@@ -14,6 +17,9 @@
 
 /* Default <path> to all compiler invocations for --sysroot=<path>. */
 #undef DEFAULT_SYSROOT
+
+/* Define if you want backtraces on crash */
+#undef ENABLE_BACKTRACES
 
 /* Define if position independent code is enabled */
 #undef ENABLE_PIC
@@ -551,6 +557,9 @@
 
 /* Has gcc/MSVC atomic intrinsics */
 #undef LLVM_HAS_ATOMICS
+
+/* Host triple LLVM will be executed on */
+#undef LLVM_HOSTTRIPLE
 
 /* Installation directory for include files */
 #undef LLVM_INCLUDEDIR

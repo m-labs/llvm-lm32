@@ -79,10 +79,11 @@ tree.  The standard header looks like this:
   // License. See LICENSE.TXT for details.
   //
   //===----------------------------------------------------------------------===//
-  //
-  // This file contains the declaration of the Instruction class, which is the
-  // base class for all of the VM instructions.
-  //
+  ///
+  /// \file
+  /// \brief This file contains the declaration of the Instruction class, which is
+  /// the base class for all of the VM instructions.
+  ///
   //===----------------------------------------------------------------------===//
 
 A few things to note about this particular format: The "``-*- C++ -*-``" string
@@ -100,10 +101,12 @@ The next section in the file is a concise note that defines the license that the
 file is released under.  This makes it perfectly clear what terms the source
 code can be distributed under and should not be modified in any way.
 
-The main body of the description does not have to be very long in most cases.
-Here it's only two lines.  If an algorithm is being implemented or something
-tricky is going on, a reference to the paper where it is published should be
-included, as well as any notes or *gotchas* in the code to watch out for.
+The main body is a ``doxygen`` comment describing the purpose of the file.  It
+should have a ``\brief`` command that describes the file in one or two
+sentences.  Any additional information should be separated by a blank line.  If
+an algorithm is being implemented or something tricky is going on, a reference
+to the paper where it is published should be included, as well as any notes or
+*gotchas* in the code to watch out for.
 
 Class overviews
 """""""""""""""
@@ -142,6 +145,132 @@ useful to use C style (``/* */``) comments however:
 
 To comment out a large block of code, use ``#if 0`` and ``#endif``. These nest
 properly and are better behaved in general than C style comments.
+
+Doxygen Use in Documentation Comments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use the ``\file`` command to turn the standard file header into a file-level
+comment.
+
+Include descriptive ``\brief`` paragraphs for all public interfaces (public
+classes, member and non-member functions).  Explain API use and purpose in
+``\brief`` paragraphs, don't just restate the information that can be inferred
+from the API name.  Put detailed discussion into separate paragraphs.
+
+To refer to parameter names inside a paragraph, use the ``\p name`` command.
+Don't use the ``\arg name`` command since it starts a new paragraph that
+contains documentation for the parameter.
+
+Wrap non-inline code examples in ``\code ... \endcode``.
+
+To document a function parameter, start a new paragraph with the
+``\param name`` command.  If the parameter is used as an out or an in/out
+parameter, use the ``\param [out] name`` or ``\param [in,out] name`` command,
+respectively.
+
+To describe function return value, start a new paragraph with the ``\returns``
+command.
+
+A minimal documentation comment:
+
+.. code-block:: c++
+
+  /// \brief Does foo and bar.
+  void fooBar(bool Baz);
+
+A documentation comment that uses all Doxygen features in a preferred way:
+
+.. code-block:: c++
+
+  /// \brief Does foo and bar.
+  ///
+  /// Does not do foo the usual way if \p Baz is true.
+  ///
+  /// Typical usage:
+  /// \code
+  ///   fooBar(false, "quux", Res);
+  /// \endcode
+  ///
+  /// \param Quux kind of foo to do.
+  /// \param [out] Result filled with bar sequence on foo success.
+  ///
+  /// \returns true on success.
+  bool fooBar(bool Baz, StringRef Quux, std::vector<int> &Result);
+
+Don't duplicate the documentation comment in the header file and in the
+implementation file.  Put the documentation comments for public APIs into the
+header file.  Documentation comments for private APIs can go to the
+implementation file.  In any case, implementation files can include additional
+comments (not necessarily in Doxygen markup) to explain implementation details
+as needed.
+
+Don't duplicate function or class name at the beginning of the comment.
+For humans it is obvious which function or class is being documented;
+automatic documentation processing tools are smart enough to bind the comment
+to the correct declaration.
+
+Wrong:
+
+.. code-block:: c++
+
+  // In Something.h:
+
+  /// Something - An abstraction for some complicated thing.
+  class Something {
+  public:
+    /// fooBar - Does foo and bar.
+    void fooBar();
+  };
+
+  // In Something.cpp:
+
+  /// fooBar - Does foo and bar.
+  void Something::fooBar() { ... }
+
+Correct:
+
+.. code-block:: c++
+
+  // In Something.h:
+
+  /// \brief An abstraction for some complicated thing.
+  class Something {
+  public:
+    /// \brief Does foo and bar.
+    void fooBar();
+  };
+
+  // In Something.cpp:
+
+  // Builds a B-tree in order to do foo.  See paper by...
+  void Something::fooBar() { ... }
+
+It is not required to use additional Doxygen features, but sometimes it might
+be a good idea to do so.
+
+Consider:
+
+* adding comments to any narrow namespace containing a collection of
+  related functions or types;
+
+* using top-level groups to organize a collection of related functions at
+  namespace scope where the grouping is smaller than the namespace;
+
+* using member groups and additional comments attached to member
+  groups to organize within a class.
+
+For example:
+
+.. code-block:: c++
+
+  class Something {
+    /// \name Functions that do Foo.
+    /// @{
+    void fooBar();
+    void fooBaz();
+    /// @}
+    ...
+  };
 
 ``#include`` Style
 ^^^^^^^^^^^^^^^^^^
@@ -280,7 +409,8 @@ code.
 
 That said, LLVM does make extensive use of a hand-rolled form of RTTI that use
 templates like `isa<>, cast<>, and dyn_cast<> <ProgrammersManual.html#isa>`_.
-This form of RTTI is opt-in and can be added to any class.  It is also
+This form of RTTI is opt-in and can be
+:doc:`added to any class <HowToSetUpLLVMStyleRTTI>`. It is also
 substantially more efficient than ``dynamic_cast<>``.
 
 .. _static constructor:
@@ -421,9 +551,9 @@ exit from a function, consider this "bad" code:
 
 .. code-block:: c++
 
-  Value *DoSomething(Instruction *I) {
+  Value *doSomething(Instruction *I) {
     if (!isa<TerminatorInst>(I) &&
-        I->hasOneUse() && SomeOtherThing(I)) {
+        I->hasOneUse() && doOtherThing(I)) {
       ... some long code ....
     }
 
@@ -445,7 +575,7 @@ It is much preferred to format the code like this:
 
 .. code-block:: c++
 
-  Value *DoSomething(Instruction *I) {
+  Value *doSomething(Instruction *I) {
     // Terminators never need 'something' done to them because ... 
     if (isa<TerminatorInst>(I))
       return 0;
@@ -456,7 +586,7 @@ It is much preferred to format the code like this:
       return 0;
 
     // This is really just here for example.
-    if (!SomeOtherThing(I))
+    if (!doOtherThing(I))
       return 0;
     
     ... some long code ....
@@ -584,8 +714,8 @@ sort of thing is:
 .. code-block:: c++
 
   bool FoundFoo = false;
-  for (unsigned i = 0, e = BarList.size(); i != e; ++i)
-    if (BarList[i]->isFoo()) {
+  for (unsigned I = 0, E = BarList.size(); I != E; ++I)
+    if (BarList[I]->isFoo()) {
       FoundFoo = true;
       break;
     }
@@ -601,17 +731,16 @@ code to be structured like this:
 
 .. code-block:: c++
 
-  /// ListContainsFoo - Return true if the specified list has an element that is
-  /// a foo.
-  static bool ListContainsFoo(const std::vector<Bar*> &List) {
-    for (unsigned i = 0, e = List.size(); i != e; ++i)
-      if (List[i]->isFoo())
+  /// \returns true if the specified list has an element that is a foo.
+  static bool containsFoo(const std::vector<Bar*> &List) {
+    for (unsigned I = 0, E = List.size(); I != E; ++I)
+      if (List[I]->isFoo())
         return true;
     return false;
   }
   ...
 
-  if (ListContainsFoo(BarList)) {
+  if (containsFoo(BarList)) {
     ...
   }
 
@@ -692,8 +821,8 @@ Here are some examples of good and bad names:
 
   Vehicle MakeVehicle(VehicleType Type) {
     VehicleMaker M;                         // Might be OK if having a short life-span.
-    Tire tmp1 = M.makeTire();               // Bad -- 'tmp1' provides no information.
-    Light headlight = M.makeLight("head");  // Good -- descriptive.
+    Tire Tmp1 = M.makeTire();               // Bad -- 'Tmp1' provides no information.
+    Light Headlight = M.makeLight("head");  // Good -- descriptive.
     ...
   }
 
@@ -713,9 +842,9 @@ enforced, and hopefully what to do about it.  Here is one complete example:
 
 .. code-block:: c++
 
-  inline Value *getOperand(unsigned i) { 
-    assert(i < Operands.size() &amp;&amp; "getOperand() out of range!");
-    return Operands[i]; 
+  inline Value *getOperand(unsigned I) {
+    assert(I < Operands.size() && "getOperand() out of range!");
+    return Operands[I];
   }
 
 Here are more examples:
@@ -734,23 +863,28 @@ Here are more examples:
 
 You get the idea.
 
-Please be aware that, when adding assert statements, not all compilers are aware
-of the semantics of the assert.  In some places, asserts are used to indicate a
-piece of code that should not be reached.  These are typically of the form:
+In the past, asserts were used to indicate a piece of code that should not be
+reached.  These were typically of the form:
 
 .. code-block:: c++
 
-  assert(0 && "Some helpful error message");
+  assert(0 && "Invalid radix for integer literal");
 
-When used in a function that returns a value, they should be followed with a
-return statement and a comment indicating that this line is never reached.  This
-will prevent a compiler which is unable to deduce that the assert statement
-never returns from generating a warning.
+This has a few issues, the main one being that some compilers might not
+understand the assertion, or warn about a missing return in builds where
+assertions are compiled out.
+
+Today, we have something much better: ``llvm_unreachable``:
 
 .. code-block:: c++
 
-  assert(0 && "Some helpful error message");
-  return 0;
+  llvm_unreachable("Invalid radix for integer literal");
+
+When assertions are enabled, this will print the message if it's ever reached
+and then exit the program. When assertions are disabled (i.e. in release
+builds), ``llvm_unreachable`` becomes a hint to compilers to skip generating
+code for this branch. If the compiler does not support this, it will fall back
+to the "abort" implementation.
 
 Another issue is that values used only by assertions will produce an "unused
 value" warning when assertions are disabled.  For example, this code will warn:
@@ -818,6 +952,52 @@ least one out-of-line virtual method in the class.  Without this, the compiler
 will copy the vtable and RTTI into every ``.o`` file that ``#include``\s the
 header, bloating ``.o`` file sizes and increasing link times.
 
+Don't use default labels in fully covered switches over enumerations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``-Wswitch`` warns if a switch, without a default label, over an enumeration
+does not cover every enumeration value. If you write a default label on a fully
+covered switch over an enumeration then the ``-Wswitch`` warning won't fire
+when new elements are added to that enumeration. To help avoid adding these
+kinds of defaults, Clang has the warning ``-Wcovered-switch-default`` which is
+off by default but turned on when building LLVM with a version of Clang that
+supports the warning.
+
+A knock-on effect of this stylistic requirement is that when building LLVM with
+GCC you may get warnings related to "control may reach end of non-void function"
+if you return from each case of a covered switch-over-enum because GCC assumes
+that the enum expression may take any representable value, not just those of
+individual enumerators. To suppress this warning, use ``llvm_unreachable`` after
+the switch.
+
+Use ``LLVM_DELETED_FUNCTION`` to mark uncallable methods
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Prior to C++11, a common pattern to make a class uncopyable was to declare an
+unimplemented copy constructor and copy assignment operator and make them
+private. This would give a compiler error for accessing a private method or a
+linker error because it wasn't implemented.
+
+With C++11, we can mark methods that won't be implemented with ``= delete``.
+This will trigger a much better error message and tell the compiler that the
+method will never be implemented. This enables other checks like
+``-Wunused-private-field`` to run correctly on classes that contain these
+methods.
+
+To maintain compatibility with C++03, ``LLVM_DELETED_FUNCTION`` should be used
+which will expand to ``= delete`` if the compiler supports it. These methods
+should still be declared private. Example of the uncopyable pattern:
+
+.. code-block:: c++
+
+  class DontCopy {
+  private:
+    DontCopy(const DontCopy&) LLVM_DELETED_FUNCTION;
+    DontCopy &operator =(const DontCopy&) LLVM_DELETED_FUNCTION;
+  public:
+    ...
+  };
+
 Don't evaluate ``end()`` every time through a loop
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -856,7 +1036,7 @@ form has two problems. First it may be less efficient than evaluating it at the
 start of the loop.  In this case, the cost is probably minor --- a few extra
 loads every time through the loop.  However, if the base expression is more
 complex, then the cost can rise quickly.  I've seen loops where the end
-expression was actually something like: "``SomeMap[x]->end()``" and map lookups
+expression was actually something like: "``SomeMap[X]->end()``" and map lookups
 really aren't cheap.  By writing it in the second form consistently, you
 eliminate the issue entirely and don't even have to think about it.
 
@@ -932,27 +1112,27 @@ macros.  For example, this is good:
 
 .. code-block:: c++
 
-  if (x) ...
-  for (i = 0; i != 100; ++i) ...
-  while (llvm_rocks) ...
+  if (X) ...
+  for (I = 0; I != 100; ++I) ...
+  while (LLVMRocks) ...
 
   somefunc(42);
   assert(3 != 4 && "laws of math are failing me");
   
-  a = foo(42, 92) + bar(x);
+  A = foo(42, 92) + bar(X);
 
 and this is bad:
 
 .. code-block:: c++
 
-  if(x) ...
-  for(i = 0; i != 100; ++i) ...
-  while(llvm_rocks) ...
+  if(X) ...
+  for(I = 0; I != 100; ++I) ...
+  while(LLVMRocks) ...
 
   somefunc (42);
   assert (3 != 4 && "laws of math are failing me");
   
-  a = foo (42, 92) + bar (x);
+  A = foo (42, 92) + bar (X);
 
 The reason for doing this is not completely arbitrary.  This style makes control
 flow operators stand out more, and makes expressions flow better. The function
@@ -960,11 +1140,11 @@ call operator binds very tightly as a postfix operator.  Putting a space after a
 function name (as in the last example) makes it appear that the code might bind
 the arguments of the left-hand-side of a binary operator with the argument list
 of a function and the name of the right side.  More specifically, it is easy to
-misread the "``a``" example as:
+misread the "``A``" example as:
 
 .. code-block:: c++
 
-  a = foo ((42, 92) + bar) (x);
+  A = foo ((42, 92) + bar) (X);
 
 when skimming through the code.  By avoiding a space in a function, we avoid
 this misinterpretation.
@@ -1002,21 +1182,21 @@ If a namespace definition is small and *easily* fits on a screen (say, less than
 
   namespace llvm {
     namespace X86 {
-      /// RelocationType - An enum for the x86 relocation codes. Note that
+      /// \brief An enum for the x86 relocation codes.  Note that
       /// the terminology here doesn't follow x86 convention - word means
       /// 32-bit and dword means 64-bit.
       enum RelocationType {
-        /// reloc_pcrel_word - PC relative relocation, add the relocated value to
+        /// \brief PC relative relocation, add the relocated value to
         /// the value already in memory, after we adjust it for where the PC is.
         reloc_pcrel_word = 0,
 
-        /// reloc_picrel_word - PIC base relative relocation, add the relocated
-        /// value to the value already in memory, after we adjust it for where the
+        /// \brief PIC base relative relocation, add the relocated value to
+        /// the value already in memory, after we adjust it for where the
         /// PIC base is.
         reloc_picrel_word = 1,
 
-        /// reloc_absolute_word, reloc_absolute_dword - Absolute relocation, just
-        /// add the relocated value to the value already in memory.
+        /// \brief Absolute relocation, just add the relocated value to the
+        /// value already in memory.
         reloc_absolute_word = 2,
         reloc_absolute_dword = 3
       };
@@ -1035,7 +1215,7 @@ closed.  For example:
   namespace llvm {
   namespace knowledge {
 
-  /// Grokable - This class represents things that Smith can have an intimate
+  /// This class represents things that Smith can have an intimate
   /// understanding of and contains the data associated with it.
   class Grokable {
   ...
@@ -1092,7 +1272,7 @@ good:
     };
   } // end anonymous namespace
 
-  static void Helper() { 
+  static void runHelper() { 
     ... 
   }
 
@@ -1112,7 +1292,7 @@ This is bad:
     bool operator<(const char *RHS) const;
   };
 
-  void Helper() { 
+  void runHelper() { 
     ... 
   }
 
@@ -1122,7 +1302,7 @@ This is bad:
 
   } // end anonymous namespace
 
-This is bad specifically because if you're looking at "``Helper``" in the middle
+This is bad specifically because if you're looking at "``runHelper``" in the middle
 of a large C++ file, that you have no immediate way to tell if it is local to
 the file.  When it is marked static explicitly, this is immediately obvious.
 Also, there is no reason to enclose the definition of "``operator<``" in the

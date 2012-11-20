@@ -461,6 +461,9 @@ namespace {
     /// allocateCodeSection - Allocate memory for a code section.
     uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment,
                                  unsigned SectionID) {
+      // Grow the required block size to account for the block header
+      Size += sizeof(*CurBlock);
+
       // FIXME: Alignement handling.
       FreeRangeHeader* candidateBlock = FreeMemoryList;
       FreeRangeHeader* head = FreeMemoryList;
@@ -498,8 +501,12 @@ namespace {
 
     /// allocateDataSection - Allocate memory for a data section.
     uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID) {
+                                 unsigned SectionID, bool IsReadOnly) {
       return (uint8_t*)DataAllocator.Allocate(Size, Alignment);
+    }
+
+    bool applyPermissions(std::string *ErrMsg) {
+      return false;
     }
 
     /// startExceptionTable - Use startFunctionBody to allocate memory for the

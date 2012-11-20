@@ -346,7 +346,7 @@ public:
   DomTreeNodeBase<NodeT> *getRootNode() { return RootNode; }
   const DomTreeNodeBase<NodeT> *getRootNode() const { return RootNode; }
 
-  /// properlyDominates - Returns true iff this dominates N and this != N.
+  /// properlyDominates - Returns true iff A dominates B and A != B.
   /// Note that this is not a constant time operation!
   ///
   bool properlyDominates(const DomTreeNodeBase<NodeT> *A,
@@ -705,6 +705,21 @@ DominatorTreeBase<NodeT>::properlyDominates(const NodeT *A, const NodeT *B) {
 
 EXTERN_TEMPLATE_INSTANTIATION(class DominatorTreeBase<BasicBlock>);
 
+class BasicBlockEdge {
+  const BasicBlock *Start;
+  const BasicBlock *End;
+public:
+  BasicBlockEdge(const BasicBlock *Start_, const BasicBlock *End_) :
+    Start(Start_), End(End_) { }
+  const BasicBlock *getStart() const {
+    return Start;
+  }
+  const BasicBlock *getEnd() const {
+    return End;
+  }
+  bool isSingleEdge() const;
+};
+
 //===-------------------------------------
 /// DominatorTree Class - Concrete subclass of DominatorTreeBase that is used to
 /// compute a normal dominator tree.
@@ -778,6 +793,8 @@ public:
   bool dominates(const Instruction *Def, const Use &U) const;
   bool dominates(const Instruction *Def, const Instruction *User) const;
   bool dominates(const Instruction *Def, const BasicBlock *BB) const;
+  bool dominates(const BasicBlockEdge &BBE, const Use &U) const;
+  bool dominates(const BasicBlockEdge &BBE, const BasicBlock *BB) const;
 
   bool properlyDominates(const DomTreeNode *A, const DomTreeNode *B) const {
     return DT->properlyDominates(A, B);

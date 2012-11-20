@@ -10,10 +10,19 @@ Subsystem Documentation
    BitCodeFormat
    BranchWeightMetadata
    Bugpoint
+   CodeGenerator
    ExceptionHandling
    LinkTimeOptimization
    SegmentedStacks
    TableGenFundamentals
+   DebuggingJITedCode
+   GoldPlugin
+   MarkedUpDisassembly
+   HowToUseInstrMappings
+   SystemLibrary
+
+.. FIXME: once LangRef is Sphinxified, HowToUseInstrMappings should be put
+   under LangRef's toctree instead of this page's toctree.
 
 * `Writing an LLVM Pass <WritingAnLLVMPass.html>`_
     
@@ -22,9 +31,9 @@ Subsystem Documentation
 * `Writing an LLVM Backend <WritingAnLLVMBackend.html>`_
     
    Information on how to write LLVM backends for machine targets.
-    
-* `The LLVM Target-Independent Code Generator <CodeGenerator.html>`_
-    
+
+* :ref:`code_generator`
+
    The design and implementation of the LLVM code generator.  Useful if you are
    working on retargetting LLVM to a new architecture, designing a new codegen
    pass, or enhancing existing components.
@@ -63,9 +72,9 @@ Subsystem Documentation
     
    This describes the file format and encoding used for LLVM "bc" files.
     
-* `System Library <SystemLibrary.html>`_
+* :doc:`System Library <SystemLibrary>`
     
-   This document describes the LLVM System Library (<tt>lib/System</tt>) and
+   This document describes the LLVM System Library (``lib/System``) and
    how to keep LLVM source code portable
     
 * :ref:`lto`
@@ -73,11 +82,11 @@ Subsystem Documentation
    This document describes the interface between LLVM intermodular optimizer
    and the linker and its design
     
-* `The LLVM gold plugin <GoldPlugin.html>`_
+* :ref:`gold-plugin`
     
    How to build your programs with link-time optimization on Linux.
     
-* `The GDB JIT interface <DebuggingJITedCode.html>`_
+* :ref:`debugging-jited-code`
     
    How to debug JITed code with GDB.
     
@@ -88,3 +97,15 @@ Subsystem Documentation
 * :ref:`segmented_stacks`
 
    This document describes segmented stacks and how they are used in LLVM.
+
+* `Howto: Implementing LLVM Integrated Assembler`_
+
+   A simple guide for how to implement an LLVM integrated assembler for an
+   architecture.
+
+.. _`Howto: Implementing LLVM Integrated Assembler`: http://www.embecosm.com/download/ean10.html
+
+* :ref:`marked_up_disassembly`
+
+   This document describes the optional rich disassembly output syntax.
+

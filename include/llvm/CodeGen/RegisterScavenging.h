@@ -18,6 +18,7 @@
 #define LLVM_CODEGEN_REGISTER_SCAVENGING_H
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/ADT/BitVector.h"
 
 namespace llvm {
@@ -58,10 +59,6 @@ class RegScavenger {
   /// CalleeSavedrRegs - A bitvector of callee saved registers for the target.
   ///
   BitVector CalleeSavedRegs;
-
-  /// ReservedRegs - A bitvector of reserved registers.
-  ///
-  BitVector ReservedRegs;
 
   /// RegsAvailable - The current state of all the physical registers immediately
   /// before MBBI. One bit per physical register. If bit is set that means it's
@@ -130,12 +127,14 @@ public:
   void setUsed(unsigned Reg);
 private:
   /// isReserved - Returns true if a register is reserved. It is never "unused".
-  bool isReserved(unsigned Reg) const { return ReservedRegs.test(Reg); }
+  bool isReserved(unsigned Reg) const { return MRI->isReserved(Reg); }
 
-  /// isUsed / isUnused - Test if a register is currently being used.
+  /// isUsed - Test if a register is currently being used.  When called by the
+  /// isAliasUsed function, we only check isReserved if this is the original
+  /// register, not an alias register.
   ///
-  bool isUsed(unsigned Reg) const   {
-    return !RegsAvailable.test(Reg) || ReservedRegs.test(Reg);
+  bool isUsed(unsigned Reg, bool CheckReserved = true) const   {
+    return !RegsAvailable.test(Reg) || (CheckReserved && isReserved(Reg));
   }
 
   /// isAliasUsed - Is Reg or an alias currently in use?

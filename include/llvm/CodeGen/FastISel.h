@@ -32,8 +32,9 @@ class MachineFunction;
 class MachineInstr;
 class MachineFrameInfo;
 class MachineRegisterInfo;
-class TargetData;
+class DataLayout;
 class TargetInstrInfo;
+class TargetLibraryInfo;
 class TargetLowering;
 class TargetMachine;
 class TargetRegisterClass;
@@ -53,10 +54,11 @@ protected:
   MachineConstantPool &MCP;
   DebugLoc DL;
   const TargetMachine &TM;
-  const TargetData &TD;
+  const DataLayout &TD;
   const TargetInstrInfo &TII;
   const TargetLowering &TLI;
   const TargetRegisterInfo &TRI;
+  const TargetLibraryInfo *LibInfo;
 
   /// The position of the last instruction for materializing constants
   /// for use in the current block. It resets to EmitStartPt when it
@@ -144,7 +146,8 @@ public:
   virtual ~FastISel();
 
 protected:
-  explicit FastISel(FunctionLoweringInfo &funcInfo);
+  explicit FastISel(FunctionLoweringInfo &funcInfo,
+                    const TargetLibraryInfo *libInfo);
 
   /// TargetSelectInstruction - This method is called by target-independent
   /// code when the normal FastISel process fails to select an instruction.

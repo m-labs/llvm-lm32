@@ -24,7 +24,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Target/Mangler.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -44,9 +44,7 @@ EnableARMEHABIDescriptors("arm-enable-ehabi-descriptors", cl::Hidden,
 
 
 ARMException::ARMException(AsmPrinter *A)
-  : DwarfException(A),
-    shouldEmitTable(false), shouldEmitMoves(false), shouldEmitTableModule(false)
-    {}
+  : DwarfException(A) {}
 
 ARMException::~ARMException() {}
 
@@ -71,22 +69,25 @@ void ARMException::EndFunction() {
     Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("eh_func_end",
                                                   Asm->getFunctionNumber()));
 
-    // Emit references to personality.
-    if (const Function * Personality =
-        MMI->getPersonalities()[MMI->getPersonalityIndex()]) {
-      MCSymbol *PerSym = Asm->Mang->getSymbol(Personality);
-      Asm->OutStreamer.EmitSymbolAttribute(PerSym, MCSA_Global);
-      Asm->OutStreamer.EmitPersonality(PerSym);
-    }
-
     if (EnableARMEHABIDescriptors) {
       // Map all labels and get rid of any dead landing pads.
       MMI->TidyLandingPads();
 
-      Asm->OutStreamer.EmitHandlerData();
+      if (!MMI->getLandingPads().empty()) {
+        // Emit references to personality.
+        if (const Function * Personality =
+            MMI->getPersonalities()[MMI->getPersonalityIndex()]) {
+          MCSymbol *PerSym = Asm->Mang->getSymbol(Personality);
+          Asm->OutStreamer.EmitSymbolAttribute(PerSym, MCSA_Global);
+          Asm->OutStreamer.EmitPersonality(PerSym);
+        }
 
-      // Emit actual exception table
-      EmitExceptionTable();
+        // Emit .handlerdata directive.
+        Asm->OutStreamer.EmitHandlerData();
+
+        // Emit actual exception table
+        EmitExceptionTable();
+      }
     }
   }
 

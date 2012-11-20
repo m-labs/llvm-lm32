@@ -420,9 +420,10 @@ private:
       NumBuckets = getNumBuckets();
     }
     if (NumBuckets-(NewNumEntries+getNumTombstones()) <= NumBuckets/8) {
-      this->grow(NumBuckets);
+      this->grow(NumBuckets * 2);
       LookupBucketFor(Key, TheBucket);
     }
+    assert(TheBucket);
 
     // Only update the state after we've grown our bucket space appropriately
     // so that when growing buckets we have self-consistent entry count.
@@ -599,7 +600,7 @@ public:
     unsigned OldNumBuckets = NumBuckets;
     BucketT *OldBuckets = Buckets;
 
-    allocateBuckets(std::max<unsigned>(64, NextPowerOf2(AtLeast)));
+    allocateBuckets(std::max<unsigned>(64, NextPowerOf2(AtLeast-1)));
     assert(Buckets);
     if (!OldBuckets) {
       this->BaseT::initEmpty();
@@ -617,8 +618,9 @@ public:
     this->destroyAll();
 
     // Reduce the number of buckets.
-    unsigned NewNumBuckets
-      = std::max(64, 1 << (Log2_32_Ceil(OldNumEntries) + 1));
+    unsigned NewNumBuckets = 0;
+    if (OldNumEntries)
+      NewNumBuckets = std::max(64, 1 << (Log2_32_Ceil(OldNumEntries) + 1));
     if (NewNumBuckets == NumBuckets) {
       this->BaseT::initEmpty();
       return;
@@ -686,8 +688,7 @@ class SmallDenseMap
 
   /// A "union" of an inline bucket array and the struct representing
   /// a large bucket. This union will be discriminated by the 'Small' bit.
-  typename AlignedCharArray<BucketT[InlineBuckets], LargeRep>::union_type
-    storage;
+  AlignedCharArrayUnion<BucketT[InlineBuckets], LargeRep> storage;
 
 public:
   explicit SmallDenseMap(unsigned NumInitBuckets = 0) {
@@ -825,16 +826,15 @@ public:
   }
 
   void grow(unsigned AtLeast) {
-    if (AtLeast > InlineBuckets)
-      AtLeast = std::max<unsigned>(64, NextPowerOf2(AtLeast));
+    if (AtLeast >= InlineBuckets)
+      AtLeast = std::max<unsigned>(64, NextPowerOf2(AtLeast-1));
 
     if (Small) {
-      if (AtLeast <= InlineBuckets)
+      if (AtLeast < InlineBuckets)
         return; // Nothing to do.
 
       // First move the inline buckets into a temporary storage.
-      typename AlignedCharArray<BucketT[InlineBuckets]>::union_type
-        TmpStorage;
+      AlignedCharArrayUnion<BucketT[InlineBuckets]> TmpStorage;
       BucketT *TmpBegin = reinterpret_cast<BucketT *>(TmpStorage.buffer);
       BucketT *TmpEnd = TmpBegin;
 

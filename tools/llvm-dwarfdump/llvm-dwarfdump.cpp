@@ -1,4 +1,4 @@
-//===-- llvm-dwarfdump.cpp - Debug info dumping utility for llvm -----------===//
+//===-- llvm-dwarfdump.cpp - Debug info dumping utility for llvm ----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,6 +15,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/RelocVisitor.h"
 #include "llvm/DebugInfo/DIContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -28,6 +29,9 @@
 #include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <cstring>
+#include <list>
+#include <string>
+
 using namespace llvm;
 using namespace object;
 
@@ -44,6 +48,18 @@ PrintFunctions("functions", cl::init(false),
                cl::desc("Print function names as well as line information "
                         "for a given address"));
 
+static cl::opt<bool>
+PrintInlining("inlining", cl::init(false),
+              cl::desc("Print all inlined frames for a given address"));
+
+static void PrintDILineInfo(DILineInfo dli) {
+  if (PrintFunctions)
+    outs() << (dli.getFunctionName() ? dli.getFunctionName() : "<unknown>")
+           << "\n";
+  outs() << (dli.getFileName() ? dli.getFileName() : "<unknown>") << ':'
+         << dli.getLine() << ':' << dli.getColumn() << '\n';
+}
+
 static void DumpInput(const StringRef &Filename) {
   OwningPtr<MemoryBuffer> Buff;
 
@@ -53,43 +69,8 @@ static void DumpInput(const StringRef &Filename) {
   }
 
   OwningPtr<ObjectFile> Obj(ObjectFile::createObjectFile(Buff.take()));
+  OwningPtr<DIContext> dictx(DIContext::getDWARFContext(Obj.get()));
 
-  StringRef DebugInfoSection;
-  StringRef DebugAbbrevSection;
-  StringRef DebugLineSection;
-  StringRef DebugArangesSection;
-  StringRef DebugStringSection;
-
-  error_code ec;
-  for (section_iterator i = Obj->begin_sections(),
-                        e = Obj->end_sections();
-                        i != e; i.increment(ec)) {
-    StringRef name;
-    i->getName(name);
-    StringRef data;
-    i->getContents(data);
-
-    if (name.startswith("__DWARF,"))
-      name = name.substr(8); // Skip "__DWARF," prefix.
-    name = name.substr(name.find_first_not_of("._")); // Skip . and _ prefixes.
-    if (name == "debug_info")
-      DebugInfoSection = data;
-    else if (name == "debug_abbrev")
-      DebugAbbrevSection = data;
-    else if (name == "debug_line")
-      DebugLineSection = data;
-    else if (name == "debug_aranges")
-      DebugArangesSection = data;
-    else if (name == "debug_str")
-      DebugStringSection = data;
-  }
-
-  OwningPtr<DIContext> dictx(DIContext::getDWARFContext(/*FIXME*/true,
-                                                        DebugInfoSection,
-                                                        DebugAbbrevSection,
-                                                        DebugArangesSection,
-                                                        DebugLineSection,
-                                                        DebugStringSection));
   if (Address == -1ULL) {
     outs() << Filename
            << ":\tfile format " << Obj->getFileFormatName() << "\n\n";
@@ -97,15 +78,27 @@ static void DumpInput(const StringRef &Filename) {
     dictx->dump(outs());
   } else {
     // Print line info for the specified address.
-    int spec_flags = DILineInfoSpecifier::FileLineInfo;
+    int SpecFlags = DILineInfoSpecifier::FileLineInfo |
+                    DILineInfoSpecifier::AbsoluteFilePath;
     if (PrintFunctions)
-      spec_flags |= DILineInfoSpecifier::FunctionName;
-    DILineInfo dli = dictx->getLineInfoForAddress(Address, spec_flags);
-    if (PrintFunctions)
-      outs() << (dli.getFunctionName() ? dli.getFunctionName() : "<unknown>")
-             << "\n";
-    outs() << (dli.getFileName() ? dli.getFileName() : "<unknown>") << ':'
-           << dli.getLine() << ':' << dli.getColumn() << '\n';
+      SpecFlags |= DILineInfoSpecifier::FunctionName;
+    if (PrintInlining) {
+      DIInliningInfo InliningInfo =
+        dictx->getInliningInfoForAddress(Address, SpecFlags);
+      uint32_t n = InliningInfo.getNumberOfFrames();
+      if (n == 0) {
+        // Print one empty debug line info in any case.
+        PrintDILineInfo(DILineInfo());
+      } else {
+        for (uint32_t i = 0; i < n; i++) {
+          DILineInfo dli = InliningInfo.getFrame(i);
+          PrintDILineInfo(dli);
+        }
+      }
+    } else {
+      DILineInfo dli = dictx->getLineInfoForAddress(Address, SpecFlags);
+      PrintDILineInfo(dli);
+    }
   }
 }
 
