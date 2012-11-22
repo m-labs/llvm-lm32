@@ -28,6 +28,9 @@ def CC_LM32 : CallingConv<[
   // Promote i8/i16 arguments to i32.
   CCIfType<[i8, i16], CCPromoteToType<i32>>,
 
+  // Handle byval arguments
+  CCIfByVal<CCPassByVal<4, 4>>,
+
   // Integer and float arguments are passed in integer registers.
   CCIfType<[i32, f32], CCAssignToReg<[R1, R2, R3, R4, R5, R6, R7, R8]>>,
 
