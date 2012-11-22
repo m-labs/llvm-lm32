@@ -148,7 +148,7 @@ namespace llvm {
                   DebugLoc dl, SelectionDAG &DAG) const;
 
     /// HandleByVal - Target-specific cleanup for ByVal support.
-    virtual void HandleByVal(CCState *, unsigned &) const;
+    virtual void HandleByVal(CCState *, unsigned &, unsigned Align) const;
 
 #if 0
     virtual MachineBasicBlock*

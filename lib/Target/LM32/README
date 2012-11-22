@@ -62,13 +62,13 @@ After the inital "make check" (which does some initial DejaGnu configuration) yo
 Test Results:
 
 ********************
-Testing Time: 2.53s
+Testing Time: 2.73s
 ********************
 Failing Tests (2):
     LLVM :: CodeGen/LM32/2006-12-07-LargeAlloca.ll
     LLVM :: CodeGen/LM32/2007-04-03-PEIBug.ll
 
-  Expected Passes    : 493
+  Expected Passes    : 494
   Expected Failures  : 24
   Unexpected Failures: 2
 
@@ -153,7 +153,7 @@ http://groups.google.com/group/llvm-dev/browse_thread/thread/537afe9317752e87/d8
 "stack alignment and backend" in mailing list.
 
 Stack Pointer Bias
-There is a nospbias option available. The default LM32ABI states the SP points to the first unoccupied 32bit word on the stack.  The nospbias option changes this behavior.  Adding "-Xclang -target-feature -Xclang +nospbias " options to the clang command or "-mattr=nospbias" option to llc will cause the SP to point to the last used location.
+The default LM32ABI states the SP points to the first unoccupied 32bit word on the stack.  The abistdsp option changes this behavior.  Adding "-Xclang -target-feature -Xclang -abistdsp " options to the clang command or "-mattr=-abistdsp" option to llc will cause the SP to point to the last used location.
 
 GAS Relocatable Expression Modifiers
 http://sourceware.org/binutils/docs/as/LM32_002dModifiers.html#LM32_002dModifiers

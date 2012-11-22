@@ -46,8 +46,8 @@ def FeatureBarrel :
   SubtargetFeature<"barrel", "HasBarrel", "true",
                    "Enable barrel shifter instructions">;
 
-def FeatureSPBias : 
-  SubtargetFeature<"nospbias", "HasSPBias", "false",
+def FeatureABIstdSP : 
+  SubtargetFeature<"abistdsp", "HasSPBias", "true",
                    "SP points to last used 32 bit word on stack (not ABI compilant)">;
 
 //===----------------------------------------------------------------------===//
@@ -55,7 +55,7 @@ def FeatureSPBias :
 //===----------------------------------------------------------------------===//
 
 def : Processor< "lm32", LM32Itineraries, [FeatureDIV, FeatureMUL,
-                                           FeatureBarrel, FeatureSPBias]>;
+                                           FeatureBarrel, FeatureABIstdSP]>;
 
 
 //===----------------------------------------------------------------------===//

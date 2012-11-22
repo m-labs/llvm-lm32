@@ -468,8 +468,9 @@ SDValue LM32TargetLowering::LowerVASTART(SDValue Op,
 /// HandleByVal - byval parameters that fit in the remaining registers
 /// will be passed in those, if it doesn't fit, the whole parameter will be
 /// passed on stack and all remaining registers are confiscated.
-void LM32TargetLowering::HandleByVal(CCState *State, unsigned &Size) const {
-  static const unsigned ArgRegList[] = {
+void 
+LM32TargetLowering::HandleByVal(CCState *State, unsigned &Size, unsigned Align ) const {
+  static const uint16_t ArgRegList[] = {
     LM32::R1, LM32::R2, LM32::R3, LM32::R4, LM32::R5, LM32::R6, LM32::R7,
     LM32::R8
   };
@@ -794,7 +795,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
         // Store the argument registers onto the local stack
         FI = MFI->CreateStackObject(Size, Align, false);
         for (unsigned i = 0; i < NumWords; ++i) {
-          unsigned LiveReg = MF.addLiveIn(++ArgRegEnd, LM32::GPRRegisterClass);
+          unsigned LiveReg = MF.addLiveIn(++ArgRegEnd, &LM32::GPRRegClass);
           SDValue AddArg = DAG.getNode(ISD::ADD, dl, MVT::i32,
                                        DAG.getFrameIndex(FI, getPointerTy()),
                                        DAG.getConstant(i*4, MVT::i32));

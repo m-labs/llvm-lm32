@@ -27,10 +27,10 @@ LM32Subtarget::LM32Subtarget(const std::string &TT,
                                  const std::string &CPU,
                                  const std::string &FS) 
   : LM32GenSubtargetInfo(TT, CPU, FS),
+    HasBarrel(false),
     HasSDIV(false),
     HasDIV(false),
     HasMUL(false),
-    HasBarrel(false),
     HasSPBias(false)
 {
 
