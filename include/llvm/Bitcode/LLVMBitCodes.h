@@ -54,7 +54,6 @@ namespace bitc {
     MODULE_CODE_DATALAYOUT  = 3,    // DATALAYOUT:  [strchr x N]
     MODULE_CODE_ASM         = 4,    // ASM:         [strchr x N]
     MODULE_CODE_SECTIONNAME = 5,    // SECTIONNAME: [strchr x N]
-    MODULE_CODE_DEPLIB      = 6,    // DEPLIB:      [strchr x N]
 
     // GLOBALVAR: [pointer type, isconst, initid,
     //             linkage, alignment, section, visibility, threadlocal]
@@ -238,6 +237,16 @@ namespace bitc {
   /// PossiblyExactOperator's SubclassOptionalData contents.
   enum PossiblyExactOperatorOptionalFlags {
     PEO_EXACT = 0
+  };
+
+  /// Flags for serializing FPMathOperator's
+  /// SubclassOptionalData contents.
+  enum FastMathFlags {
+    FMF_UNSAFE_ALGEBRA   = 0,
+    FMF_NO_NANS          = 1,
+    FMF_NO_INFS          = 2,
+    FMF_NO_SIGNED_ZEROS  = 3,
+    FMF_ALLOW_RECIPROCAL = 4
   };
 
   /// Encoded AtomicOrdering values.

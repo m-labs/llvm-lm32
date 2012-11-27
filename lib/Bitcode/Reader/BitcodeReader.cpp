@@ -1194,7 +1194,7 @@ bool BitcodeReader::ParseConstants() {
         dyn_cast_or_null<VectorType>(getTypeByID(Record[0]));
       if (OpTy == 0) return Error("Invalid CE_EXTRACTELT record");
       Constant *Op0 = ValueList.getConstantFwdRef(Record[1], OpTy);
-      Constant *Op1 = ValueList.getConstantFwdRef(Record[2], 
+      Constant *Op1 = ValueList.getConstantFwdRef(Record[2],
                                                   Type::getInt32Ty(Context));
       V = ConstantExpr::getExtractElement(Op0, Op1);
       break;
@@ -1206,7 +1206,7 @@ bool BitcodeReader::ParseConstants() {
       Constant *Op0 = ValueList.getConstantFwdRef(Record[0], OpTy);
       Constant *Op1 = ValueList.getConstantFwdRef(Record[1],
                                                   OpTy->getElementType());
-      Constant *Op2 = ValueList.getConstantFwdRef(Record[2], 
+      Constant *Op2 = ValueList.getConstantFwdRef(Record[2],
                                                   Type::getInt32Ty(Context));
       V = ConstantExpr::getInsertElement(Op0, Op1, Op2);
       break;
@@ -1562,13 +1562,6 @@ bool BitcodeReader::ParseModule(bool Resume) {
       if (ConvertToString(Record, 0, S))
         return Error("Invalid MODULE_CODE_ASM record");
       TheModule->setModuleInlineAsm(S);
-      break;
-    }
-    case bitc::MODULE_CODE_DEPLIB: {  // DEPLIB: [strchr x N]
-      std::string S;
-      if (ConvertToString(Record, 0, S))
-        return Error("Invalid MODULE_CODE_DEPLIB record");
-      TheModule->addLibrary(S);
       break;
     }
     case bitc::MODULE_CODE_SECTIONNAME: {  // SECTIONNAME: [strchr x N]
@@ -2044,7 +2037,22 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
                    Opc == Instruction::AShr) {
           if (Record[OpNum] & (1 << bitc::PEO_EXACT))
             cast<BinaryOperator>(I)->setIsExact(true);
+        } else if (isa<FPMathOperator>(I)) {
+          FastMathFlags FMF;
+          FMF.UnsafeAlgebra =
+            0 != (Record[OpNum] & (1 << bitc::FMF_UNSAFE_ALGEBRA));
+          FMF.NoNaNs =
+            0 != (Record[OpNum] & (1 << bitc::FMF_NO_NANS));
+          FMF.NoInfs =
+            0 != (Record[OpNum] & (1 << bitc::FMF_NO_INFS));
+          FMF.NoSignedZeros =
+            0 != (Record[OpNum] & (1 << bitc::FMF_NO_SIGNED_ZEROS));
+          FMF.AllowReciprocal =
+            0 != (Record[OpNum] & (1 << bitc::FMF_ALLOW_RECIPROCAL));
+          if (FMF.any())
+            I->setFastMathFlags(FMF);
         }
+
       }
       break;
     }

@@ -25,6 +25,7 @@
 // 4. LoopVectorizationCostModel - A unit that checks for the profitability
 //    of vectorization. It decides on the optimal vector width, which
 //    can be one, if vectorization is not profitable.
+//
 //===----------------------------------------------------------------------===//
 //
 // The reduction-variable vectorization is based on the paper:
@@ -35,6 +36,9 @@
 //
 // Other ideas/concepts are from:
 //  A. Zaks and D. Nuzman. Autovectorization in GCC-two years later.
+//
+//  S. Maleki, Y. Gao, M. Garzaran, T. Wong and D. Padua.  An Evaluation of
+//  Vectorizing Compilers.
 //
 //===----------------------------------------------------------------------===//
 #define LV_NAME "loop-vectorize"
@@ -82,6 +86,9 @@ const unsigned TinyTripCountThreshold = 16;
 /// number of pointers. Notice that the check is quadratic!
 const unsigned RuntimeMemoryCheckThreshold = 2;
 
+/// This is the highest vector width that we try to generate.
+const unsigned MaxVectorSize = 8;
+
 namespace {
 
 // Forward declarations.
@@ -106,23 +113,28 @@ class SingleBlockLoopVectorizer {
 public:
   /// Ctor.
   SingleBlockLoopVectorizer(Loop *Orig, ScalarEvolution *Se, LoopInfo *Li,
-                            DominatorTree *dt, LPPassManager *Lpm,
+                            DominatorTree *Dt, DataLayout *Dl,
+                            LPPassManager *Lpm,
                             unsigned VecWidth):
-  OrigLoop(Orig), SE(Se), LI(Li), DT(dt), LPM(Lpm), VF(VecWidth),
+  OrigLoop(Orig), SE(Se), LI(Li), DT(Dt), DL(Dl), LPM(Lpm), VF(VecWidth),
   Builder(Se->getContext()), Induction(0), OldInduction(0) { }
 
   // Perform the actual loop widening (vectorization).
   void vectorize(LoopVectorizationLegality *Legal) {
-    ///Create a new empty loop. Unlink the old loop and connect the new one.
+    // Create a new empty loop. Unlink the old loop and connect the new one.
     createEmptyLoop(Legal);
-    /// Widen each instruction in the old loop to a new one in the new loop.
-    /// Use the Legality module to find the induction and reduction variables.
+    // Widen each instruction in the old loop to a new one in the new loop.
+    // Use the Legality module to find the induction and reduction variables.
     vectorizeLoop(Legal);
     // Register the new loop and update the analysis passes.
     updateAnalysis();
  }
 
 private:
+  /// Add code that checks at runtime if the accessed arrays overlap.
+  /// Returns the comperator value or NULL if no check is needed.
+  Value *addRuntimeCheck(LoopVectorizationLegality *Legal,
+                         Instruction *Loc);
   /// Create an empty loop, based on the loop ranges of the old loop.
   void createEmptyLoop(LoopVectorizationLegality *Legal);
   /// Copy and widen the instructions from the old loop.
@@ -167,6 +179,8 @@ private:
   LoopInfo *LI;
   // Dominator Tree.
   DominatorTree *DT;
+  // Data Layout.
+  DataLayout *DL;
   // Loop Pass Manager;
   LPPassManager *LPM;
   // The vectorization factor to use.
@@ -250,10 +264,36 @@ public:
   // This POD struct holds information about the memory runtime legality
   // check that a group of pointers do not overlap.
   struct RuntimePointerCheck {
+    RuntimePointerCheck(): Need(false) {}
+
+    /// Reset the state of the pointer runtime information.
+    void reset() {
+      Need = false;
+      Pointers.clear();
+      Starts.clear();
+      Ends.clear();
+    }
+
+    /// Insert a pointer and calculate the start and end SCEVs.
+    void insert(ScalarEvolution *SE, Loop *Lp, Value *Ptr) {
+      const SCEV *Sc = SE->getSCEV(Ptr);
+      const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(Sc);
+      assert(AR && "Invalid addrec expression");
+      const SCEV *Ex = SE->getExitCount(Lp, Lp->getHeader());
+      const SCEV *ScEnd = AR->evaluateAtIteration(Ex, *SE);
+      Pointers.push_back(Ptr);
+      Starts.push_back(AR->getStart());
+      Ends.push_back(ScEnd);
+    }
+
     /// This flag indicates if we need to add the runtime check.
     bool Need;
     /// Holds the pointers that we need to check.
     SmallVector<Value*, 2> Pointers;
+    /// Holds the pointer value at the beginning of the loop.
+    SmallVector<const SCEV*, 2> Starts;
+    /// Holds the pointer value at the end of the loop.
+    SmallVector<const SCEV*, 2> Ends;
   };
 
   /// ReductionList contains the reduction descriptors for all
@@ -278,11 +318,11 @@ public:
   /// Returns the induction variables found in the loop.
   InductionList *getInductionVars() { return &Inductions; }
 
-  /// Check if the pointer returned by this GEP is consecutive
-  /// when the index is vectorized. This happens when the last
-  /// index of the GEP is consecutive, like the induction variable.
+  /// Check if this  pointer is consecutive when vectorizing. This happens
+  /// when the last index of the GEP is the induction variable, or that the
+  /// pointer itself is an induction variable.
   /// This check allows us to vectorize A[idx] into a wide load/store.
-  bool isConsecutiveGep(Value *Ptr);
+  bool isConsecutivePtr(Value *Ptr);
 
   /// Returns true if the value V is uniform within the loop.
   bool isUniform(Value *V);
@@ -363,7 +403,7 @@ public:
   /// Returns the most profitable vectorization factor for the loop that is
   /// smaller or equal to the VF argument. This method checks every power
   /// of two up to VF.
-  unsigned findBestVectorizationFactor(unsigned VF = 8);
+  unsigned findBestVectorizationFactor(unsigned VF = MaxVectorSize);
 
 private:
   /// Returns the expected execution cost. The unit of the cost does
@@ -451,7 +491,7 @@ struct LoopVectorize : public LoopPass {
           "\n");
 
     // If we decided that it is *legal* to vectorizer the loop then do it.
-    SingleBlockLoopVectorizer LB(L, SE, LI, DT, &LPM, VF);
+    SingleBlockLoopVectorizer LB(L, SE, LI, DT, DL, &LPM, VF);
     LB.vectorize(&LVL);
 
     DEBUG(verifyFunction(*L->getHeader()->getParent()));
@@ -472,10 +512,6 @@ struct LoopVectorize : public LoopPass {
 };
 
 Value *SingleBlockLoopVectorizer::getBroadcastInstrs(Value *V) {
-  // Instructions that access the old induction variable
-  // actually want to get the new one.
-  if (V == OldInduction)
-    V = Induction;
   // Create the types.
   LLVMContext &C = V->getContext();
   Type *VTy = VectorType::get(V->getType(), VF);
@@ -515,7 +551,14 @@ Value *SingleBlockLoopVectorizer::getConsecutiveVector(Value* Val) {
   return Builder.CreateAdd(Val, Cv, "induction");
 }
 
-bool LoopVectorizationLegality::isConsecutiveGep(Value *Ptr) {
+bool LoopVectorizationLegality::isConsecutivePtr(Value *Ptr) {
+  assert(Ptr->getType()->isPointerTy() && "Unexpected non ptr");
+
+  // If this pointer is an induction variable, return it.
+  PHINode *Phi = dyn_cast_or_null<PHINode>(Ptr);
+  if (Phi && getInductionVars()->count(Phi))
+    return true;
+
   GetElementPtrInst *Gep = dyn_cast_or_null<GetElementPtrInst>(Ptr);
   if (!Gep)
     return false;
@@ -576,7 +619,7 @@ void SingleBlockLoopVectorizer::scalarizeInstruction(Instruction *Instr) {
 
     // If we are accessing the old induction variable, use the new one.
     if (SrcOp == OldInduction) {
-      Params.push_back(getBroadcastInstrs(Induction));
+      Params.push_back(getVectorValue(Induction));
       continue;
     }
 
@@ -635,6 +678,67 @@ void SingleBlockLoopVectorizer::scalarizeInstruction(Instruction *Instr) {
     WidenMap[Instr] = VecResults;
 }
 
+Value*
+SingleBlockLoopVectorizer::addRuntimeCheck(LoopVectorizationLegality *Legal,
+                                           Instruction *Loc) {
+  LoopVectorizationLegality::RuntimePointerCheck *PtrRtCheck =
+    Legal->getRuntimePointerCheck();
+
+  if (!PtrRtCheck->Need)
+    return NULL;
+
+  Value *MemoryRuntimeCheck = 0;
+  unsigned NumPointers = PtrRtCheck->Pointers.size();
+  SmallVector<Value* , 2> Starts;
+  SmallVector<Value* , 2> Ends;
+
+  SCEVExpander Exp(*SE, "induction");
+
+  // Use this type for pointer arithmetic.
+  Type* PtrArithTy = PtrRtCheck->Pointers[0]->getType();
+
+  for (unsigned i=0; i < NumPointers; ++i) {
+    Value *Ptr = PtrRtCheck->Pointers[i];
+    const SCEV *Sc = SE->getSCEV(Ptr);
+
+    if (SE->isLoopInvariant(Sc, OrigLoop)) {
+      DEBUG(dbgs() << "LV1: Adding RT check for a loop invariant ptr:" <<
+            *Ptr <<"\n");
+      Starts.push_back(Ptr);
+      Ends.push_back(Ptr);
+    } else {
+      DEBUG(dbgs() << "LV: Adding RT check for range:" << *Ptr <<"\n");
+
+      Value *Start = Exp.expandCodeFor(PtrRtCheck->Starts[i],
+                                       PtrArithTy, Loc);
+      Value *End = Exp.expandCodeFor(PtrRtCheck->Ends[i], PtrArithTy, Loc);
+      Starts.push_back(Start);
+      Ends.push_back(End);
+    }
+  }
+
+  for (unsigned i = 0; i < NumPointers; ++i) {
+    for (unsigned j = i+1; j < NumPointers; ++j) {
+      Value *Cmp0 = CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_ULE,
+                                    Starts[i], Ends[j], "bound0", Loc);
+      Value *Cmp1 = CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_ULE,
+                                    Starts[j], Ends[i], "bound1", Loc);
+      Value *IsConflict = BinaryOperator::Create(Instruction::And, Cmp0, Cmp1,
+                                                 "found.conflict", Loc);
+      if (MemoryRuntimeCheck)
+        MemoryRuntimeCheck = BinaryOperator::Create(Instruction::Or,
+                                                    MemoryRuntimeCheck,
+                                                    IsConflict,
+                                                    "conflict.rdx", Loc);
+      else
+        MemoryRuntimeCheck = IsConflict;
+
+    }
+  }
+
+  return MemoryRuntimeCheck;
+}
+
 void
 SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
   /*
@@ -666,9 +770,18 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
    ...
    */
 
+  BasicBlock *OldBasicBlock = OrigLoop->getHeader();
+  BasicBlock *BypassBlock = OrigLoop->getLoopPreheader();
+  BasicBlock *ExitBlock = OrigLoop->getExitBlock();
+  assert(ExitBlock && "Must have an exit block");
+
+  // Some loops have a single integer induction variable, while other loops
+  // don't. One example is c++ iterators that often have multiple pointer
+  // induction variables. In the code below we also support a case where we
+  // don't have a single induction variable.
   OldInduction = Legal->getInduction();
-  assert(OldInduction && "We must have a single phi node.");
-  Type *IdxTy = OldInduction->getType();
+  Type *IdxTy = OldInduction ? OldInduction->getType() :
+    DL->getIntPtrType(SE->getContext());
 
   // Find the loop boundaries.
   const SCEV *ExitCount = SE->getExitCount(OrigLoop, OrigLoop->getHeader());
@@ -677,35 +790,42 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
   // Get the total trip count from the count by adding 1.
   ExitCount = SE->getAddExpr(ExitCount,
                              SE->getConstant(ExitCount->getType(), 1));
-  // We may need to extend the index in case there is a type mismatch.
-  // We know that the count starts at zero and does not overflow.
-  // We are using Zext because it should be less expensive.
-  if (ExitCount->getType() != IdxTy)
-    ExitCount = SE->getZeroExtendExpr(ExitCount, IdxTy);
 
-  // This is the original scalar-loop preheader.
-  BasicBlock *BypassBlock = OrigLoop->getLoopPreheader();
-  BasicBlock *ExitBlock = OrigLoop->getExitBlock();
-  assert(ExitBlock && "Must have an exit block");
+  // Expand the trip count and place the new instructions in the preheader.
+  // Notice that the pre-header does not change, only the loop body.
+  SCEVExpander Exp(*SE, "induction");
 
-  // The loop index does not have to start at Zero. It starts with this value.
-  Value *StartIdx = OldInduction->getIncomingValueForBlock(BypassBlock);
+  // Count holds the overall loop count (N).
+  Value *Count = Exp.expandCodeFor(ExitCount, ExitCount->getType(),
+                                   BypassBlock->getTerminator());
+
+  // The loop index does not have to start at Zero. Find the original start
+  // value from the induction PHI node. If we don't have an induction variable
+  // then we know that it starts at zero.
+  Value *StartIdx = OldInduction ?
+    OldInduction->getIncomingValueForBlock(BypassBlock):
+    ConstantInt::get(IdxTy, 0);
 
   assert(OrigLoop->getNumBlocks() == 1 && "Invalid loop");
   assert(BypassBlock && "Invalid loop structure");
 
+  // Generate the code that checks in runtime if arrays overlap.
+  Value *MemoryRuntimeCheck = addRuntimeCheck(Legal,
+                                              BypassBlock->getTerminator());
+
+  // Split the single block loop into the two loop structure described above.
   BasicBlock *VectorPH =
       BypassBlock->splitBasicBlock(BypassBlock->getTerminator(), "vector.ph");
-  BasicBlock *VecBody = VectorPH->splitBasicBlock(VectorPH->getTerminator(),
-                                                 "vector.body");
-
-  BasicBlock *MiddleBlock = VecBody->splitBasicBlock(VecBody->getTerminator(),
-                                                  "middle.block");
+  BasicBlock *VecBody =
+    VectorPH->splitBasicBlock(VectorPH->getTerminator(), "vector.body");
+  BasicBlock *MiddleBlock =
+    VecBody->splitBasicBlock(VecBody->getTerminator(), "middle.block");
   BasicBlock *ScalarPH =
-    MiddleBlock->splitBasicBlock(MiddleBlock->getTerminator(),
-                                 "scalar.preheader");
-  // Find the induction variable.
-  BasicBlock *OldBasicBlock = OrigLoop->getHeader();
+    MiddleBlock->splitBasicBlock(MiddleBlock->getTerminator(), "scalar.ph");
+
+  // This is the location in which we add all of the logic for bypassing
+  // the new vector loop.
+  Instruction *Loc = BypassBlock->getTerminator();
 
   // Use this IR builder to create the loop instructions (Phi, Br, Cmp)
   // inside the loop.
@@ -715,13 +835,16 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
   Induction = Builder.CreatePHI(IdxTy, 2, "index");
   Constant *Step = ConstantInt::get(IdxTy, VF);
 
-  // Expand the trip count and place the new instructions in the preheader.
-  // Notice that the pre-header does not change, only the loop body.
-  SCEVExpander Exp(*SE, "induction");
-  Instruction *Loc = BypassBlock->getTerminator();
-
-  // Count holds the overall loop count (N).
-  Value *Count = Exp.expandCodeFor(ExitCount, Induction->getType(), Loc);
+  // We may need to extend the index in case there is a type mismatch.
+  // We know that the count starts at zero and does not overflow.
+  if (Count->getType() != IdxTy) {
+    // The exit count can be of pointer type. Convert it to the correct
+    // integer type.
+    if (ExitCount->getType()->isPointerTy())
+      Count = CastInst::CreatePointerCast(Count, IdxTy, "ptrcnt.to.int", Loc);
+    else
+      Count = CastInst::CreateZExtOrBitCast(Count, IdxTy, "zext.cnt", Loc);
+  }
 
   // Add the start index to the loop count to get the new end index.
   Value *IdxEnd = BinaryOperator::CreateAdd(Count, StartIdx, "end.idx", Loc);
@@ -734,70 +857,17 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
   Value *IdxEndRoundDown = BinaryOperator::CreateAdd(CountRoundDown, StartIdx,
                                                      "end.idx.rnd.down", Loc);
 
-  // Now, compare the new count to zero. If it is zero, jump to the scalar part.
+  // Now, compare the new count to zero. If it is zero skip the vector loop and
+  // jump to the scalar loop.
   Value *Cmp = CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_EQ,
                                IdxEndRoundDown,
                                StartIdx,
                                "cmp.zero", Loc);
 
-  LoopVectorizationLegality::RuntimePointerCheck *PtrRtCheck =
-    Legal->getRuntimePointerCheck();
-  Value *MemoryRuntimeCheck = 0;
-  if (PtrRtCheck->Need) {
-    unsigned NumPointers = PtrRtCheck->Pointers.size();
-    SmallVector<Value* , 2> Starts;
-    SmallVector<Value* , 2> Ends;
-
-    // Use this type for pointer arithmetic.
-    Type* PtrArithTy = PtrRtCheck->Pointers[0]->getType();
-
-    for (unsigned i=0; i < NumPointers; ++i) {
-      Value *Ptr = PtrRtCheck->Pointers[i];
-      const SCEV *Sc = SE->getSCEV(Ptr);
-
-      if (SE->isLoopInvariant(Sc, OrigLoop)) {
-        DEBUG(dbgs() << "LV1: Adding RT check for a loop invariant ptr:" <<
-              *Ptr <<"\n");
-        Starts.push_back(Ptr);
-        Ends.push_back(Ptr);
-      } else {
-        DEBUG(dbgs() << "LV: Adding RT check for range:" << *Ptr <<"\n");
-        const SCEVAddRecExpr *AR = dyn_cast<SCEVAddRecExpr>(Sc);
-        Value *Start = Exp.expandCodeFor(AR->getStart(), PtrArithTy, Loc);
-        const SCEV *Ex = SE->getExitCount(OrigLoop, OrigLoop->getHeader());
-        const SCEV *ScEnd = AR->evaluateAtIteration(Ex, *SE);
-        assert(!isa<SCEVCouldNotCompute>(ScEnd) && "Invalid scev range.");
-        Value *End = Exp.expandCodeFor(ScEnd, PtrArithTy, Loc);
-        Starts.push_back(Start);
-        Ends.push_back(End);
-      }
-    }
-
-    for (unsigned i=0; i < NumPointers; ++i) {
-      for (unsigned j=i+1; j < NumPointers; ++j) {
-        Value *Cmp0 = CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_ULE,
-                                      Starts[0], Ends[1], "bound0", Loc);
-        Value *Cmp1 = CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_ULE,
-                                      Starts[1], Ends[0], "bound1", Loc);
-        Value *IsConflict = BinaryOperator::Create(Instruction::And, Cmp0, Cmp1,
-                                                    "found.conflict", Loc);
-        if (MemoryRuntimeCheck) {
-          MemoryRuntimeCheck = BinaryOperator::Create(Instruction::Or,
-                                                      MemoryRuntimeCheck,
-                                                      IsConflict,
-                                                      "conflict.rdx", Loc);
-        } else {
-          MemoryRuntimeCheck = IsConflict;
-        }
-      }
-    }
-  }// end of need-runtime-check code.
-
   // If we are using memory runtime checks, include them in.
-  if (MemoryRuntimeCheck) {
+  if (MemoryRuntimeCheck)
     Cmp = BinaryOperator::Create(Instruction::Or, Cmp, MemoryRuntimeCheck,
                                  "CntOrMem", Loc);
-  }
 
   BranchInst::Create(MiddleBlock, VectorPH, Cmp, Loc);
   // Remove the old terminator.
@@ -812,7 +882,7 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
   // value.
 
   // This variable saves the new starting index for the scalar loop.
-  Value *ResumeIndex = 0;
+  PHINode *ResumeIndex = 0;
   LoopVectorizationLegality::InductionList::iterator I, E;
   LoopVectorizationLegality::InductionList *List = Legal->getInductionVars();
   for (I = List->begin(), E = List->end(); I != E; ++I) {
@@ -830,7 +900,7 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
     } else {
       // For pointer induction variables, calculate the offset using
       // the end index.
-      EndValue = GetElementPtrInst::Create(I->second, IdxEndRoundDown,
+      EndValue = GetElementPtrInst::Create(I->second, CountRoundDown,
                                            "ptr.ind.end",
                                            BypassBlock->getTerminator());
     }
@@ -841,8 +911,20 @@ SingleBlockLoopVectorizer::createEmptyLoop(LoopVectorizationLegality *Legal) {
     ResumeVal->addIncoming(EndValue, VecBody);
 
     // Fix the scalar body counter (PHI node).
-    unsigned BlockIdx = OldInduction->getBasicBlockIndex(ScalarPH);
+    unsigned BlockIdx = OrigPhi->getBasicBlockIndex(ScalarPH);
     OrigPhi->setIncomingValue(BlockIdx, ResumeVal);
+  }
+
+  // If we are generating a new induction variable then we also need to
+  // generate the code that calculates the exit value. This value is not
+  // simply the end of the counter because we may skip the vectorized body
+  // in case of a runtime check.
+  if (!OldInduction){
+    assert(!ResumeIndex && "Unexpected resume value found");
+    ResumeIndex = PHINode::Create(IdxTy, 2, "new.indc.resume.val",
+                                  MiddleBlock->getTerminator());
+    ResumeIndex->addIncoming(StartIdx, BypassBlock);
+    ResumeIndex->addIncoming(IdxEndRoundDown, VecBody);
   }
 
   // Make sure that we found the index where scalar loop needs to continue.
@@ -953,43 +1035,54 @@ SingleBlockLoopVectorizer::vectorizeLoop(LoopVectorizationLegality *Legal) {
         continue;
       case Instruction::PHI:{
         PHINode* P = cast<PHINode>(Inst);
-        // Special handling for the induction var.
-        if (OldInduction == Inst)
-          continue;
-
         // Handle reduction variables:
         if (Legal->getReductionVars()->count(P)) {
           // This is phase one of vectorizing PHIs.
           Type *VecTy = VectorType::get(Inst->getType(), VF);
-          WidenMap[Inst] = Builder.CreatePHI(VecTy, 2, "vec.phi");
+          WidenMap[Inst] = PHINode::Create(VecTy, 2, "vec.phi",
+                                  LoopVectorBody->getFirstInsertionPt());
           RdxPHIsToFix.push_back(P);
           continue;
         }
 
-        // Handle pointer inductions:
-        if (Legal->getInductionVars()->count(P)) {
-          Value *StartIdx = Legal->getInductionVars()->lookup(OldInduction);
-          Value *StartPtr = Legal->getInductionVars()->lookup(P);
-          // This is the normalized GEP that starts counting at zero.
-          Value *NormalizedIdx = Builder.CreateSub(Induction, StartIdx,
-                                                   "normalized.idx");
-          // This is the first GEP in the sequence.
-          Value *FirstGep = Builder.CreateGEP(StartPtr, NormalizedIdx,
-                                              "induc.ptr");
-          // This is the vector of results. Notice that we don't generate vector
-          // geps because scalar geps result in better code.
-          Value *VecVal = UndefValue::get(VectorType::get(P->getType(), VF));
-          for (unsigned int i = 0; i < VF; ++i) {
-            Value *SclrGep = Builder.CreateGEP(FirstGep, Builder.getInt32(i),
-                                               "next.gep");
-            VecVal = Builder.CreateInsertElement(VecVal, SclrGep,
-                                                 Builder.getInt32(i),
-                                                 "insert.gep");
-          }
+        // This PHINode must be an induction variable.
+        // Make sure that we know about it.
+        assert(Legal->getInductionVars()->count(P) &&
+               "Not an induction variable");
 
-          WidenMap[Inst] = VecVal;
+        if (P->getType()->isIntegerTy()) {
+          assert(P == OldInduction && "Unexpected PHI");
+          WidenMap[Inst] = getBroadcastInstrs(Induction);
           continue;
         }
+
+        // Handle pointer inductions.
+        assert(P->getType()->isPointerTy() && "Unexpected type.");
+        Value *StartIdx = OldInduction ?
+          Legal->getInductionVars()->lookup(OldInduction) :
+          ConstantInt::get(Induction->getType(), 0);
+
+        // This is the pointer value coming into the loop.
+        Value *StartPtr = Legal->getInductionVars()->lookup(P);
+
+        // This is the normalized GEP that starts counting at zero.
+        Value *NormalizedIdx = Builder.CreateSub(Induction, StartIdx,
+                                                 "normalized.idx");
+
+        // This is the vector of results. Notice that we don't generate vector
+        // geps because scalar geps result in better code.
+        Value *VecVal = UndefValue::get(VectorType::get(P->getType(), VF));
+        for (unsigned int i = 0; i < VF; ++i) {
+          Constant *Idx = ConstantInt::get(Induction->getType(), i);
+          Value *GlobalIdx = Builder.CreateAdd(NormalizedIdx, Idx, "gep.idx");
+          Value *SclrGep = Builder.CreateGEP(StartPtr, GlobalIdx, "next.gep");
+          VecVal = Builder.CreateInsertElement(VecVal, SclrGep,
+                                               Builder.getInt32(i),
+                                               "insert.gep");
+        }
+
+        WidenMap[Inst] = VecVal;
+        continue;
       }
       case Instruction::Add:
       case Instruction::FAdd:
@@ -1076,21 +1169,27 @@ SingleBlockLoopVectorizer::vectorizeLoop(LoopVectorizationLegality *Legal) {
         GetElementPtrInst *Gep = dyn_cast<GetElementPtrInst>(Ptr);
 
         // This store does not use GEPs.
-        if (!Legal->isConsecutiveGep(Gep)) {
+        if (!Legal->isConsecutivePtr(Ptr)) {
           scalarizeInstruction(Inst);
           break;
         }
 
-        // The last index does not have to be the induction. It can be
-        // consecutive and be a function of the index. For example A[I+1];
-        unsigned NumOperands = Gep->getNumOperands();
-        Value *LastIndex = getVectorValue(Gep->getOperand(NumOperands - 1));
-        LastIndex = Builder.CreateExtractElement(LastIndex, Zero);
+        if (Gep) {
+          // The last index does not have to be the induction. It can be
+          // consecutive and be a function of the index. For example A[I+1];
+          unsigned NumOperands = Gep->getNumOperands();
+          Value *LastIndex = getVectorValue(Gep->getOperand(NumOperands - 1));
+          LastIndex = Builder.CreateExtractElement(LastIndex, Zero);
 
-        // Create the new GEP with the new induction variable.
-        GetElementPtrInst *Gep2 = cast<GetElementPtrInst>(Gep->clone());
-        Gep2->setOperand(NumOperands - 1, LastIndex);
-        Ptr = Builder.Insert(Gep2);
+          // Create the new GEP with the new induction variable.
+          GetElementPtrInst *Gep2 = cast<GetElementPtrInst>(Gep->clone());
+          Gep2->setOperand(NumOperands - 1, LastIndex);
+          Ptr = Builder.Insert(Gep2);
+        } else {
+          // Use the induction element ptr.
+          assert(isa<PHINode>(Ptr) && "Invalid induction ptr");
+          Ptr = Builder.CreateExtractElement(getVectorValue(Ptr), Zero);
+        }
         Ptr = Builder.CreateBitCast(Ptr, StTy->getPointerTo());
         Value *Val = getVectorValue(SI->getValueOperand());
         Builder.CreateStore(Val, Ptr)->setAlignment(Alignment);
@@ -1104,23 +1203,31 @@ SingleBlockLoopVectorizer::vectorizeLoop(LoopVectorizationLegality *Legal) {
         unsigned Alignment = LI->getAlignment();
         GetElementPtrInst *Gep = dyn_cast<GetElementPtrInst>(Ptr);
 
-        // If we don't have a gep, or that the pointer is loop invariant,
+        // If the pointer is loop invariant or if it is non consecutive,
         // scalarize the load.
-        if (!Gep || Legal->isUniform(Gep) || !Legal->isConsecutiveGep(Gep)) {
+        bool Con = Legal->isConsecutivePtr(Ptr);
+        if (Legal->isUniform(Ptr) || !Con) {
           scalarizeInstruction(Inst);
           break;
         }
 
-        // The last index does not have to be the induction. It can be
-        // consecutive and be a function of the index. For example A[I+1];
-        unsigned NumOperands = Gep->getNumOperands();
-        Value *LastIndex = getVectorValue(Gep->getOperand(NumOperands -1));
-        LastIndex = Builder.CreateExtractElement(LastIndex, Zero);
+        if (Gep) {
+          // The last index does not have to be the induction. It can be
+          // consecutive and be a function of the index. For example A[I+1];
+          unsigned NumOperands = Gep->getNumOperands();
+          Value *LastIndex = getVectorValue(Gep->getOperand(NumOperands -1));
+          LastIndex = Builder.CreateExtractElement(LastIndex, Zero);
 
-        // Create the new GEP with the new induction variable.
-        GetElementPtrInst *Gep2 = cast<GetElementPtrInst>(Gep->clone());
-        Gep2->setOperand(NumOperands - 1, LastIndex);
-        Ptr = Builder.Insert(Gep2);
+          // Create the new GEP with the new induction variable.
+          GetElementPtrInst *Gep2 = cast<GetElementPtrInst>(Gep->clone());
+          Gep2->setOperand(NumOperands - 1, LastIndex);
+          Ptr = Builder.Insert(Gep2);
+        } else {
+          // Use the induction element ptr.
+          assert(isa<PHINode>(Ptr) && "Invalid induction ptr");
+          Ptr = Builder.CreateExtractElement(getVectorValue(Ptr), Zero);
+        }
+
         Ptr = Builder.CreateBitCast(Ptr, RetTy->getPointerTo());
         LI = Builder.CreateLoad(Ptr);
         LI->setAlignment(Alignment);
@@ -1301,7 +1408,7 @@ bool LoopVectorizationLegality::canVectorize() {
   if (!TheLoop->getLoopPreheader()) {
     assert(false && "No preheader!!");
     DEBUG(dbgs() << "LV: Loop not normalized." << "\n");
-    return  false;
+    return false;
   }
 
   // We can only vectorize single basic block loops.
@@ -1347,6 +1454,7 @@ bool LoopVectorizationLegality::canVectorize() {
 }
 
 bool LoopVectorizationLegality::canVectorizeBlock(BasicBlock &BB) {
+
   BasicBlock *PreHeader = TheLoop->getLoopPreheader();
 
   // Scan the instructions in the block and look for hazards.
@@ -1440,8 +1548,8 @@ bool LoopVectorizationLegality::canVectorizeBlock(BasicBlock &BB) {
   } // next instr.
 
   if (!Induction) {
-      DEBUG(dbgs() << "LV: Did not find an induction var.\n");
-      return false;
+    DEBUG(dbgs() << "LV: Did not find one integer induction var.\n");
+    assert(getInductionVars()->size() && "No induction variables");
   }
 
   // Don't vectorize if the memory dependencies do not allow vectorization.
@@ -1458,15 +1566,10 @@ bool LoopVectorizationLegality::canVectorizeBlock(BasicBlock &BB) {
   while (Worklist.size()) {
     Instruction *I = dyn_cast<Instruction>(Worklist.back());
     Worklist.pop_back();
-    // Look at instructions inside this block.
-    if (!I) continue;
-    if (I->getParent() != &BB) continue;
 
-    // Stop when reaching PHI nodes.
-    if (isa<PHINode>(I)) {
-      assert(I == Induction && "Found a uniform PHI that is not the induction");
-      break;
-    }
+    // Look at instructions inside this block. Stop when reaching PHI nodes.
+    if (!I || I->getParent() != &BB || isa<PHINode>(I))
+      continue;
 
     // This is a known uniform.
     Uniforms.insert(I);
@@ -1569,7 +1672,7 @@ bool LoopVectorizationLegality::canVectorizeMemory(BasicBlock &BB) {
     // If the address of i is unknown (for example A[B[i]]) then we may
     // read a few words, modify, and write a few words, and some of the
     // words may be written to the same address.
-    if (Seen.insert(Ptr) || !isConsecutiveGep(Ptr))
+    if (Seen.insert(Ptr) || !isConsecutivePtr(Ptr))
       Reads.push_back(Ptr);
   }
 
@@ -1585,7 +1688,7 @@ bool LoopVectorizationLegality::canVectorizeMemory(BasicBlock &BB) {
   bool RT = true;
   for (I = ReadWrites.begin(), IE = ReadWrites.end(); I != IE; ++I)
     if (hasComputableBounds(*I)) {
-      PtrRtCheck.Pointers.push_back(*I);
+      PtrRtCheck.insert(SE, TheLoop, *I);
       DEBUG(dbgs() << "LV: Found a runtime check ptr:" << **I <<"\n");
     } else {
       RT = false;
@@ -1593,7 +1696,7 @@ bool LoopVectorizationLegality::canVectorizeMemory(BasicBlock &BB) {
     }
   for (I = Reads.begin(), IE = Reads.end(); I != IE; ++I)
     if (hasComputableBounds(*I)) {
-      PtrRtCheck.Pointers.push_back(*I);
+      PtrRtCheck.insert(SE, TheLoop, *I);
       DEBUG(dbgs() << "LV: Found a runtime check ptr:" << **I <<"\n");
     } else {
       RT = false;
@@ -1603,7 +1706,7 @@ bool LoopVectorizationLegality::canVectorizeMemory(BasicBlock &BB) {
   // Check that we did not collect too many pointers or found a
   // unsizeable pointer.
   if (!RT || PtrRtCheck.Pointers.size() > RuntimeMemoryCheckThreshold) {
-    PtrRtCheck.Pointers.clear();
+    PtrRtCheck.reset();
     RT = false;
   }
 
@@ -1658,8 +1761,7 @@ bool LoopVectorizationLegality::canVectorizeMemory(BasicBlock &BB) {
 
   // It is safe to vectorize and we don't need any runtime checks.
   DEBUG(dbgs() << "LV: We don't need a runtime memory check.\n");
-  PtrRtCheck.Pointers.clear();
-  PtrRtCheck.Need = false;
+  PtrRtCheck.reset();
   return true;
 }
 
@@ -1917,7 +2019,7 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
                               SI->getAlignment(), SI->getPointerAddressSpace());
 
       // Scalarized stores.
-      if (!Legal->isConsecutiveGep(SI->getPointerOperand())) {
+      if (!Legal->isConsecutivePtr(SI->getPointerOperand())) {
         unsigned Cost = 0;
         unsigned ExtCost = VTTI->getInstrCost(Instruction::ExtractElement,
                                               ValTy);
@@ -1944,7 +2046,7 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
                                      LI->getPointerAddressSpace());
 
       // Scalarized loads.
-      if (!Legal->isConsecutiveGep(LI->getPointerOperand())) {
+      if (!Legal->isConsecutivePtr(LI->getPointerOperand())) {
         unsigned Cost = 0;
         unsigned InCost = VTTI->getInstrCost(Instruction::InsertElement, RetTy);
         // The cost of inserting the loaded value into the result vector.

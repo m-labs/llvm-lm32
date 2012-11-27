@@ -256,16 +256,16 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
 
     switch (T->getTypeID()) {
     default: llvm_unreachable("Unknown type!");
-    case Type::VoidTyID:      Code = bitc::TYPE_CODE_VOID;   break;
-    case Type::HalfTyID:      Code = bitc::TYPE_CODE_HALF;   break;
-    case Type::FloatTyID:     Code = bitc::TYPE_CODE_FLOAT;  break;
-    case Type::DoubleTyID:    Code = bitc::TYPE_CODE_DOUBLE; break;
-    case Type::X86_FP80TyID:  Code = bitc::TYPE_CODE_X86_FP80; break;
-    case Type::FP128TyID:     Code = bitc::TYPE_CODE_FP128; break;
+    case Type::VoidTyID:      Code = bitc::TYPE_CODE_VOID;      break;
+    case Type::HalfTyID:      Code = bitc::TYPE_CODE_HALF;      break;
+    case Type::FloatTyID:     Code = bitc::TYPE_CODE_FLOAT;     break;
+    case Type::DoubleTyID:    Code = bitc::TYPE_CODE_DOUBLE;    break;
+    case Type::X86_FP80TyID:  Code = bitc::TYPE_CODE_X86_FP80;  break;
+    case Type::FP128TyID:     Code = bitc::TYPE_CODE_FP128;     break;
     case Type::PPC_FP128TyID: Code = bitc::TYPE_CODE_PPC_FP128; break;
-    case Type::LabelTyID:     Code = bitc::TYPE_CODE_LABEL;  break;
-    case Type::MetadataTyID:  Code = bitc::TYPE_CODE_METADATA; break;
-    case Type::X86_MMXTyID:   Code = bitc::TYPE_CODE_X86_MMX; break;
+    case Type::LabelTyID:     Code = bitc::TYPE_CODE_LABEL;     break;
+    case Type::MetadataTyID:  Code = bitc::TYPE_CODE_METADATA;  break;
+    case Type::X86_MMXTyID:   Code = bitc::TYPE_CODE_X86_MMX;   break;
     case Type::IntegerTyID:
       // INTEGER: [width]
       Code = bitc::TYPE_CODE_INTEGER;
@@ -392,10 +392,6 @@ static unsigned getEncodedThreadLocalMode(const GlobalVariable *GV) {
 // descriptors for global variables, and function prototype info.
 static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
                             BitstreamWriter &Stream) {
-  // Emit the list of dependent libraries for the Module.
-  for (Module::lib_iterator I = M->lib_begin(), E = M->lib_end(); I != E; ++I)
-    WriteStringRecord(bitc::MODULE_CODE_DEPLIB, *I, 0/*TODO*/, Stream);
-
   // Emit various pieces of data attached to a module.
   if (!M->getTargetTriple().empty())
     WriteStringRecord(bitc::MODULE_CODE_TRIPLE, M->getTargetTriple(),
@@ -553,6 +549,18 @@ static uint64_t GetOptimizationFlags(const Value *V) {
                dyn_cast<PossiblyExactOperator>(V)) {
     if (PEO->isExact())
       Flags |= 1 << bitc::PEO_EXACT;
+  } else if (const FPMathOperator *FPMO =
+             dyn_cast<const FPMathOperator>(V)) {
+    if (FPMO->hasUnsafeAlgebra())
+      Flags |= 1 << bitc::FMF_UNSAFE_ALGEBRA;
+    if (FPMO->hasNoNaNs())
+      Flags |= 1 << bitc::FMF_NO_NANS;
+    if (FPMO->hasNoInfs())
+      Flags |= 1 << bitc::FMF_NO_INFS;
+    if (FPMO->hasNoSignedZeros())
+      Flags |= 1 << bitc::FMF_NO_SIGNED_ZEROS;
+    if (FPMO->hasAllowReciprocal())
+      Flags |= 1 << bitc::FMF_ALLOW_RECIPROCAL;
   }
 
   return Flags;

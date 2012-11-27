@@ -703,6 +703,22 @@ static void writeAtomicRMWOperation(raw_ostream &Out,
 }
 
 static void WriteOptimizationInfo(raw_ostream &Out, const User *U) {
+  if (const FPMathOperator *FPO = dyn_cast<const FPMathOperator>(U)) {
+    // Unsafe algebra implies all the others, no need to write them all out
+    if (FPO->hasUnsafeAlgebra())
+      Out << " fast";
+    else {
+      if (FPO->hasNoNaNs())
+        Out << " nnan";
+      if (FPO->hasNoInfs())
+        Out << " ninf";
+      if (FPO->hasNoSignedZeros())
+        Out << " nsz";
+      if (FPO->hasAllowReciprocal())
+        Out << " arcp";
+    }
+  }
+
   if (const OverflowingBinaryOperator *OBO =
         dyn_cast<OverflowingBinaryOperator>(U)) {
     if (OBO->hasNoUnsignedWrap())
@@ -1285,21 +1301,6 @@ void AssemblyWriter::printModule(const Module *M) {
       PrintEscapedString(rest, Out);
       Out << "\"\n";
     }
-  }
-
-  // Loop over the dependent libraries and emit them.
-  Module::lib_iterator LI = M->lib_begin();
-  Module::lib_iterator LE = M->lib_end();
-  if (LI != LE) {
-    Out << '\n';
-    Out << "deplibs = [ ";
-    while (LI != LE) {
-      Out << '"' << *LI << '"';
-      ++LI;
-      if (LI != LE)
-        Out << ", ";
-    }
-    Out << " ]";
   }
 
   printTypeIdentities();
