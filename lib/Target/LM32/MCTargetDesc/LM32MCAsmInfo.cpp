@@ -22,6 +22,7 @@ LM32MCAsmInfo::LM32MCAsmInfo(const Target &T, StringRef TT)
 //  AlignmentIsInBytes          = false;
   AlignmentIsInBytes          = true;
   PrivateGlobalPrefix         = ".L";
+  WeakRefDirective            = "\t.weak\t";
   GPRel32Directive            = "\t.gpword\t";
 
   // Uses '.section' before '.bss' directive
