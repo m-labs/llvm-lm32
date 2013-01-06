@@ -14,7 +14,6 @@ add_public_tablegen_target(LM32CommonTableGen)
 
 add_llvm_target(LM32CodeGen
   LM32AsmPrinter.cpp
-  LM32ELFWriterInfo.cpp
   LM32FrameLowering.cpp
   LM32InstrInfo.cpp
   LM32ISelDAGToDAG.cpp
