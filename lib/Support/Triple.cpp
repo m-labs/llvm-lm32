@@ -24,6 +24,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case arm:         return "arm";
   case armeb:       return "armeb";
   case hexagon:     return "hexagon";
+  case lm32:        return "lm32";
   case mips:        return "mips";
   case mipsel:      return "mipsel";
   case mips64:      return "mips64";
@@ -74,6 +75,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case ppc64:
   case ppc64le:
   case ppc:         return "ppc";
+
+  case lm32:        return "lm32";
 
   case mips:
   case mipsel:
@@ -188,6 +191,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("arm64", aarch64) // "arm64" is an alias for "aarch64"
     .Case("arm", arm)
     .Case("armeb", armeb)
+    .Case("lm32", lm32)
     .Case("mips", mips)
     .Case("mipsel", mipsel)
     .Case("mips64", mips64)
@@ -245,6 +249,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("thumbeb", Triple::thumbeb)
     .StartsWith("thumbebv", Triple::thumbeb)
     .Case("msp430", Triple::msp430)
+    .Case("lm32", Triple::lm32)
     .Cases("mips", "mipseb", "mipsallegrex", Triple::mips)
     .Cases("mipsel", "mipsallegrexel", Triple::mipsel)
     .Cases("mips64", "mips64eb", Triple::mips64)
@@ -808,6 +813,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::armeb:
   case llvm::Triple::hexagon:
   case llvm::Triple::le32:
+  case llvm::Triple::lm32:
   case llvm::Triple::mips:
   case llvm::Triple::mipsel:
   case llvm::Triple::nvptx:
@@ -876,6 +882,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::hexagon:
   case Triple::kalimba:
   case Triple::le32:
+  case Triple::lm32:
   case Triple::mips:
   case Triple::mipsel:
   case Triple::nvptx:
@@ -912,6 +919,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::armeb:
   case Triple::hexagon:
   case Triple::kalimba:
+  case Triple::lm32:
   case Triple::msp430:
   case Triple::r600:
   case Triple::tce:
