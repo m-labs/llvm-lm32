@@ -14,7 +14,7 @@
 #include "LM32Subtarget.h"
 #include "LM32.h"
 #include "LM32RegisterInfo.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 
 #define GET_SUBTARGETINFO_TARGET_DESC

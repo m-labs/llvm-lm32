@@ -8,8 +8,6 @@ tablegen(LLVM LM32GenAsmMatcher.inc -gen-asm-matcher)
 tablegen(LLVM LM32GenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM LM32GenCallingConv.inc -gen-callingconv)
 tablegen(LLVM LM32GenSubtargetInfo.inc -gen-subtarget)
-tablegen(LLVM LM32GenIntrinsics.inc -gen-tgt-intrinsic)
-tablegen(LLVM LM32GenEDInfo.inc -gen-enhanced-disassembly-info)
 add_public_tablegen_target(LM32CommonTableGen)
 
 add_llvm_target(LM32CodeGen
