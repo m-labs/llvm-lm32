@@ -1,21 +1,36 @@
-; RUN: llvm-as < %s | llc -march=lm32
-; END.
-; RUN: llvm-as < %s | \
-; RUN:   llc -mtriple=arm-linux-gnueabi -o %t -f
-; RUN: grep set %t   | count 5
-; RUN: grep globl %t | count 4
-; RUN: grep weak %t  | count 1
+; RUN: llc < %s -march=lm32 | FileCheck %s
+;;; RUN: llvm-as < %s | llc -march=lm32
+;;; END.
+;;; RUN: llc < %s -mtriple=arm-linux-gnueabi | FileCheck %s
 
-@bar = external global i32
+; CHECK: .globl test
+
+; CHECK: .globl foo1
+; CHECK: foo1 = bar
+
+; CHECK: .globl foo2
+; CHECK: foo2 = bar
+
+; CHECK: .weak  bar_f
+; CHECK: bar_f = foo_f
+
+; CHECK: bar_i = bar
+
+; CHECK: .globl A
+; CHECK: A = bar
+
+@bar = global i32 42
 @foo1 = alias i32* @bar
 @foo2 = alias i32* @bar
 
 %FunTy = type i32()
 
-declare i32 @foo_f()
-@bar_f = alias weak %FunTy* @foo_f
+define i32 @foo_f() {
+  ret i32 0
+}
+@bar_f = weak alias %FunTy* @foo_f
 
-@bar_i = alias internal i32* @bar
+@bar_i = internal alias i32* @bar
 
 @A = alias bitcast (i32* @bar to i64*)
 
@@ -32,3 +47,4 @@ entry:
    %tmp7 = add i32 %tmp6, %tmp0
    ret i32 %tmp7
 }
+
