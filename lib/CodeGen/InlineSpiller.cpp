@@ -508,6 +508,7 @@ MachineInstr *InlineSpiller::traceSiblingValue(unsigned UseReg, VNInfo *UseVNI,
   SmallVector<std::pair<unsigned, VNInfo*>, 8> WorkList;
   WorkList.push_back(std::make_pair(UseReg, UseVNI));
 
+  LiveInterval &OrigLI = LIS.getInterval(Original);
   do {
     unsigned Reg;
     VNInfo *VNI;
@@ -521,8 +522,11 @@ MachineInstr *InlineSpiller::traceSiblingValue(unsigned UseReg, VNInfo *UseVNI,
 
     // Trace through PHI-defs created by live range splitting.
     if (VNI->isPHIDef()) {
-      // Stop at original PHIs.  We don't know the value at the predecessors.
-      if (VNI->def == OrigVNI->def) {
+      // Stop at original PHIs.  We don't know the value at the
+      // predecessors. Look up the VNInfo for the current definition
+      // in OrigLI, to properly determine whether or not this phi was
+      // added by splitting.
+      if (VNI->def == OrigLI.getVNInfoAt(VNI->def)->def) {
         DEBUG(dbgs() << "orig phi value\n");
         SVI->second.DefByOrigPHI = true;
         SVI->second.AllDefsAreReloads = false;
@@ -542,7 +546,6 @@ MachineInstr *InlineSpiller::traceSiblingValue(unsigned UseReg, VNInfo *UseVNI,
       // Separate all values dominated by OrigVNI into PHIs and non-PHIs.
       SmallVector<VNInfo*, 8> PHIs, NonPHIs;
       LiveInterval &LI = LIS.getInterval(Reg);
-      LiveInterval &OrigLI = LIS.getInterval(Original);
 
       for (LiveInterval::vni_iterator VI = LI.vni_begin(), VE = LI.vni_end();
            VI != VE; ++VI) {
@@ -823,7 +826,7 @@ void InlineSpiller::markValueUsed(LiveInterval *LI, VNInfo *VNI) {
   WorkList.push_back(std::make_pair(LI, VNI));
   do {
     std::tie(LI, VNI) = WorkList.pop_back_val();
-    if (!UsedValues.insert(VNI))
+    if (!UsedValues.insert(VNI).second)
       continue;
 
     if (VNI->isPHIDef()) {
@@ -1088,7 +1091,8 @@ foldMemoryOperand(ArrayRef<std::pair<MachineInstr*, unsigned> > Ops,
   bool WasCopy = MI->isCopy();
   unsigned ImpReg = 0;
 
-  bool SpillSubRegs = (MI->getOpcode() == TargetOpcode::PATCHPOINT ||
+  bool SpillSubRegs = (MI->getOpcode() == TargetOpcode::STATEPOINT ||
+                       MI->getOpcode() == TargetOpcode::PATCHPOINT ||
                        MI->getOpcode() == TargetOpcode::STACKMAP);
 
   // TargetInstrInfo::foldMemoryOperand only expects explicit, non-tied
@@ -1377,7 +1381,7 @@ void InlineSpiller::spill(LiveRangeEdit &edit) {
   StackInt = nullptr;
 
   DEBUG(dbgs() << "Inline spilling "
-               << MRI.getRegClass(edit.getReg())->getName()
+               << TRI.getRegClassName(MRI.getRegClass(edit.getReg()))
                << ':' << edit.getParent()
                << "\nFrom original " << PrintReg(Original) << '\n');
   assert(edit.getParent().isSpillable() &&

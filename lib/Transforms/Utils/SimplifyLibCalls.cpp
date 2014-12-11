@@ -759,8 +759,8 @@ Value *LibCallSimplifier::optimizeStrPBrk(CallInst *CI, IRBuilder<> &B) {
   bool HasS1 = getConstantStringInfo(CI->getArgOperand(0), S1);
   bool HasS2 = getConstantStringInfo(CI->getArgOperand(1), S2);
 
-  // strpbrk(s, "") -> NULL
-  // strpbrk("", s) -> NULL
+  // strpbrk(s, "") -> nullptr
+  // strpbrk("", s) -> nullptr
   if ((HasS1 && S1.empty()) || (HasS2 && S2.empty()))
     return Constant::getNullValue(CI->getType());
 
@@ -1031,6 +1031,28 @@ Value *LibCallSimplifier::optimizeMemSet(CallInst *CI, IRBuilder<> &B) {
 // Math Library Optimizations
 //===----------------------------------------------------------------------===//
 
+/// Return a variant of Val with float type.
+/// Currently this works in two cases: If Val is an FPExtension of a float
+/// value to something bigger, simply return the operand.
+/// If Val is a ConstantFP but can be converted to a float ConstantFP without
+/// loss of precision do so.
+static Value *valueHasFloatPrecision(Value *Val) {
+  if (FPExtInst *Cast = dyn_cast<FPExtInst>(Val)) {
+    Value *Op = Cast->getOperand(0);
+    if (Op->getType()->isFloatTy())
+      return Op;
+  }
+  if (ConstantFP *Const = dyn_cast<ConstantFP>(Val)) {
+    APFloat F = Const->getValueAPF();
+    bool losesInfo;
+    (void)F.convert(APFloat::IEEEsingle, APFloat::rmNearestTiesToEven,
+                    &losesInfo);
+    if (!losesInfo)
+      return ConstantFP::get(Const->getContext(), F);
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // Double -> Float Shrinking Optimizations for Unary Functions like 'floor'
 
@@ -1052,12 +1074,11 @@ Value *LibCallSimplifier::optimizeUnaryDoubleFP(CallInst *CI, IRBuilder<> &B,
   }
 
   // If this is something like 'floor((double)floatval)', convert to floorf.
-  FPExtInst *Cast = dyn_cast<FPExtInst>(CI->getArgOperand(0));
-  if (!Cast || !Cast->getOperand(0)->getType()->isFloatTy())
+  Value *V = valueHasFloatPrecision(CI->getArgOperand(0));
+  if (V == nullptr)
     return nullptr;
 
   // floor((double)floatval) -> (double)floorf(floatval)
-  Value *V = Cast->getOperand(0);
   if (Callee->isIntrinsic()) {
     Module *M = CI->getParent()->getParent()->getParent();
     Intrinsic::ID IID = (Intrinsic::ID) Callee->getIntrinsicID();
@@ -1083,21 +1104,19 @@ Value *LibCallSimplifier::optimizeBinaryDoubleFP(CallInst *CI, IRBuilder<> &B) {
     return nullptr;
 
   // If this is something like 'fmin((double)floatval1, (double)floatval2)',
-  // we convert it to fminf.
-  FPExtInst *Cast1 = dyn_cast<FPExtInst>(CI->getArgOperand(0));
-  FPExtInst *Cast2 = dyn_cast<FPExtInst>(CI->getArgOperand(1));
-  if (!Cast1 || !Cast1->getOperand(0)->getType()->isFloatTy() || !Cast2 ||
-      !Cast2->getOperand(0)->getType()->isFloatTy())
+  // or fmin(1.0, (double)floatval), then we convert it to fminf.
+  Value *V1 = valueHasFloatPrecision(CI->getArgOperand(0));
+  if (V1 == nullptr)
+    return nullptr;
+  Value *V2 = valueHasFloatPrecision(CI->getArgOperand(1));
+  if (V2 == nullptr)
     return nullptr;
 
   // fmin((double)floatval1, (double)floatval2)
-  //                      -> (double)fmin(floatval1, floatval2)
-  Value *V = nullptr;
-  Value *V1 = Cast1->getOperand(0);
-  Value *V2 = Cast2->getOperand(0);
+  //                      -> (double)fminf(floatval1, floatval2)
   // TODO: Handle intrinsics in the same way as in optimizeUnaryDoubleFP().
-  V = EmitBinaryFloatFnCall(V1, V2, Callee->getName(), B,
-                            Callee->getAttributes());
+  Value *V = EmitBinaryFloatFnCall(V1, V2, Callee->getName(), B,
+                                   Callee->getAttributes());
   return B.CreateFPExt(V, B.getDoubleTy());
 }
 
@@ -1238,7 +1257,7 @@ Value *LibCallSimplifier::optimizeExp2(CallInst *CI, IRBuilder<> &B) {
       Module *M = Caller->getParent();
       Value *Callee =
           M->getOrInsertFunction(TLI->getName(LdExp), Op->getType(),
-                                 Op->getType(), B.getInt32Ty(), NULL);
+                                 Op->getType(), B.getInt32Ty(), nullptr);
       CallInst *CI = B.CreateCall2(Callee, One, LdExpArg);
       if (const Function *F = dyn_cast<Function>(Callee->stripPointerCasts()))
         CI->setCallingConv(F->getCallingConv());
@@ -1463,15 +1482,15 @@ void insertSinCosCall(IRBuilder<> &B, Function *OrigCallee, Value *Arg,
     // xmm0 and xmm1, which isn't what a real struct would do.
     ResTy = T.getArch() == Triple::x86_64
                 ? static_cast<Type *>(VectorType::get(ArgTy, 2))
-                : static_cast<Type *>(StructType::get(ArgTy, ArgTy, NULL));
+                : static_cast<Type *>(StructType::get(ArgTy, ArgTy, nullptr));
   } else {
     Name = "__sincospi_stret";
-    ResTy = StructType::get(ArgTy, ArgTy, NULL);
+    ResTy = StructType::get(ArgTy, ArgTy, nullptr);
   }
 
   Module *M = OrigCallee->getParent();
   Value *Callee = M->getOrInsertFunction(Name, OrigCallee->getAttributes(),
-                                         ResTy, ArgTy, NULL);
+                                         ResTy, ArgTy, nullptr);
 
   if (Instruction *ArgInst = dyn_cast<Instruction>(Arg)) {
     // If the argument is an instruction, it must dominate all uses so put our
@@ -2177,6 +2196,7 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
       if (UnsafeFPShrink && hasFloatVersion(FuncName))
         return optimizeUnaryDoubleFP(CI, Builder, true);
       return nullptr;
+    case LibFunc::copysign:
     case LibFunc::fmin:
     case LibFunc::fmax:
       if (hasFloatVersion(FuncName))
@@ -2184,28 +2204,20 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
       return nullptr;
     case LibFunc::memcpy_chk:
       return optimizeMemCpyChk(CI, Builder);
+    case LibFunc::memmove_chk:
+      return optimizeMemMoveChk(CI, Builder);
+    case LibFunc::memset_chk:
+      return optimizeMemSetChk(CI, Builder);
+    case LibFunc::strcpy_chk:
+      return optimizeStrCpyChk(CI, Builder);
+    case LibFunc::stpcpy_chk:
+      return optimizeStpCpyChk(CI, Builder);
+    case LibFunc::stpncpy_chk:
+    case LibFunc::strncpy_chk:
+      return optimizeStrNCpyChk(CI, Builder);
     default:
       return nullptr;
     }
-  }
-
-  if (!isCallingConvC)
-    return nullptr;
-
-  // Finally check for fortified library calls.
-  if (FuncName.endswith("_chk")) {
-    if (FuncName == "__memmove_chk")
-      return optimizeMemMoveChk(CI, Builder);
-    else if (FuncName == "__memset_chk")
-      return optimizeMemSetChk(CI, Builder);
-    else if (FuncName == "__strcpy_chk")
-      return optimizeStrCpyChk(CI, Builder);
-    else if (FuncName == "__stpcpy_chk")
-      return optimizeStpCpyChk(CI, Builder);
-    else if (FuncName == "__strncpy_chk")
-      return optimizeStrNCpyChk(CI, Builder);
-    else if (FuncName == "__stpncpy_chk")
-      return optimizeStrNCpyChk(CI, Builder);
   }
 
   return nullptr;

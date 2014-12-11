@@ -349,7 +349,7 @@ public:
 
 private:
   void markAsDead(Instruction &I) {
-    if (VisitedDeadInsts.insert(&I))
+    if (VisitedDeadInsts.insert(&I).second)
       AS.DeadUsers.push_back(&I);
   }
 
@@ -639,7 +639,7 @@ private:
       }
 
       for (User *U : I->users())
-        if (Visited.insert(cast<Instruction>(U)))
+        if (Visited.insert(cast<Instruction>(U)).second)
           Uses.push_back(std::make_pair(I, cast<Instruction>(U)));
     } while (!Uses.empty());
 
@@ -807,12 +807,14 @@ public:
   void run(const SmallVectorImpl<Instruction*> &Insts) {
     // Retain the debug information attached to the alloca for use when
     // rewriting loads and stores.
-    if (MDNode *DebugNode = MDNode::getIfExists(AI.getContext(), &AI)) {
-      for (User *U : DebugNode->users())
-        if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(U))
-          DDIs.push_back(DDI);
-        else if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(U))
-          DVIs.push_back(DVI);
+    if (auto *L = LocalAsMetadata::getIfExists(&AI)) {
+      if (auto *DebugNode = MetadataAsValue::getIfExists(AI.getContext(), L)) {
+        for (User *U : DebugNode->users())
+          if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(U))
+            DDIs.push_back(DDI);
+          else if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(U))
+            DVIs.push_back(DVI);
+      }
     }
 
     LoadAndStorePromoter::run(Insts);
@@ -848,7 +850,7 @@ public:
       else
         return false;
 
-    } while (Visited.insert(Ptr));
+    } while (Visited.insert(Ptr).second);
 
     return false;
   }
@@ -1461,7 +1463,7 @@ static Value *getAdjustedPtr(IRBuilderTy &IRB, const DataLayout &DL, Value *Ptr,
         break;
       Offset += GEPOffset;
       Ptr = GEP->getPointerOperand();
-      if (!Visited.insert(Ptr))
+      if (!Visited.insert(Ptr).second)
         break;
     }
 
@@ -1498,7 +1500,7 @@ static Value *getAdjustedPtr(IRBuilderTy &IRB, const DataLayout &DL, Value *Ptr,
       break;
     }
     assert(Ptr->getType()->isPointerTy() && "Unexpected operand type!");
-  } while (Visited.insert(Ptr));
+  } while (Visited.insert(Ptr).second);
 
   if (!OffsetPtr) {
     if (!Int8Ptr) {
@@ -1691,7 +1693,7 @@ isVectorPromotionViableForSlice(const DataLayout &DL, uint64_t SliceBeginOffset,
 /// don't want to do the rewrites unless we are confident that the result will
 /// be promotable, so we have an early test here.
 static VectorType *
-isVectorPromotionViable(const DataLayout &DL, Type *AllocaTy,
+isVectorPromotionViable(const DataLayout &DL,
                         uint64_t SliceBeginOffset, uint64_t SliceEndOffset,
                         AllocaSlices::const_range Slices,
                         ArrayRef<AllocaSlices::iterator> SplitUses) {
@@ -1709,7 +1711,6 @@ isVectorPromotionViable(const DataLayout &DL, Type *AllocaTy,
         HaveCommonEltTy = false;
     }
   };
-  CheckCandidateType(AllocaTy);
   // Consider any loads or stores that are the exact size of the slice.
   for (const auto &S : Slices)
     if (S.beginOffset() == SliceBeginOffset &&
@@ -2861,7 +2862,7 @@ private:
   /// This uses a set to de-duplicate users.
   void enqueueUsers(Instruction &I) {
     for (Use &U : I.uses())
-      if (Visited.insert(U.getUser()))
+      if (Visited.insert(U.getUser()).second)
         Queue.push_back(&U);
   }
 
@@ -3213,7 +3214,7 @@ bool SROA::rewritePartition(AllocaInst &AI, AllocaSlices &AS,
   VectorType *VecTy =
       IsIntegerPromotable
           ? nullptr
-          : isVectorPromotionViable(*DL, SliceTy, BeginOffset, EndOffset,
+          : isVectorPromotionViable(*DL, BeginOffset, EndOffset,
                                     AllocaSlices::const_range(B, E), SplitUses);
   if (VecTy)
     SliceTy = VecTy;
@@ -3588,7 +3589,7 @@ static void enqueueUsersInWorklist(Instruction &I,
                                    SmallVectorImpl<Instruction *> &Worklist,
                                    SmallPtrSetImpl<Instruction *> &Visited) {
   for (User *U : I.users())
-    if (Visited.insert(cast<Instruction>(U)))
+    if (Visited.insert(cast<Instruction>(U)).second)
       Worklist.push_back(cast<Instruction>(U));
 }
 
@@ -3615,7 +3616,7 @@ bool SROA::promoteAllocas(Function &F) {
 
   DEBUG(dbgs() << "Promoting allocas with SSAUpdater...\n");
   SSAUpdater SSA;
-  DIBuilder DIB(*F.getParent());
+  DIBuilder DIB(*F.getParent(), /*AllowUnresolved*/ false);
   SmallVector<Instruction *, 64> Insts;
 
   // We need a worklist to walk the uses of each alloca.

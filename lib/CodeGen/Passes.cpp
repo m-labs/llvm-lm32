@@ -429,7 +429,7 @@ void TargetPassConfig::addPassesToHandleExceptions() {
     // FALLTHROUGH
   case ExceptionHandling::DwarfCFI:
   case ExceptionHandling::ARM:
-  case ExceptionHandling::WinEH:
+  case ExceptionHandling::ItaniumWinEH:
     addPass(createDwarfEHPass(TM));
     break;
   case ExceptionHandling::None:
@@ -446,7 +446,7 @@ void TargetPassConfig::addPassesToHandleExceptions() {
 void TargetPassConfig::addCodeGenPrepare() {
   if (getOptLevel() != CodeGenOpt::None && !DisableCGP)
     addPass(createCodeGenPreparePass(TM));
-  addPass(llvm::createRewriteSymbolsPass());
+  addPass(createRewriteSymbolsPass());
 }
 
 /// Add common passes that perform LLVM IR to IR transforms in preparation for
@@ -732,6 +732,7 @@ void TargetPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
 
   addPass(&TwoAddressInstructionPassID);
   addPass(&RegisterCoalescerID);
+  printAndVerify("After Register Coalescing");
 
   // PreRA instruction scheduling.
   if (addPass(&MachineSchedulerID))

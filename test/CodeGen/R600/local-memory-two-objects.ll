@@ -2,8 +2,8 @@
 ; RUN: llc < %s -march=r600 -mcpu=verde -verify-machineinstrs | FileCheck --check-prefix=SI-CHECK --check-prefix=SI %s
 ; RUN: llc < %s -march=r600 -mcpu=bonaire -verify-machineinstrs | FileCheck --check-prefix=SI-CHECK --check-prefix=CI %s
 
-@local_memory_two_objects.local_mem0 = internal unnamed_addr addrspace(3) global [4 x i32] zeroinitializer, align 4
-@local_memory_two_objects.local_mem1 = internal unnamed_addr addrspace(3) global [4 x i32] zeroinitializer, align 4
+@local_memory_two_objects.local_mem0 = internal unnamed_addr addrspace(3) global [4 x i32] undef, align 4
+@local_memory_two_objects.local_mem1 = internal unnamed_addr addrspace(3) global [4 x i32] undef, align 4
 
 ; EG-CHECK: {{^}}local_memory_two_objects:
 
@@ -11,7 +11,7 @@
 ; EG-CHECK: .long 166120
 ; EG-CHECK-NEXT: .long 8
 ; SI-CHECK: .long 47180
-; SI-CHECK-NEXT: .long 32768
+; SI-CHECK-NEXT: .long 38792
 
 ; We would like to check the the lds writes are using different
 ; addresses, but due to variations in the scheduler, we can't do

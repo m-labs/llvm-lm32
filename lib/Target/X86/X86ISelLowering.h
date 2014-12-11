@@ -379,6 +379,10 @@ namespace llvm {
       FMADDSUB,
       FMSUBADD,
 
+      // Compress and expand
+      COMPRESS,
+      EXPAND,
+
       // Save xmm argument registers to the stack, according to %al. An operator
       // is needed so that this can be expanded with control flow.
       VASTART_SAVE_XMM_REGS,
@@ -418,6 +422,9 @@ namespace llvm {
 
       // Test if in transactional execution.
       XTEST,
+
+      // ERI instructions
+      RSQRT28, RCP28, EXP2,
 
       // Compare and swap.
       LCMPXCHG_DAG = ISD::FIRST_TARGET_MEMORY_OPCODE,
@@ -1031,6 +1038,10 @@ namespace llvm {
     SDValue getRsqrtEstimate(SDValue Operand, DAGCombinerInfo &DCI,
                              unsigned &RefinementSteps,
                              bool &UseOneConstNR) const override;
+
+    /// Use rcp* to speed up fdiv calculations.
+    SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
+                             unsigned &RefinementSteps) const override;
   };
 
   namespace X86 {

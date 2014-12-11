@@ -18,6 +18,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/TrackingMDRef.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/DataTypes.h"
 
@@ -27,6 +28,7 @@ namespace llvm {
   class Function;
   class Module;
   class Value;
+  class Constant;
   class LLVMContext;
   class MDNode;
   class StringRef;
@@ -52,7 +54,6 @@ namespace llvm {
   class DIObjCProperty;
 
   class DIBuilder {
-    private:
     Module &M;
     LLVMContext &VMContext;
 
@@ -65,29 +66,34 @@ namespace llvm {
     Function *DeclareFn;     // llvm.dbg.declare
     Function *ValueFn;       // llvm.dbg.value
 
-    SmallVector<Value *, 4> AllEnumTypes;
-    /// Use TrackingVH to collect RetainTypes, since they can be updated
-    /// later on.
-    SmallVector<TrackingVH<MDNode>, 4> AllRetainTypes;
-    SmallVector<Value *, 4> AllSubprograms;
-    SmallVector<Value *, 4> AllGVs;
-    SmallVector<TrackingVH<MDNode>, 4> AllImportedModules;
+    SmallVector<Metadata *, 4> AllEnumTypes;
+    /// Track the RetainTypes, since they can be updated later on.
+    SmallVector<TrackingMDNodeRef, 4> AllRetainTypes;
+    SmallVector<Metadata *, 4> AllSubprograms;
+    SmallVector<Metadata *, 4> AllGVs;
+    SmallVector<TrackingMDNodeRef, 4> AllImportedModules;
+
+    /// \brief Track nodes that may be unresolved.
+    SmallVector<TrackingMDNodeRef, 4> UnresolvedNodes;
+    bool AllowUnresolvedNodes;
 
     /// Each subprogram's preserved local variables.
-    DenseMap<MDNode *, std::vector<TrackingVH<MDNode>>> PreservedVariables;
-
-    // Private use for multiple types of template parameters.
-    DITemplateValueParameter
-    createTemplateValueParameter(unsigned Tag, DIDescriptor Scope,
-                                 StringRef Name, DIType Ty, Value *Val,
-                                 MDNode *File = nullptr, unsigned LineNo = 0,
-                                 unsigned ColumnNo = 0);
+    DenseMap<MDNode *, std::vector<TrackingMDNodeRef>> PreservedVariables;
 
     DIBuilder(const DIBuilder &) LLVM_DELETED_FUNCTION;
     void operator=(const DIBuilder &) LLVM_DELETED_FUNCTION;
 
-    public:
-    explicit DIBuilder(Module &M);
+    /// \brief Create a temporary.
+    ///
+    /// Create an \a MDNodeFwdDecl and track it in \a UnresolvedNodes.
+    void trackIfUnresolved(MDNode *N);
+
+  public:
+    /// \brief Construct a builder for a module.
+    ///
+    /// If \c AllowUnresolved, collect unresolved nodes attached to the module
+    /// in order to resolve cycles during \a finalize().
+    explicit DIBuilder(Module &M, bool AllowUnresolved = true);
     enum DebugEmissionKind { FullDebug=1, LineTablesOnly };
 
     /// finalize - Construct any deferred debug info descriptors.
@@ -219,10 +225,10 @@ namespace llvm {
     /// @param Ty         Type of the static member.
     /// @param Flags      Flags to encode member attribute, e.g. private.
     /// @param Val        Const initializer of the member.
-    DIDerivedType
-    createStaticMemberType(DIDescriptor Scope, StringRef Name,
-                           DIFile File, unsigned LineNo, DIType Ty,
-                           unsigned Flags, llvm::Value *Val);
+    DIDerivedType createStaticMemberType(DIDescriptor Scope, StringRef Name,
+                                         DIFile File, unsigned LineNo,
+                                         DIType Ty, unsigned Flags,
+                                         llvm::Constant *Val);
 
     /// createObjCIVar - Create debugging information entry for Objective-C
     /// instance variable.
@@ -341,8 +347,8 @@ namespace llvm {
     /// @param LineNo       Line number.
     /// @param ColumnNo     Column Number.
     DITemplateValueParameter
-    createTemplateValueParameter(DIDescriptor Scope, StringRef Name,
-                                 DIType Ty, Value *Val, MDNode *File = nullptr,
+    createTemplateValueParameter(DIDescriptor Scope, StringRef Name, DIType Ty,
+                                 Constant *Val, MDNode *File = nullptr,
                                  unsigned LineNo = 0, unsigned ColumnNo = 0);
 
     /// \brief Create debugging information for a template template parameter.
@@ -444,10 +450,10 @@ namespace llvm {
     DIBasicType createUnspecifiedParameter();
 
     /// getOrCreateArray - Get a DIArray, create one if required.
-    DIArray getOrCreateArray(ArrayRef<Value *> Elements);
+    DIArray getOrCreateArray(ArrayRef<Metadata *> Elements);
 
     /// getOrCreateTypeArray - Get a DITypeArray, create one if required.
-    DITypeArray getOrCreateTypeArray(ArrayRef<Value *> Elements);
+    DITypeArray getOrCreateTypeArray(ArrayRef<Metadata *> Elements);
 
     /// getOrCreateSubrange - Create a descriptor for a value range.  This
     /// implicitly uniques the values returned.
@@ -466,21 +472,19 @@ namespace llvm {
     ///                      externally visible or not.
     /// @param Val         llvm::Value of the variable.
     /// @param Decl        Reference to the corresponding declaration.
-    DIGlobalVariable
-    createGlobalVariable(DIDescriptor Context, StringRef Name,
-                         StringRef LinkageName, DIFile File, unsigned LineNo,
-                         DITypeRef Ty, bool isLocalToUnit, llvm::Value *Val,
-                         MDNode *Decl = nullptr);
+    DIGlobalVariable createGlobalVariable(DIDescriptor Context, StringRef Name,
+                                          StringRef LinkageName, DIFile File,
+                                          unsigned LineNo, DITypeRef Ty,
+                                          bool isLocalToUnit,
+                                          llvm::Constant *Val,
+                                          MDNode *Decl = nullptr);
 
     /// createTempGlobalVariableFwdDecl - Identical to createGlobalVariable
     /// except that the resulting DbgNode is temporary and meant to be RAUWed.
-    DIGlobalVariable
-    createTempGlobalVariableFwdDecl(DIDescriptor Context, StringRef Name,
-                                    StringRef LinkageName, DIFile File,
-                                    unsigned LineNo, DITypeRef Ty,
-                                    bool isLocalToUnit, llvm::Value *Val,
-                                    MDNode *Decl = nullptr);
-
+    DIGlobalVariable createTempGlobalVariableFwdDecl(
+        DIDescriptor Context, StringRef Name, StringRef LinkageName,
+        DIFile File, unsigned LineNo, DITypeRef Ty, bool isLocalToUnit,
+        llvm::Constant *Val, MDNode *Decl = nullptr);
 
     /// createLocalVariable - Create a new descriptor for the specified
     /// local variable.

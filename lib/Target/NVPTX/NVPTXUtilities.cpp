@@ -52,7 +52,7 @@ static void cacheAnnotationFromMD(const MDNode *md, key_val_pair_t &retval) {
     assert(prop && "Annotation property not a string");
 
     // value
-    ConstantInt *Val = dyn_cast<ConstantInt>(md->getOperand(i + 1));
+    ConstantInt *Val = mdconst::dyn_extract<ConstantInt>(md->getOperand(i + 1));
     assert(Val && "Value operand not a constant int");
 
     std::string keyname = prop->getString().str();
@@ -73,9 +73,10 @@ static void cacheAnnotationFromMD(const Module *m, const GlobalValue *gv) {
     return;
   key_val_pair_t tmp;
   for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i) {
-    const MDNode *elem = NMD->getOperandAsMDNode(i);
+    const MDNode *elem = NMD->getOperand(i);
 
-    Value *entity = elem->getOperand(0);
+    GlobalValue *entity =
+        mdconst::dyn_extract_or_null<GlobalValue>(elem->getOperand(0));
     // entity may be null due to DCE
     if (!entity)
       continue;
@@ -319,10 +320,10 @@ bool llvm::getAlign(const Function &F, unsigned index, unsigned &align) {
 }
 
 bool llvm::getAlign(const CallInst &I, unsigned index, unsigned &align) {
-  if (MDNode *alignNode = I.getMDNode("callalign")) {
+  if (MDNode *alignNode = I.getMetadata("callalign")) {
     for (int i = 0, n = alignNode->getNumOperands(); i < n; i++) {
       if (const ConstantInt *CI =
-              dyn_cast<ConstantInt>(alignNode->getOperand(i))) {
+              mdconst::dyn_extract<ConstantInt>(alignNode->getOperand(i))) {
         unsigned v = CI->getZExtValue();
         if ((v >> 16) == index) {
           align = v & 0xFFFF;

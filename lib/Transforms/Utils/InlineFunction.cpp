@@ -297,9 +297,9 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
   for (Function::const_iterator I = CalledFunc->begin(), IE = CalledFunc->end();
        I != IE; ++I)
     for (BasicBlock::const_iterator J = I->begin(), JE = I->end(); J != JE; ++J) {
-      if (const MDNode *M = J->getMDNode(LLVMContext::MD_alias_scope))
+      if (const MDNode *M = J->getMetadata(LLVMContext::MD_alias_scope))
         MD.insert(M);
-      if (const MDNode *M = J->getMDNode(LLVMContext::MD_noalias))
+      if (const MDNode *M = J->getMetadata(LLVMContext::MD_noalias))
         MD.insert(M);
     }
 
@@ -308,7 +308,7 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
 
   // Walk the existing metadata, adding the complete (perhaps cyclic) chain to
   // the set.
-  SmallVector<const Value *, 16> Queue(MD.begin(), MD.end());
+  SmallVector<const Metadata *, 16> Queue(MD.begin(), MD.end());
   while (!Queue.empty()) {
     const MDNode *M = cast<MDNode>(Queue.pop_back_val());
     for (unsigned i = 0, ie = M->getNumOperands(); i != ie; ++i)
@@ -320,12 +320,12 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
   // Now we have a complete set of all metadata in the chains used to specify
   // the noalias scopes and the lists of those scopes.
   SmallVector<MDNode *, 16> DummyNodes;
-  DenseMap<const MDNode *, TrackingVH<MDNode> > MDMap;
+  DenseMap<const MDNode *, TrackingMDNodeRef> MDMap;
   for (SetVector<const MDNode *>::iterator I = MD.begin(), IE = MD.end();
        I != IE; ++I) {
     MDNode *Dummy = MDNode::getTemporary(CalledFunc->getContext(), None);
     DummyNodes.push_back(Dummy);
-    MDMap[*I] = Dummy;
+    MDMap[*I].reset(Dummy);
   }
 
   // Create new metadata nodes to replace the dummy nodes, replacing old
@@ -333,17 +333,17 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
   // node.
   for (SetVector<const MDNode *>::iterator I = MD.begin(), IE = MD.end();
        I != IE; ++I) {
-    SmallVector<Value *, 4> NewOps;
+    SmallVector<Metadata *, 4> NewOps;
     for (unsigned i = 0, ie = (*I)->getNumOperands(); i != ie; ++i) {
-      const Value *V = (*I)->getOperand(i);
+      const Metadata *V = (*I)->getOperand(i);
       if (const MDNode *M = dyn_cast<MDNode>(V))
         NewOps.push_back(MDMap[M]);
       else
-        NewOps.push_back(const_cast<Value *>(V));
+        NewOps.push_back(const_cast<Metadata *>(V));
     }
 
-    MDNode *NewM = MDNode::get(CalledFunc->getContext(), NewOps),
-           *TempM = MDMap[*I];
+    MDNode *NewM = MDNode::get(CalledFunc->getContext(), NewOps);
+    MDNodeFwdDecl *TempM = cast<MDNodeFwdDecl>(MDMap[*I]);
 
     TempM->replaceAllUsesWith(NewM);
   }
@@ -359,31 +359,32 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
     if (!NI)
       continue;
 
-    if (MDNode *M = NI->getMDNode(LLVMContext::MD_alias_scope)) {
+    if (MDNode *M = NI->getMetadata(LLVMContext::MD_alias_scope)) {
       MDNode *NewMD = MDMap[M];
       // If the call site also had alias scope metadata (a list of scopes to
       // which instructions inside it might belong), propagate those scopes to
       // the inlined instructions.
       if (MDNode *CSM =
-              CS.getInstruction()->getMDNode(LLVMContext::MD_alias_scope))
+              CS.getInstruction()->getMetadata(LLVMContext::MD_alias_scope))
         NewMD = MDNode::concatenate(NewMD, CSM);
       NI->setMetadata(LLVMContext::MD_alias_scope, NewMD);
     } else if (NI->mayReadOrWriteMemory()) {
       if (MDNode *M =
-              CS.getInstruction()->getMDNode(LLVMContext::MD_alias_scope))
+              CS.getInstruction()->getMetadata(LLVMContext::MD_alias_scope))
         NI->setMetadata(LLVMContext::MD_alias_scope, M);
     }
 
-    if (MDNode *M = NI->getMDNode(LLVMContext::MD_noalias)) {
+    if (MDNode *M = NI->getMetadata(LLVMContext::MD_noalias)) {
       MDNode *NewMD = MDMap[M];
       // If the call site also had noalias metadata (a list of scopes with
       // which instructions inside it don't alias), propagate those scopes to
       // the inlined instructions.
-      if (MDNode *CSM = CS.getInstruction()->getMDNode(LLVMContext::MD_noalias))
+      if (MDNode *CSM =
+              CS.getInstruction()->getMetadata(LLVMContext::MD_noalias))
         NewMD = MDNode::concatenate(NewMD, CSM);
       NI->setMetadata(LLVMContext::MD_noalias, NewMD);
     } else if (NI->mayReadOrWriteMemory()) {
-      if (MDNode *M = CS.getInstruction()->getMDNode(LLVMContext::MD_noalias))
+      if (MDNode *M = CS.getInstruction()->getMetadata(LLVMContext::MD_noalias))
         NI->setMetadata(LLVMContext::MD_noalias, M);
     }
   }
@@ -515,7 +516,7 @@ static void AddAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap,
       // need to go through several PHIs to see it, and thus could be
       // repeated in the Objects list.
       SmallPtrSet<const Value *, 4> ObjSet;
-      SmallVector<Value *, 4> Scopes, NoAliases;
+      SmallVector<Metadata *, 4> Scopes, NoAliases;
 
       SmallSetVector<const Argument *, 4> NAPtrArgs;
       for (unsigned i = 0, ie = PtrArgs.size(); i != ie; ++i) {
@@ -589,7 +590,7 @@ static void AddAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap,
       if (!NoAliases.empty())
         NI->setMetadata(LLVMContext::MD_noalias,
                         MDNode::concatenate(
-                            NI->getMDNode(LLVMContext::MD_noalias),
+                            NI->getMetadata(LLVMContext::MD_noalias),
                             MDNode::get(CalledFunc->getContext(), NoAliases)));
 
       // Next, we want to figure out all of the sets to which we might belong.
@@ -615,7 +616,7 @@ static void AddAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap,
       if (!Scopes.empty())
         NI->setMetadata(
             LLVMContext::MD_alias_scope,
-            MDNode::concatenate(NI->getMDNode(LLVMContext::MD_alias_scope),
+            MDNode::concatenate(NI->getMetadata(LLVMContext::MD_alias_scope),
                                 MDNode::get(CalledFunc->getContext(), Scopes)));
     }
   }
@@ -868,8 +869,15 @@ static void fixupLineNumbers(Function *Fn, Function::iterator FI,
         if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(BI)) {
           LLVMContext &Ctx = BI->getContext();
           MDNode *InlinedAt = BI->getDebugLoc().getInlinedAt(Ctx);
-          DVI->setOperand(2, createInlinedVariable(DVI->getVariable(), 
-                                                   InlinedAt, Ctx));
+          DVI->setOperand(2, MetadataAsValue::get(
+                                 Ctx, createInlinedVariable(DVI->getVariable(),
+                                                            InlinedAt, Ctx)));
+        } else if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(BI)) {
+          LLVMContext &Ctx = BI->getContext();
+          MDNode *InlinedAt = BI->getDebugLoc().getInlinedAt(Ctx);
+          DDI->setOperand(1, MetadataAsValue::get(
+                                 Ctx, createInlinedVariable(DDI->getVariable(),
+                                                            InlinedAt, Ctx)));
         }
       }
     }

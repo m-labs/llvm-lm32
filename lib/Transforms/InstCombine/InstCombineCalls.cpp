@@ -18,6 +18,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/IR/Statepoint.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
@@ -117,16 +118,15 @@ Instruction *InstCombiner::SimplifyMemTransfer(MemIntrinsic *MI) {
 
         // If the memcpy has metadata describing the members, see if we can
         // get the TBAA tag describing our copy.
-        if (MDNode *M = MI->getMDNode(LLVMContext::MD_tbaa_struct)) {
-          if (M->getNumOperands() == 3 &&
-              M->getOperand(0) &&
-              isa<ConstantInt>(M->getOperand(0)) &&
-              cast<ConstantInt>(M->getOperand(0))->isNullValue() &&
+        if (MDNode *M = MI->getMetadata(LLVMContext::MD_tbaa_struct)) {
+          if (M->getNumOperands() == 3 && M->getOperand(0) &&
+              mdconst::hasa<ConstantInt>(M->getOperand(0)) &&
+              mdconst::extract<ConstantInt>(M->getOperand(0))->isNullValue() &&
               M->getOperand(1) &&
-              isa<ConstantInt>(M->getOperand(1)) &&
-              cast<ConstantInt>(M->getOperand(1))->getValue() == Size &&
-              M->getOperand(2) &&
-              isa<MDNode>(M->getOperand(2)))
+              mdconst::hasa<ConstantInt>(M->getOperand(1)) &&
+              mdconst::extract<ConstantInt>(M->getOperand(1))->getValue() ==
+                  Size &&
+              M->getOperand(2) && isa<MDNode>(M->getOperand(2)))
             CopyMD = cast<MDNode>(M->getOperand(2));
         }
       }
@@ -369,29 +369,14 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       if (LHSKnownNegative && RHSKnownNegative) {
         // The sign bit is set in both cases: this MUST overflow.
         // Create a simple add instruction, and insert it into the struct.
-        Value *Add = Builder->CreateAdd(LHS, RHS);
-        Add->takeName(&CI);
-        Constant *V[] = {
-          UndefValue::get(LHS->getType()),
-          ConstantInt::getTrue(II->getContext())
-        };
-        StructType *ST = cast<StructType>(II->getType());
-        Constant *Struct = ConstantStruct::get(ST, V);
-        return InsertValueInst::Create(Struct, Add, 0);
+        return CreateOverflowTuple(II, Builder->CreateAdd(LHS, RHS), true,
+                                    /*ReUseName*/true);
       }
 
       if (LHSKnownPositive && RHSKnownPositive) {
         // The sign bit is clear in both cases: this CANNOT overflow.
         // Create a simple add instruction, and insert it into the struct.
-        Value *Add = Builder->CreateNUWAdd(LHS, RHS);
-        Add->takeName(&CI);
-        Constant *V[] = {
-          UndefValue::get(LHS->getType()),
-          ConstantInt::getFalse(II->getContext())
-        };
-        StructType *ST = cast<StructType>(II->getType());
-        Constant *Struct = ConstantStruct::get(ST, V);
-        return InsertValueInst::Create(Struct, Add, 0);
+        return CreateOverflowTuple(II, Builder->CreateNUWAdd(LHS, RHS), false);
       }
     }
   }
@@ -413,13 +398,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     if (ConstantInt *RHS = dyn_cast<ConstantInt>(II->getArgOperand(1))) {
       // X + 0 -> {X, false}
       if (RHS->isZero()) {
-        Constant *V[] = {
-          UndefValue::get(II->getArgOperand(0)->getType()),
-          ConstantInt::getFalse(II->getContext())
-        };
-        Constant *Struct =
-          ConstantStruct::get(cast<StructType>(II->getType()), V);
-        return InsertValueInst::Create(Struct, II->getArgOperand(0), 0);
+        return CreateOverflowTuple(II, II->getArgOperand(0), false,
+                                    /*ReUseName*/false);
       }
     }
 
@@ -428,37 +408,27 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     if (II->getIntrinsicID() == Intrinsic::sadd_with_overflow) {
       Value *LHS = II->getArgOperand(0), *RHS = II->getArgOperand(1);
       if (WillNotOverflowSignedAdd(LHS, RHS, II)) {
-        Value *Add = Builder->CreateNSWAdd(LHS, RHS);
-        Add->takeName(&CI);
-        Constant *V[] = {UndefValue::get(Add->getType()), Builder->getFalse()};
-        StructType *ST = cast<StructType>(II->getType());
-        Constant *Struct = ConstantStruct::get(ST, V);
-        return InsertValueInst::Create(Struct, Add, 0);
+        return CreateOverflowTuple(II, Builder->CreateNSWAdd(LHS, RHS), false);
       }
     }
 
     break;
   case Intrinsic::usub_with_overflow:
-  case Intrinsic::ssub_with_overflow:
+  case Intrinsic::ssub_with_overflow: {
+    Value *LHS = II->getArgOperand(0), *RHS = II->getArgOperand(1);
     // undef - X -> undef
     // X - undef -> undef
-    if (isa<UndefValue>(II->getArgOperand(0)) ||
-        isa<UndefValue>(II->getArgOperand(1)))
+    if (isa<UndefValue>(LHS) || isa<UndefValue>(RHS))
       return ReplaceInstUsesWith(CI, UndefValue::get(II->getType()));
 
-    if (ConstantInt *RHS = dyn_cast<ConstantInt>(II->getArgOperand(1))) {
+    if (ConstantInt *ConstRHS = dyn_cast<ConstantInt>(RHS)) {
       // X - 0 -> {X, false}
-      if (RHS->isZero()) {
-        Constant *V[] = {
-          UndefValue::get(II->getArgOperand(0)->getType()),
-          ConstantInt::getFalse(II->getContext())
-        };
-        Constant *Struct =
-          ConstantStruct::get(cast<StructType>(II->getType()), V);
-        return InsertValueInst::Create(Struct, II->getArgOperand(0), 0);
+      if (ConstRHS->isZero()) {
+        return CreateOverflowTuple(II, LHS, false, /*ReUseName*/false);
       }
     }
     break;
+  }
   case Intrinsic::umul_with_overflow: {
     Value *LHS = II->getArgOperand(0), *RHS = II->getArgOperand(1);
     unsigned BitWidth = cast<IntegerType>(LHS->getType())->getBitWidth();
@@ -479,13 +449,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     bool Overflow;
     LHSMax.umul_ov(RHSMax, Overflow);
     if (!Overflow) {
-      Value *Mul = Builder->CreateNUWMul(LHS, RHS, "umul_with_overflow");
-      Constant *V[] = {
-        UndefValue::get(LHS->getType()),
-        Builder->getFalse()
-      };
-      Constant *Struct = ConstantStruct::get(cast<StructType>(II->getType()),V);
-      return InsertValueInst::Create(Struct, Mul, 0);
+      return CreateOverflowTuple(II, Builder->CreateNUWMul(LHS, RHS), false);
     }
   } // FALL THROUGH
   case Intrinsic::smul_with_overflow:
@@ -509,13 +473,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
 
       // X * 1 -> {X, false}
       if (RHSI->equalsInt(1)) {
-        Constant *V[] = {
-          UndefValue::get(II->getArgOperand(0)->getType()),
-          ConstantInt::getFalse(II->getContext())
-        };
-        Constant *Struct =
-          ConstantStruct::get(cast<StructType>(II->getType()), V);
-        return InsertValueInst::Create(Struct, II->getArgOperand(0), 0);
+        return CreateOverflowTuple(II, II->getArgOperand(0), false,
+                                    /*ReUseName*/false);
       }
     }
     break;
@@ -613,6 +572,13 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       return new LoadInst(Ptr);
     }
     break;
+  case Intrinsic::ppc_vsx_lxvw4x:
+  case Intrinsic::ppc_vsx_lxvd2x: {
+    // Turn PPC VSX loads into normal loads.
+    Value *Ptr = Builder->CreateBitCast(II->getArgOperand(0),
+                                        PointerType::getUnqual(II->getType()));
+    return new LoadInst(Ptr, Twine(""), false, 1);
+  }
   case Intrinsic::ppc_altivec_stvx:
   case Intrinsic::ppc_altivec_stvxl:
     // Turn stvx -> store if the pointer is known aligned.
@@ -624,6 +590,13 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       return new StoreInst(II->getArgOperand(0), Ptr);
     }
     break;
+  case Intrinsic::ppc_vsx_stxvw4x:
+  case Intrinsic::ppc_vsx_stxvd2x: {
+    // Turn PPC VSX stores into normal stores.
+    Type *OpPtrTy = PointerType::getUnqual(II->getArgOperand(0)->getType());
+    Value *Ptr = Builder->CreateBitCast(II->getArgOperand(1), OpPtrTy);
+    return new StoreInst(II->getArgOperand(0), Ptr, false, 1);
+  }
   case Intrinsic::x86_sse_storeu_ps:
   case Intrinsic::x86_sse2_storeu_pd:
   case Intrinsic::x86_sse2_storeu_dq:
@@ -1102,6 +1075,26 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       return EraseInstFromFunction(*II);
     }
 
+    // assume( (load addr) != null ) -> add 'nonnull' metadata to load
+    // (if assume is valid at the load)
+    if (ICmpInst* ICmp = dyn_cast<ICmpInst>(IIOperand)) {
+      Value *LHS = ICmp->getOperand(0);
+      Value *RHS = ICmp->getOperand(1);
+      if (ICmpInst::ICMP_NE == ICmp->getPredicate() &&
+          isa<LoadInst>(LHS) &&
+          isa<Constant>(RHS) &&
+          RHS->getType()->isPointerTy() &&
+          cast<Constant>(RHS)->isNullValue()) {
+        LoadInst* LI = cast<LoadInst>(LHS);
+        if (isValidAssumeForContext(II, LI, DL, DT)) {
+          MDNode *MD = MDNode::get(II->getContext(), None);
+          LI->setMetadata(LLVMContext::MD_nonnull, MD);
+          return EraseInstFromFunction(*II);
+        }
+      }
+      // TODO: apply nonnull return attributes to calls and invokes
+      // TODO: apply range metadata for range check patterns?
+    }
     // If there is a dominating assume with the same condition as this one,
     // then this one is redundant, and should be removed.
     APInt KnownZero(1, 0), KnownOne(1, 0);
@@ -1129,6 +1122,14 @@ static bool isSafeToEliminateVarargsCast(const CallSite CS,
                                          const DataLayout * const DL,
                                          const int ix) {
   if (!CI->isLosslessCast())
+    return false;
+
+  // If this is a GC intrinsic, avoid munging types.  We need types for
+  // statepoint reconstruction in SelectionDAG.
+  // TODO: This is probably something which should be expanded to all
+  // intrinsics since the entire point of intrinsics is that
+  // they are understandable by the optimizer.
+  if (isStatepoint(CS) || isGCRelocate(CS) || isGCResult(CS))
     return false;
 
   // The size of ByVal or InAlloca arguments is derived from the type, so we

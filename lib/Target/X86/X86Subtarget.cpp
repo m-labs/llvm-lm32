@@ -264,16 +264,19 @@ void X86Subtarget::initializeEnvironment() {
   IsBTMemSlow = false;
   IsSHLDSlow = false;
   IsUAMemFast = false;
+  IsUAMem32Slow = false;
   HasVectorUAMem = false;
   HasCmpxchg16b = false;
   UseLeaForSP = false;
-  HasSlowDivide = false;
+  HasSlowDivide32 = false;
+  HasSlowDivide64 = false;
   PadShortFunctions = false;
   CallRegIndirect = false;
   LEAUsesAG = false;
   SlowLEA = false;
   SlowIncDec = false;
   UseSqrtEst = false;
+  UseReciprocalEst = false;
   stackAlignment = 4;
   // FIXME: this is a known good value for Yonah. How about others?
   MaxInlineSizeThreshold = 128;

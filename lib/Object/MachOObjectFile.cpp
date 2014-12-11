@@ -242,20 +242,40 @@ MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
   MachOObjectFile::LoadCommandInfo Load = getFirstLoadCommandInfo();
   for (unsigned I = 0; ; ++I) {
     if (Load.C.cmd == MachO::LC_SYMTAB) {
-      assert(!SymtabLoadCmd && "Multiple symbol tables");
+      // Multiple symbol tables
+      if (SymtabLoadCmd) {
+        EC = object_error::parse_failed;
+        return;
+      }
       SymtabLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_DYSYMTAB) {
-      assert(!DysymtabLoadCmd && "Multiple dynamic symbol tables");
+      // Multiple dynamic symbol tables
+      if (DysymtabLoadCmd) {
+        EC = object_error::parse_failed;
+        return;
+      }
       DysymtabLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_DATA_IN_CODE) {
-      assert(!DataInCodeLoadCmd && "Multiple data in code tables");
+      // Multiple data in code tables
+      if (DataInCodeLoadCmd) {
+        EC = object_error::parse_failed;
+        return;
+      }
       DataInCodeLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_DYLD_INFO || 
                Load.C.cmd == MachO::LC_DYLD_INFO_ONLY) {
-      assert(!DyldInfoLoadCmd && "Multiple dyldinfo load commands");
+      // Multiple dyldinfo load commands
+      if (DyldInfoLoadCmd) {
+        EC = object_error::parse_failed;
+        return;
+      }
       DyldInfoLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_UUID) {
-      assert(!UuidLoadCmd && "Multiple UUID load commands");
+      // Multiple UUID load commands
+      if (UuidLoadCmd) {
+        EC = object_error::parse_failed;
+        return;
+      }
       UuidLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == SegmentLoadType) {
       uint32_t NumSections = getSegmentLoadCommandNumSections(this, Load);
@@ -294,6 +314,12 @@ std::error_code MachOObjectFile::getSymbolName(DataRefImpl Symb,
   const char *Start = &StringTable.data()[Entry.n_strx];
   Res = StringRef(Start);
   return object_error::success;
+}
+
+unsigned MachOObjectFile::getSectionType(SectionRef Sec) const {
+  DataRefImpl DRI = Sec.getRawDataRefImpl();
+  uint32_t Flags = getSectionFlags(this, DRI);
+  return Flags & MachO::SECTION_TYPE;
 }
 
 // getIndirectName() returns the name of the alias'ed symbol who's string table
@@ -555,28 +581,7 @@ bool MachOObjectFile::isSectionBSS(DataRefImpl Sec) const {
           SectionType == MachO::S_GB_ZEROFILL);
 }
 
-bool MachOObjectFile::isSectionRequiredForExecution(DataRefImpl Sect) const {
-  // FIXME: Unimplemented.
-  return true;
-}
-
 bool MachOObjectFile::isSectionVirtual(DataRefImpl Sec) const {
-  // FIXME: Unimplemented.
-  return false;
-}
-
-bool MachOObjectFile::isSectionZeroInit(DataRefImpl Sec) const {
-  uint32_t Flags = getSectionFlags(this, Sec);
-  unsigned SectionType = Flags & MachO::SECTION_TYPE;
-  return SectionType == MachO::S_ZEROFILL ||
-         SectionType == MachO::S_GB_ZEROFILL;
-}
-
-bool MachOObjectFile::isSectionReadOnlyData(DataRefImpl Sec) const {
-  // Consider using the code from isSectionText to look for __const sections.
-  // Alternately, emit S_ATTR_PURE_INSTRUCTIONS and/or S_ATTR_SOME_INSTRUCTIONS
-  // to use section attributes to distinguish code from data.
-
   // FIXME: Unimplemented.
   return false;
 }
@@ -1227,16 +1232,9 @@ StringRef MachOObjectFile::getFileFormatName() const {
     case llvm::MachO::CPU_TYPE_POWERPC:
       return "Mach-O 32-bit ppc";
     default:
-      assert((CPUType & llvm::MachO::CPU_ARCH_ABI64) == 0 &&
-             "64-bit object file when we're not 64-bit?");
       return "Mach-O 32-bit unknown";
     }
   }
-
-  // Make sure the cpu type has the correct mask.
-  assert((CPUType & llvm::MachO::CPU_ARCH_ABI64)
-         == llvm::MachO::CPU_ARCH_ABI64 &&
-         "32-bit object file when we're 64-bit?");
 
   switch (CPUType) {
   case llvm::MachO::CPU_TYPE_X86_64:
@@ -2284,6 +2282,11 @@ MachOObjectFile::getDylinkerCommand(const LoadCommandInfo &L) const {
 MachO::uuid_command
 MachOObjectFile::getUuidCommand(const LoadCommandInfo &L) const {
   return getStruct<MachO::uuid_command>(this, L.Ptr);
+}
+
+MachO::rpath_command
+MachOObjectFile::getRpathCommand(const LoadCommandInfo &L) const {
+  return getStruct<MachO::rpath_command>(this, L.Ptr);
 }
 
 MachO::source_version_command

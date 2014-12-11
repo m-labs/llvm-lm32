@@ -99,6 +99,10 @@ namespace llvm {
       /// SVR4 calls.
       CALL, CALL_NOP,
 
+      /// CALL_TLS and CALL_NOP_TLS - Versions of CALL and CALL_NOP used
+      /// to access TLS variables.
+      CALL_TLS, CALL_NOP_TLS,
+
       /// CHAIN,FLAG = MTCTR(VAL, CHAIN[, INFLAG]) - Directly corresponds to a
       /// MTCTR instruction.
       MTCTR,
@@ -120,6 +124,10 @@ namespace llvm {
       /// eq or gt bit of CR0 after executing andi. x, 1. This is used to
       /// implement truncation of i32 or i64 to i1.
       ANDIo_1_EQ_BIT, ANDIo_1_GT_BIT,
+
+      // READ_TIME_BASE - A read of the 64-bit time-base register on a 32-bit
+      // target (returns (Lo, Hi)). It takes a chain operand.
+      READ_TIME_BASE,
 
       // EH_SJLJ_SETJMP - SjLj exception handling setjmp.
       EH_SJLJ_SETJMP,
@@ -214,10 +222,6 @@ namespace llvm {
       /// sym\@got\@tlsgd\@l.
       ADDI_TLSGD_L,
 
-      /// G8RC = GET_TLS_ADDR %X3, Symbol - For the general-dynamic TLS
-      /// model, produces a call to __tls_get_addr(sym\@tlsgd).
-      GET_TLS_ADDR,
-
       /// G8RC = ADDIS_TLSLD_HA %X2, Symbol - For the local-dynamic TLS
       /// model, produces an ADDIS8 instruction that adds the GOT base
       /// register to sym\@got\@tlsld\@ha.
@@ -227,10 +231,6 @@ namespace llvm {
       /// model, produces an ADDI8 instruction that adds G8RReg to
       /// sym\@got\@tlsld\@l.
       ADDI_TLSLD_L,
-
-      /// G8RC = GET_TLSLD_ADDR %X3, Symbol - For the local-dynamic TLS
-      /// model, produces a call to __tls_get_addr(sym\@tlsld).
-      GET_TLSLD_ADDR,
 
       /// G8RC = ADDIS_DTPREL_HA %X3, Symbol, Chain - For the
       /// local-dynamic TLS model, produces an ADDIS8 instruction
@@ -253,6 +253,13 @@ namespace llvm {
       /// CHAIN = SC CHAIN, Imm128 - System call.  The 7-bit unsigned
       /// operand identifies the operating system entry point.
       SC,
+
+      /// VSRC, CHAIN = XXSWAPD CHAIN, VSRC - Occurs only for little
+      /// endian.  Maps to an xxswapd instruction that corrects an lxvd2x
+      /// or stxvd2x instruction.  The chain is necessary because the
+      /// sequence replaces a load and needs to provide the same number
+      /// of outputs.
+      XXSWAPD,
 
       /// CHAIN = STBRX CHAIN, GPRC, Ptr, Type - This is a
       /// byte-swapping store instruction.  It byte-swaps the low "Type" bits of
@@ -293,7 +300,17 @@ namespace llvm {
       /// G8RC = ADDI_TOC_L G8RReg, Symbol - For medium code model, produces
       /// an ADDI8 instruction that adds G8RReg to sym\@toc\@l.
       /// Preceded by an ADDIS_TOC_HA to form a full 32-bit offset.
-      ADDI_TOC_L
+      ADDI_TOC_L,
+
+      /// VSRC, CHAIN = LXVD2X_LE CHAIN, Ptr - Occurs only for little endian.
+      /// Maps directly to an lxvd2x instruction that will be followed by
+      /// an xxswapd.
+      LXVD2X,
+
+      /// CHAIN = STXVD2X CHAIN, VSRC, Ptr - Occurs only for little endian.
+      /// Maps directly to an stxvd2x instruction that will be preceded by
+      /// an xxswapd.
+      STXVD2X
     };
   }
 
@@ -402,6 +419,9 @@ namespace llvm {
     ///
     void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue>&Results,
                             SelectionDAG &DAG) const override;
+
+    SDValue expandVSXLoadForLE(SDNode *N, DAGCombinerInfo &DCI) const;
+    SDValue expandVSXStoreForLE(SDNode *N, DAGCombinerInfo &DCI) const;
 
     SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
@@ -567,6 +587,8 @@ namespace llvm {
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerConstantPool(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBlockAddress(SDValue Op, SelectionDAG &DAG) const;
+    std::pair<SDValue,SDValue> lowerTLSCall(SDValue Op, SDLoc dl,
+                                            SelectionDAG &DAG) const;
     SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
@@ -706,6 +728,7 @@ namespace llvm {
                              bool &UseOneConstNR) const override;
     SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
                              unsigned &RefinementSteps) const override;
+    bool combineRepeatedFPDivisors(unsigned NumUsers) const override;
 
     CCAssignFn *useFastISelCCs(unsigned Flag) const;
   };
