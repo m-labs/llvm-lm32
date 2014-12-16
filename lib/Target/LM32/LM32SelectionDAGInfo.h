@@ -22,7 +22,7 @@ class LM32TargetMachine;
 
 class LM32SelectionDAGInfo : public TargetSelectionDAGInfo {
 public:
-  explicit LM32SelectionDAGInfo(const LM32TargetMachine &TM);
+  explicit LM32SelectionDAGInfo(const DataLayout &DL);
   ~LM32SelectionDAGInfo();
 };
 

@@ -10,9 +10,8 @@
 #include "LM32TargetObjectFile.h"
 #include "LM32Subtarget.h"
 #include "LM32TargetMachine.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/Support/ELF.h"
@@ -55,6 +54,7 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM) const {
 
 /// IsGlobalInSmallSection - Return true if this global address should be
 /// placed into small data/bss section.
+// FIXME: review this
 bool LM32TargetObjectFile::
 IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
                        SectionKind Kind) const {
@@ -73,12 +73,12 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
     return false;
 
   Type *Ty = GV->getType()->getElementType();
-  return IsInSmallSection(TM.getDataLayout()->getTypeAllocSize(Ty));
+  return IsInSmallSection(TM.getSubtargetImpl()->getDataLayout()->getTypeAllocSize(Ty));
 }
 
 const MCSection *LM32TargetObjectFile::
 SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-                       Mangler *Mang, const TargetMachine &TM) const {
+                       Mangler &Mang, const TargetMachine &TM) const {
   // TODO: Could also support "weak" symbols as well with ".gnu.linkonce.s.*"
   // sections?
 

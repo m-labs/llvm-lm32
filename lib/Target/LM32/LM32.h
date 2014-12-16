@@ -12,27 +12,37 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TARGET_LM32_H
-#define TARGET_LM32_H
+#ifndef LLVM_LIB_TARGET_LM32_LM32_H
+#define LLVM_LIB_TARGET_LM32_LM32_H
 
 #include "MCTargetDesc/LM32MCTargetDesc.h"
+#include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetMachine.h"
 
-namespace llvm {
-  class LM32TargetMachine;
-  class FunctionPass;
-  class MachineCodeEmitter;
-  class MCCodeEmitter;
-  class formatted_raw_ostream;
 
+namespace llvm {
+  class FunctionPass;
+  class ModulePass;
+  class TargetMachine;
+  class MachineInstr;
+  class LM32MCInst;
+  class LM32AsmPrinter;
+  class LM32TargetMachine;
+  class formatted_raw_ostream;
+  class raw_ostream;
+
+/* TODO: object output.
   MCCodeEmitter *createLM32MCCodeEmitter(const Target &,
                                            TargetMachine &TM,
                                            MCContext &Ctx);
-
+*/
+/* TODO: assembler input.
+ TargetAsmBackend *createHexagonAsmBackend(const Target &,
+ const std::string &);
+*/
   FunctionPass *createLM32ISelDag(LM32TargetMachine &TM,
                                   CodeGenOpt::Level OptLevel);
 
-  extern Target TheLM32Target;
 } // end namespace llvm;
 
-#endif
+#endif  // LLVM_LIB_TARGET_LM32_LM32_H

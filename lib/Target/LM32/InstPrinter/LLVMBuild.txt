@@ -1,4 +1,4 @@
-;===- ./lib/Target/LM32/LLVMBuild.txt --------------------------*- Conf -*--===;
+;===- ./lib/Target/LM32/InstPrinter/LLVMBuild.txt --------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,22 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = InstPrinter MCTargetDesc TargetInfo
-;subdirectories = AsmParser Disassembler InstPrinter MCTargetDesc TargetInfo
-
 [component_0]
-type = TargetGroup
-name = LM32
-parent = Target
-has_asmparser = 1
-has_asmprinter = 1
-has_disassembler = 1
-
-[component_1]
 type = Library
-name = LM32CodeGen
+name = LM32AsmPrinter
 parent = LM32
-required_libraries = AsmPrinter CodeGen Core MC LM32AsmPrinter LM32Desc LM32Info SelectionDAG Support Target
+required_libraries = MC Support
 add_to_library_groups = LM32
-

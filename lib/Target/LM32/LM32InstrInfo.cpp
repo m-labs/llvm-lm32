@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "LM32InstrInfo.h"
+#include "LM32.h"
+#include "LM32Subtarget.h"
 #include "LM32TargetMachine.h"
 #include "LM32MachineFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
@@ -22,14 +24,19 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-#define GET_INSTRINFO_CTOR
-#include "LM32GenInstrInfo.inc"
+#define DEBUG_TYPE "lm32-instrinfo"
 
 using namespace llvm;
 
-LM32InstrInfo::LM32InstrInfo(LM32TargetMachine &tm)
+#define GET_INSTRINFO_CTOR_DTOR
+#include "LM32GenInstrInfo.inc"
+
+// Pin the vtable to this file.
+void LM32InstrInfo::anchor() {}
+
+LM32InstrInfo::LM32InstrInfo(LM32Subtarget &st)
   : LM32GenInstrInfo(LM32::ADJCALLSTACKDOWN, LM32::ADJCALLSTACKUP),
-    TM(tm), RI(*TM.getSubtargetImpl(), *this) {}
+    RI(st) {}
 
 #if 0
 static bool isZeroImm(const MachineOperand &op) {

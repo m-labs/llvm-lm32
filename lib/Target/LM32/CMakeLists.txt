@@ -16,6 +16,7 @@ add_llvm_target(LM32CodeGen
   LM32InstrInfo.cpp
   LM32ISelDAGToDAG.cpp
   LM32ISelLowering.cpp
+  LM32MCInstLower.cpp
   LM32RegisterInfo.cpp
   LM32SelectionDAGInfo.cpp
   LM32Subtarget.cpp
@@ -23,6 +24,8 @@ add_llvm_target(LM32CodeGen
   LM32TargetObjectFile.cpp
   )
 
+add_subdirectory(InstPrinter)
+#add_subdirectory(Disassembler)
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
-
+#add_subdirectory(AsmParser)

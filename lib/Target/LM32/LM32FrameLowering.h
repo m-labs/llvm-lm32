@@ -13,8 +13,8 @@
 // Based on XCore.
 //===----------------------------------------------------------------------===//
 
-#ifndef LM32FRAMEINFO_H
-#define LM32FRAMEINFO_H
+#ifndef LLVM_LIB_TARGET_LM32_LM32FRAMELOWERING_H
+#define LLVM_LIB_TARGET_LM32_LM32FRAMELOWERING_H
 
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
@@ -32,11 +32,11 @@ namespace llvm {
 
     /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
     /// the function.
-    void emitPrologue(MachineFunction &MF) const;
-    void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
+    void emitPrologue(MachineFunction &MF) const override;
+    void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
 
     // Is this frame using a Frame Pointer?
-    bool hasFP(const MachineFunction &MF) const;
+    bool hasFP(const MachineFunction &MF) const override;
     
     /// hasReservedCallFrame - Under normal circumstances, when a frame pointer is
     /// not required, we reserve argument space for call sites in the function
@@ -51,7 +51,7 @@ namespace llvm {
     /// in LM32TargetMachine::LM32TargetMachine().
     /// Some targets (e.g. SPU, PPC) add in the maxCallFrameSize to the
     /// stacksize manually due to special alignment requirements or other issues.
-    bool hasReservedCallFrame(const MachineFunction &MF) const {
+    bool hasReservedCallFrame(const MachineFunction &MF) const override {
       // Why wouldn't you do this:
       // It's not always a good idea to include the call frame as part of the
       // stack frame. ARM (especially Thumb) has small immediate offset to
@@ -61,19 +61,23 @@ namespace llvm {
       return true;
     }
 
+    void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                       MachineBasicBlock &MBB,
+                                       MachineBasicBlock::iterator MI) const;
 
     /// processFunctionBeforeFrameFinalized - This method is called immediately
     /// before the specified functions frame layout (MF.getFrameInfo()) is
     /// finalized.  Once the frame is finalized, MO_FrameIndex operands are
     /// replaced with direct constants.  This method is optional.
-    void processFunctionBeforeFrameFinalized(MachineFunction &MF) const;
+    void processFunctionBeforeFrameFinalized(MachineFunction &MF,
+                                             RegScavenger *RS = nullptr) const override;
 
     /// processFunctionBeforeCalleeSavedScan - This method is called immediately
     /// before PrologEpilogInserter scans the physical registers used to 
     /// determine what callee saved registers should be spilled. This method 
     /// is optional.
     void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
-                                                RegScavenger *RS = NULL) const;
+                                              RegScavenger *RS = nullptr) const override;
     
     //! Stack slot size (4 bytes)
     static int stackSlotSize() {
@@ -82,4 +86,4 @@ namespace llvm {
   };
 }
 
-#endif // LM32FRAMEINFO_H
+#endif // LLVM_LIB_TARGET_LM32_LM32FRAMELOWERING_H

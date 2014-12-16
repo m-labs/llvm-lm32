@@ -11,21 +11,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LM32TARGETASMINFO_H
-#define LM32TARGETASMINFO_H
+#ifndef LLVM_LIB_TARGET_LM32_MCTARGETDESC_LM32MCASMINFO_H
+#define LLVM_LIB_TARGET_LM32_MCTARGETDESC_LM32MCASMINFO_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
-  class Target;
 
-  class LM32MCAsmInfo : public MCAsmInfo {
+  class LM32MCAsmInfo : public MCAsmInfoELF {
+    void anchor() override;
   public:
-    explicit LM32MCAsmInfo(const Target &T, StringRef TT);
+    explicit LM32MCAsmInfo(StringRef TT);
   };
-
 
 } // namespace llvm
 
-#endif
+#endif  // LLVM_LIB_TARGET_LM32_MCTARGETDESC_LM32MCASMINFO_H

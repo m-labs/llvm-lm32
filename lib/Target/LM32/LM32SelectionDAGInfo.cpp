@@ -15,9 +15,8 @@
 #include "LM32TargetMachine.h"
 using namespace llvm;
 
-LM32SelectionDAGInfo::LM32SelectionDAGInfo(const LM32TargetMachine &TM)
-  : TargetSelectionDAGInfo(TM) {
-}
+LM32SelectionDAGInfo::LM32SelectionDAGInfo(const DataLayout &DL)
+: TargetSelectionDAGInfo(&DL) {}
 
 LM32SelectionDAGInfo::~LM32SelectionDAGInfo() {
 }

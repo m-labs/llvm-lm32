@@ -15,7 +15,6 @@
 #ifndef LM32REGISTERINFO_H
 #define LM32REGISTERINFO_H
 
-#include "LM32.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 #define GET_REGINFO_HEADER
@@ -25,30 +24,16 @@
 namespace llvm {
 class LM32Subtarget;
 class TargetInstrInfo;
-class Type;
 
 struct LM32RegisterInfo : public LM32GenRegisterInfo {
-  const LM32Subtarget &Subtarget;
-  const TargetInstrInfo &TII;
+  LM32Subtarget &Subtarget;
 
-  LM32RegisterInfo(const LM32Subtarget &Subtarget,
-                     const TargetInstrInfo &tii);
+  LM32RegisterInfo(LM32Subtarget &st);
 
   /// Code Generation virtual methods...
   const uint16_t *getCalleeSavedRegs(const MachineFunction* MF = 0) const;
 
   BitVector getReservedRegs(const MachineFunction &MF) const;
-
-
-  /// eliminateCallFramePseudoInstr - This method is called during prolog/epilog
-  /// code insertion to eliminate call frame setup and destroy pseudo
-  /// instructions (but only if the Target is using them).  It is responsible
-  /// for eliminating these instructions, replacing them with concrete
-  /// instructions.  This method need only be implemented if using call frame
-  /// setup/destroy pseudo instructions.
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator I) const;
 
   /// Stack Frame Processing Methods
   /// eliminateFrameIndex - This method must be overriden to eliminate abstract
@@ -59,7 +44,9 @@ struct LM32RegisterInfo : public LM32GenRegisterInfo {
   /// finished product. SPAdj is the SP adjustment due to call frame setup
   /// instruction.
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
-                           int SPAdj, RegScavenger *RS = NULL) const;
+                           int SPAdj, unsigned FIOperandNum,
+                           RegScavenger *RS = nullptr) const override;
+
 
   // Handle cases where the stack must be aligned more than the default
   // alignment.

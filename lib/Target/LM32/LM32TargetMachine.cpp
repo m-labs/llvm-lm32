@@ -10,8 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "LM32.h"
 #include "LM32TargetMachine.h"
+#include "LM32.h"
+#include "LM32ISelLowering.h"
+#include "LM32TargetObjectFile.h"
+
 #include "llvm/PassManager.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/FormattedStream.h"
@@ -19,10 +22,7 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-///
-/// Note: DataLayout is described in:
-/// http://www.llvm.org/docs/LangRef.html#datalayout
-///
+
 LM32TargetMachine::
 LM32TargetMachine(const Target &T, StringRef TT,
                     StringRef CPU, StringRef FS,
@@ -30,16 +30,13 @@ LM32TargetMachine(const Target &T, StringRef TT,
                     Reloc::Model RM, CodeModel::Model CM,
                     CodeGenOpt::Level OL)
   : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-    Subtarget(TT, CPU, FS),
-// I seem to recall that floats and doubles aligned to less than their 
-// natural alignment were getting realigned to the natural alignment by LLVM.
-// Note: must set both v64 and v128 since both are set in defaults.
-// **** This must match Targets.cpp in clang. ****
-    Layout("E-p:32:32:32-i8:8:32-i16:16:32-i32:32:32-i64:32:32-f32:32:32-f64:32:32-a0:8:32-S32-s0:32:32-n32-v64:32:32-v128:32:32"),
-    InstrInfo(*this), 
-    FrameLowering(Subtarget),
-    TLInfo(*this), TSInfo(*this)
-{}
+    TLOF(make_unique<LM32TargetObjectFile>()),
+    Subtarget(TT, CPU, FS, *this)
+{
+    initAsmInfo();
+}
+
+LM32TargetMachine::~LM32TargetMachine() {}
 
 
 //===----------------------------------------------------------------------===//

@@ -15,7 +15,7 @@
 #include "LM32FrameLowering.h"
 #include "LM32InstrInfo.h"
 #include "LM32MachineFunctionInfo.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Function.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -27,6 +27,7 @@
 #include "llvm/Support/Debug.h"
 #include "LM32Subtarget.h"
 
+#define DEBUG_TYPE "frame-info"
 
 using namespace llvm;
 
@@ -47,10 +48,10 @@ LM32FrameLowering::LM32FrameLowering(const LM32Subtarget &subtarget)
 ///
 bool LM32FrameLowering::
 hasFP(const MachineFunction &MF) const {
-  const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
+  const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
   const MachineFrameInfo *MFI = MF.getFrameInfo();
-
-  return (MF.getTarget().Options.DisableFramePointerElim(MF) || 
+    
+  return (MF.getTarget().Options.DisableFramePointerElim(MF) ||
            RegInfo->needsStackRealignment(MF) ||
            MF.getFrameInfo()->hasVarSizedObjects() ||
            MFI->isFrameAddressTaken());
@@ -64,11 +65,11 @@ emitPrologue(MachineFunction &MF) const {
   MachineBasicBlock &MBB = MF.front();    // Prolog goes in entry BB
   MachineBasicBlock::iterator MBBI = MBB.begin();
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
-  MachineModuleInfo *MMI = &MF.getMMI();
+
 
   LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
   const LM32InstrInfo &TII =
-    *static_cast<const LM32InstrInfo*>(MF.getTarget().getInstrInfo());
+    *static_cast<const LM32InstrInfo *>(MF.getSubtarget().getInstrInfo());
 
   DebugLoc dl = (MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc());
 
@@ -85,11 +86,14 @@ emitPrologue(MachineFunction &MF) const {
   assert(FrameSize%4 == 0 && 
          "LM32FrameLowering::emitPrologue Misaligned frame size");
   
-  
+#if 0
+  MachineModuleInfo *MMI = &MF.getMMI();
   bool emitFrameMoves = MMI->hasDebugInfo() ||
                         MF.getFunction()->needsUnwindTableEntry();
+#endif
 
-  assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) && 
+
+  assert(((MFuncInf->getUsesLR() && FrameSize) || !MFuncInf->getUsesLR()) &&
          "we should have a frame if LR is used.");
   assert(((FP && FrameSize) || !FP) && "we should have a frame if FP is used.");
 
@@ -110,6 +114,7 @@ emitPrologue(MachineFunction &MF) const {
     // Add the "machine moves" for the instructions we generated above, but in
     // reverse order.
     // Mapping for machine moves (see MCDwarf.cpp):
+#if 0
     if (emitFrameMoves) {
       std::vector<MachineMove> &Moves = MMI->getFrameMoves();
 
@@ -126,7 +131,7 @@ emitPrologue(MachineFunction &MF) const {
       MachineLocation SPSrc(MachineLocation::VirtualFP, FrameSize);
       Moves.push_back(MachineMove(FrameLabel, SPDst, SPSrc));
     }
-    
+#endif
     if (MFuncInf->getUsesLR()) {
       // Save the LR (RRA) to the preallocated stack slot.
       int LRSpillOffset = MFrmInf->getObjectOffset(MFuncInf->getLRSpillSlot())
@@ -135,7 +140,10 @@ emitPrologue(MachineFunction &MF) const {
       BuildMI(MBB, MBBI, dl, TII.get(LM32::SW))
         .addReg(LM32::RRA).addReg(LM32::RSP).addImm(LRSpillOffset);
       MBB.addLiveIn(LM32::RRA);
-      
+#if 0
+        
+        ******  http://reviews.llvm.org/rL203204  re PROLOG_LABEL
+        
       if (emitFrameMoves) {
         MCSymbol *SaveLRLabel = MMI->getContext().CreateTempSymbol();
         BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL))
@@ -148,6 +156,7 @@ emitPrologue(MachineFunction &MF) const {
         MachineLocation CSSrc(LM32::RRA);
         MMI->getFrameMoves().push_back(MachineMove(SaveLRLabel, CSDst, CSSrc));
       }
+#endif
     }
   
     if (FP) {
@@ -161,6 +170,7 @@ emitPrologue(MachineFunction &MF) const {
   
       // RFP is live-in. It is killed at the spill.
       MBB.addLiveIn(LM32::RFP);
+#if 0
       if (emitFrameMoves) {
              DEBUG(dbgs() << "\nFunction: "
                << MF.getFunction()->getName() << " FP Frame debug location\n");
@@ -174,6 +184,7 @@ emitPrologue(MachineFunction &MF) const {
         MachineLocation CSSrc(LM32::RFP);
         MMI->getFrameMoves().push_back(MachineMove(SaveRFPLabel, CSDst, CSSrc));
       }
+#endif
       // Set the FP from the SP.
       unsigned FramePtr = LM32::RFP;
       // The FP points to the beginning of the frame ( = SP on entry), 
@@ -181,6 +192,7 @@ emitPrologue(MachineFunction &MF) const {
       FrameSize += Subtarget.hasSPBias()? 4 : 0;
       BuildMI(MBB, MBBI, dl, TII.get(LM32::ADDI),FramePtr)
         .addReg(LM32::RSP).addImm(FrameSize);
+#if 0
       if (emitFrameMoves) {
         DEBUG(dbgs() << "FRAMEMOVE: FPreg: is now FP \n");
         // Show FP is now valid.
@@ -190,8 +202,9 @@ emitPrologue(MachineFunction &MF) const {
         MachineLocation SPSrc(MachineLocation::VirtualFP);
         MMI->getFrameMoves().push_back(MachineMove(FrameLabel, SPDst, SPSrc));
       }
+#endif
     }
-  } 
+  }
   
 #if 0
   // from XCore (I believe):
@@ -212,6 +225,9 @@ emitPrologue(MachineFunction &MF) const {
   }
 #endif
   // This is from PPC:
+  // Frame moves needed for debug or "Function must be in a unwind table" or function unwinds stack
+  // http://blog.reverberate.org/2013/05/deep-wizardry-stack-unwinding.html
+#if 0
   if (emitFrameMoves) {
     MCSymbol *FrameLabel = MMI->getContext().CreateTempSymbol();
     BuildMI(MBB, MBBI, dl, TII.get(LM32::PROLOG_LABEL)).addSym(FrameLabel);
@@ -244,16 +260,16 @@ emitPrologue(MachineFunction &MF) const {
       MMI->getFrameMoves().push_back(MachineMove(Label, CSDst, CSSrc));
     }
   }
-
+#endif
 }
 
 
 void LM32FrameLowering::
 emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
-  MachineBasicBlock::iterator MBBI = prior(MBB.end());
+    MachineBasicBlock::iterator MBBI = std::prev(MBB.end());
   const LM32InstrInfo &TII =
-    *static_cast<const LM32InstrInfo*>(MF.getTarget().getInstrInfo());
+    *static_cast<const LM32InstrInfo *>(MF.getSubtarget().getInstrInfo());
   LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
   assert(MBBI->getOpcode() == LM32::RET &&
          "Can only put epilog before 'ret' instruction!");
@@ -294,12 +310,35 @@ emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const {
 }
 
 
+void LM32FrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF,
+                              MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator MI) const {
+    // We're assuming a fixed call frame. hasReservedCallFrame==true
+    // Since we are using reserved call frames and we don't need to adjust
+    // the stack pointer outside of the prologue/epilogue we'll just erase
+    // the ADJCALLSTACKDOWN, ADJCALLSTACKUP instructions.
+    // Normally these would bracket calls and be used for dynamic call frames.
+    // Note alloca() is handled in the prologue.
+    switch (MI->getOpcode()) {
+        case LM32::ADJCALLSTACKDOWN:
+        case LM32::ADJCALLSTACKUP:
+            assert(hasReservedCallFrame(MF) &&
+                   "ADJSTACKDOWN and ADJSTACKUP should be no-ops");
+            MBB.erase(MI);
+            break;
+            
+        default:
+            llvm_unreachable("Unexpected call frame instruction");
+    }
+}
+
 /// processFunctionBeforeFrameFinalized - This method is called immediately
 /// before the specified functions frame layout (MF.getFrameInfo()) is
 /// finalized.  Once the frame is finalized, MO_FrameIndex operands are
 /// replaced with direct constants.  This method is optional.
 void LM32FrameLowering::
-processFunctionBeforeFrameFinalized(MachineFunction &MF) const {}
+processFunctionBeforeFrameFinalized(MachineFunction &MF, RegScavenger *) const {}
 
 /// processFunctionBeforeCalleeSavedScan - This method is called immediately
 /// before PrologEpilogInserter scans the physical registers used to determine
@@ -310,11 +349,13 @@ void LM32FrameLowering::
 processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                      RegScavenger *RS) const {
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
-  const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
+//  const LM32InstrInfo &TII =
+//    *static_cast<const LM32InstrInfo *>(MF.getSubtarget().getInstrInfo());
+//  const LM32RegisterInfo &RegInfo = TII.getRegisterInfo();
   const TargetRegisterClass *RC = &LM32::GPRRegClass;
   LM32FunctionInfo *MFuncInf = MF.getInfo<LM32FunctionInfo>();
   const bool LRUsed = MF.getRegInfo().isPhysRegUsed(LM32::RRA);
-  const bool hasFP = MF.getTarget().getFrameLowering()->hasFP(MF);
+  const bool hasFP = MF.getSubtarget().getFrameLowering()->hasFP(MF);
   const bool isVarArg = MF.getFunction()->isVarArg();
   
   // CreateFixedObject allocates space relative to the SP on entry to
@@ -343,13 +384,15 @@ processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     MFuncInf->setLRSpillSlot(FrameIdx);
   }
 
-  if (RegInfo->requiresRegisterScavenging(MF)) {
+#if 0
+  if (MF.getRegInfo().requiresRegisterScavenging(MF)) {
     assert(0 && "Test register scavenging.");
     // Reserve a slot close to SP or frame pointer.
     RS->setScavengingFrameIndex(MFrmInf->CreateStackObject(RC->getSize(),
                                                        RC->getAlignment(),
                                                        false));
   }
+#endif
 
   if (hasFP) {
     // FP is a callee save register.

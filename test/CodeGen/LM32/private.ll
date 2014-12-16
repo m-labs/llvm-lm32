@@ -3,9 +3,9 @@
 ; RUN: llc < %s -march=lm32 | FileCheck %s
 ; CHECK: .Lfoo:
 ; CHECK-LABEL: bar:
-; CHECK: bl .Lfoo
-; CHECK: .long .Lbaz
+; CHECK: calli .Lfoo
 ; CHECK: .Lbaz:
+; CHECK: .long 4
 
 define private void @foo() {
         ret void

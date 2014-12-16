@@ -15,5 +15,5 @@ using namespace llvm;
 Target llvm::TheLM32Target;
 
 extern "C" void LLVMInitializeLM32TargetInfo() {
-  RegisterTarget<Triple::lm32> X(TheLM32Target, "lm32", "LM32");
+  RegisterTarget<Triple::lm32, /*HasJIT=*/false> X(TheLM32Target, "lm32", "LM32");
 }

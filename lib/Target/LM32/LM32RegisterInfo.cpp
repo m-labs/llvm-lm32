@@ -19,9 +19,9 @@
 #include "LM32Subtarget.h"
 #include "LM32RegisterInfo.h"
 #include "LM32MachineFunctionInfo.h"
-#include "llvm/Constants.h"
-#include "llvm/Type.h"
-#include "llvm/Function.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Function.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -43,8 +43,9 @@
 using namespace llvm;
 
 LM32RegisterInfo::
-LM32RegisterInfo(const LM32Subtarget &ST, const TargetInstrInfo &tii)
-  : LM32GenRegisterInfo(LM32::RRA), Subtarget(ST), TII(tii) {}
+LM32RegisterInfo(LM32Subtarget &st) : LM32GenRegisterInfo(LM32::RRA),
+                                      Subtarget(st) {
+}
 
 
 //===----------------------------------------------------------------------===//
@@ -90,19 +91,6 @@ getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
-// This function eliminate ADJCALLSTACKDOWN/ADJCALLSTACKUP pseudo instructions
-void LM32RegisterInfo::
-eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I) const {
-  // We're assuming a fixed call frame. hasReservedCallFrame==true
-  // Since we are using reserved call frames and we don't need to adjust
-  // the stack pointer outside of the prologue/epilogue we'll just erase
-  // the ADJCALLSTACKDOWN, ADJCALLSTACKUP instructions.
-  // Normally these would bracket calls and be used for dynamic call frames.
-  // Note alloca() is handled in the prologue.
-  MBB.erase(I);
-}
-
 /// eliminateFrameIndex - This method must be overriden to eliminate abstract
 /// frame indices from instructions which may use them.  The instruction
 /// referenced by the iterator contains an MO_FrameIndex operand which must be
@@ -126,15 +114,14 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 /// MI.getOperand(i+1).getImm() added to the frame index. For most targets, 
 /// and specifically Monarch, this immediate value is zero.
 void LM32RegisterInfo::
-eliminateFrameIndex(MachineBasicBlock::iterator II,
-                    int SPAdj, RegScavenger *RS) const {
+eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
+                    unsigned FIOperandNum, RegScavenger *RS) const {
   assert(SPAdj == 0 && "Unexpected");
 
   MachineInstr &MI = *II;
-  MachineBasicBlock &MBB = *MI.getParent();
-  MachineFunction &MF = *MBB.getParent();
+  MachineFunction &MF = *MI.getParent()->getParent();
   MachineFrameInfo *MFrmInf = MF.getFrameInfo();
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
   bool useFP = TFI->hasFP(MF);
 
   // SP points to the top of stack (possibly biased to first free location), 
@@ -145,14 +132,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
     FPRegToUse = LM32::RFP;
   }
 
-  // Find the frame index operand.
-  unsigned i = 0;
-  while (!MI.getOperand(i).isFI()) {
-    ++i;
-    assert(i < MI.getNumOperands() && "Instr doesn't have FrameIndex operand!");
-  }
-  MachineOperand &FrameOp = MI.getOperand(i);
-  int FrameIndex = FrameOp.getIndex();
+  int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
 
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex);
   assert(Offset%4 == 0 && "Object has misaligned stack offset");
@@ -172,7 +152,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   DEBUG(dbgs() << "FPreg              : "
                << ((LM32::RFP == FPRegToUse) ? "FP" : "SP") << "\n");
   DEBUG(dbgs() << "getImm()           : "
-               <<  MI.getOperand(i + 1).getImm() << "\n");
+               <<  MI.getOperand(FIOperandNum + 1).getImm() << "\n");
   DEBUG(dbgs() << "isFixed            : "
                << MFrmInf->isFixedObjectIndex(FrameIndex) << "\n");
 // DEBUG(dbgs() << "isLiveIn           : "
@@ -192,8 +172,8 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
   // Fold constant into offset.
   // I believe this can happen with vector code - it needs to be checked.
 //  assert(MI.getOperand(i + 1).getImm() == 0 && "need to check this code path");
-  Offset += MI.getOperand(i + 1).getImm();
-  MI.getOperand(i + 1).ChangeToImmediate(0);
+  Offset += MI.getOperand(FIOperandNum + 1).getImm();
+  MI.getOperand(FIOperandNum + 1).ChangeToImmediate(0);
 
   // This shows up in vector code:
   //  assert(Offset%4 == 0 && "Misaligned stack offset");
@@ -208,8 +188,8 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
     // encode it.
     // Replace the FrameIndex with the appropriate frame pointer 
     // register RSP (28) or RFP (27).
-    FrameOp.ChangeToRegister(FPRegToUse, false);
-    MI.getOperand(i+1).ChangeToImmediate(Offset);
+    MI.getOperand(FIOperandNum).ChangeToRegister(FPRegToUse, false);
+    MI.getOperand(FIOperandNum+1).ChangeToImmediate(Offset);
   } else {
     assert( 0 && "Unimplemented - frame index limited to 32767 byte offset.");
   }
@@ -232,7 +212,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II,
 bool LM32RegisterInfo::
 canRealignStack(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
-  return (MF.getTarget().Options.RealignStack &&
+  return (MF.getFunction()->hasFnAttribute("no-realign-stack") &&
           !MFI->hasVarSizedObjects());
 }
 
@@ -241,18 +221,20 @@ bool LM32RegisterInfo::
 needsStackRealignment(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   const Function *F = MF.getFunction();
-  unsigned StackAlign = MF.getTarget().getFrameLowering()->getStackAlignment();
+  unsigned StackAlign = MF.getTarget().getSubtargetImpl()
+    ->getFrameLowering()
+    ->getStackAlignment();
   DEBUG(if (!(MFI->getMaxAlignment() <= StackAlign))
              errs() << "\nError in function: "
                     << MF.getFunction()->getName() << "\n");
   assert((MFI->getMaxAlignment() <= StackAlign)  &&
             "Unable to align stack to requested alignment.");
   assert(((MFI->getMaxAlignment() <= StackAlign) || 
-            MF.getTarget().Options.RealignStack) && 
+            MF.getFunction()->hasFnAttribute("no-realign-stack")) &&
             "Unable to align stack to requested alignment.");
   bool requiresRealignment = 
                ((MFI->getMaxAlignment() > StackAlign) ||
-                 F->getFnAttributes().hasAttribute(Attributes::StackAlignment));
+                 F->getAttributes().hasAttribute(AttributeSet::FunctionIndex, Attribute::StackAlignment));
 
   // FIXME: Currently we don't support stack realignment for functions with
   //        variable-sized allocas.
@@ -275,7 +257,8 @@ unsigned LM32RegisterInfo::getRARegister() const {
 }
 
 unsigned LM32RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  const TargetFrameLowering *TFI = MF.getTarget()
+                                      .getSubtargetImpl()->getFrameLowering();
 
   return TFI->hasFP(MF) ? LM32::RFP : LM32::RSP;
 }

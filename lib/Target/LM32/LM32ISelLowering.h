@@ -16,13 +16,17 @@
 #ifndef LM32ISELLOWERING_H
 #define LM32ISELLOWERING_H
 
+#include "LM32.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
-#include "LM32.h"
-#include "LM32Subtarget.h"
 
 namespace llvm {
+
+  // Forward delcarations
+  class LM32Subtarget;
+  class LM32TargetMachine;
+
   namespace LM32CC {
     enum CC {
       FIRST = 0,
@@ -95,7 +99,7 @@ namespace llvm {
 
   class LM32TargetLowering : public TargetLowering  {
   public:
-    explicit LM32TargetLowering(LM32TargetMachine &TM);
+    explicit LM32TargetLowering(const TargetMachine &TM);
 
     /// LowerOperation - Provide custom lowering hooks for some operations.
     virtual SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const;
@@ -105,19 +109,18 @@ namespace llvm {
     virtual const char *getTargetNodeName(unsigned Opcode) const;
 
     /// getSetCCResultType - get the ISD::SETCC result ValueType
-    EVT getSetCCResultType(EVT VT) const;
+    EVT getSetCCResultType(LLVMContext &Context, EVT VT) const override;
     
     virtual unsigned getFunctionAlignment(const Function *F) const;
   private:
-    // Subtarget Info
-    const LM32Subtarget *Subtarget;
+    const LM32Subtarget &Subtarget;
 
 
     // Lower Operand helpers
     SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
                             CallingConv::ID CallConv, bool isVarArg,
                             const SmallVectorImpl<ISD::InputArg> &Ins,
-                            DebugLoc dl, SelectionDAG &DAG,
+                            SDLoc dl, SelectionDAG &DAG,
                             SmallVectorImpl<SDValue> &InVals) const;
 
     // Lower Operand specifics
@@ -133,7 +136,7 @@ namespace llvm {
                            CallingConv::ID CallConv,
                            bool isVarArg,
                            const SmallVectorImpl<ISD::InputArg> &Ins,
-                           DebugLoc dl, SelectionDAG &DAG,
+                           SDLoc dl, SelectionDAG &DAG,
                            SmallVectorImpl<SDValue> &InVals) const;
 
     virtual SDValue     
@@ -145,7 +148,7 @@ namespace llvm {
                   CallingConv::ID CallConv, bool isVarArg,
                   const SmallVectorImpl<ISD::OutputArg> &Outs,
                   const SmallVectorImpl<SDValue> &OutVals,
-                  DebugLoc dl, SelectionDAG &DAG) const;
+                  SDLoc dl, SelectionDAG &DAG) const;
 
     /// HandleByVal - Target-specific cleanup for ByVal support.
     virtual void HandleByVal(CCState *, unsigned &, unsigned Align) const;
@@ -175,7 +178,7 @@ namespace llvm {
 
     std::pair<unsigned, const TargetRegisterClass*>
               getRegForInlineAsmConstraint(const std::string &Constraint,
-              EVT VT) const;
+              MVT VT) const;
 
     /// isOffsetFoldingLegal - Return true if folding a constant offset
     /// with the given GlobalAddress is legal.  It is frequently not legal in

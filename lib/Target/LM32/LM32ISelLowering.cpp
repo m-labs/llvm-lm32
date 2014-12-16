@@ -15,15 +15,16 @@
 
 #define DEBUG_TYPE "lm32-lower"
 #include "LM32ISelLowering.h"
+#include "LM32.h"
 #include "LM32MachineFunctionInfo.h"
 #include "LM32TargetMachine.h"
 #include "LM32TargetObjectFile.h"
 #include "LM32Subtarget.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/CallingConv.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/CallingConv.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -34,9 +35,13 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
-const char *LM32TargetLowering::getTargetNodeName(unsigned Opcode) const {
+#define DEBUG_TYPE "lm32-lower"
+
+const char *LM32TargetLowering::
+getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
     case LM32ISD::JmpLink       : return "LM32ISD::JmpLink";
     case LM32ISD::GPRel         : return "LM32ISD::GPRel";
@@ -49,9 +54,9 @@ const char *LM32TargetLowering::getTargetNodeName(unsigned Opcode) const {
   }
 }
 
-LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
-  : TargetLowering(TM, new LM32TargetObjectFile()) {
-  Subtarget = &TM.getSubtarget<LM32Subtarget>();
+LM32TargetLowering::LM32TargetLowering(const TargetMachine &TM)
+  : TargetLowering(TM),
+    Subtarget(TM.getSubtarget<LM32Subtarget>()) {
 
   // LM32 does not have i1 type, so use i32 for
   // setcc operations results (slt, sgt, ...).
@@ -78,13 +83,13 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
   setOperationAction(ISD::SUBE, MVT::i32, Expand);
 
   // Check if unsigned div/mod are enabled.
-  if (!Subtarget->hasDIV()) {
+  if (!Subtarget.hasDIV()) {
     setOperationAction(ISD::UDIV, MVT::i32, Expand);
     setOperationAction(ISD::UREM, MVT::i32, Expand);
   }
 
   // Check if signed div/mod are enabled.
-  if (!Subtarget->hasSDIV()) {
+  if (!Subtarget.hasSDIV()) {
     setOperationAction(ISD::SDIV, MVT::i32, Expand);
     setOperationAction(ISD::SREM, MVT::i32, Expand);
   }
@@ -94,7 +99,7 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
   setOperationAction(ISD::SDIVREM, MVT::i32, Expand);
 
   // If the processor doesn't support multiply then expand it
-  if (!Subtarget->hasMUL()) {
+  if (!Subtarget.hasMUL()) {
     setOperationAction(ISD::MUL, MVT::i32, Expand);
   }
 
@@ -156,15 +161,16 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
   // ... so we have to lower the loads from the jump table.
   setOperationAction(ISD::JumpTable,          MVT::i32,   Custom);
   // Expand BR_CC to BRCOND.
-  setOperationAction(ISD::BR_CC,              MVT::Other, Expand);
+  setOperationAction(ISD::BR_CC,              MVT::f32,   Expand);
+  setOperationAction(ISD::BR_CC,              MVT::f64,   Expand);
+  setOperationAction(ISD::BR_CC,              MVT::i32,   Expand);
+  setOperationAction(ISD::BR_CC,              MVT::i64,   Expand);
 
   // Operations not directly supported by LM32.
   setOperationAction(ISD::SIGN_EXTEND_INREG,  MVT::i1,    Expand);
   setOperationAction(ISD::SHL_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRA_PARTS,          MVT::i32,   Expand);
   setOperationAction(ISD::SRL_PARTS,          MVT::i32,   Expand);
-  setOperationAction(ISD::MEMBARRIER,         MVT::Other, Expand);
-  setOperationAction(ISD::ATOMIC_FENCE,       MVT::Other, Expand);
   setOperationAction(ISD::FP_ROUND,           MVT::f32,   Expand);
   setOperationAction(ISD::FP_ROUND,           MVT::f64,   Expand);
   setOperationAction(ISD::CTPOP,              MVT::i32,   Expand);
@@ -219,7 +225,7 @@ LM32TargetLowering::LM32TargetLowering(LM32TargetMachine &TM)
   computeRegisterProperties();
 }
 
-EVT LM32TargetLowering::getSetCCResultType(EVT VT) const {
+EVT LM32TargetLowering::getSetCCResultType(LLVMContext &Context, EVT VT) const {
   return MVT::i32;
 }
 
@@ -261,7 +267,9 @@ LM32TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
 MachineBasicBlock*
 LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
                                        MachineBasicBlock *MBB) const {
-  const TargetInstrInfo *TII = getTargetMachine().getInstrInfo();
+    
+  const TargetInstrInfo &TII =
+    *getTargetMachine().getSubtargetImpl()->getInstrInfo();
   DebugLoc dl = MI->getDebugLoc();
 
   // To "insert" a SELECT_CC instruction, we actually have to insert the
@@ -286,8 +294,7 @@ LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
 
   // Transfer the remainder of MBB and its successor edges to sinkBB.
   sinkBB->splice(sinkBB->begin(), MBB,
-                llvm::next(MachineBasicBlock::iterator(MI)),
-                MBB->end());
+                std::next(MachineBasicBlock::iterator(MI)), MBB->end());
   sinkBB->transferSuccessorsAndUpdatePHIs(MBB);
 
   MBB->addSuccessor(flsBB);
@@ -296,7 +303,7 @@ LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
 
   // If the compare returned true (1) then branch to
   // the end bypassing the false BB.
-  BuildMI(MBB, dl, TII->get(LM32::BNE))
+  BuildMI(MBB, dl, TII.get(LM32::BNE))
     .addReg(MI->getOperand(1).getReg())
     .addReg(MI->getOperand(4).getReg())
     .addMBB(sinkBB);
@@ -305,7 +312,7 @@ LM32TargetLowering::EmitCustomSelect(MachineInstr *MI,
   //   %Result = phi [ %FalseValue, flsMBB ], [ %TrueValue, MBB ]
   //  ...
   BuildMI(*sinkBB, sinkBB->begin(), dl,
-          TII->get(LM32::PHI), MI->getOperand(0).getReg())
+          TII.get(LM32::PHI), MI->getOperand(0).getReg())
     .addReg(MI->getOperand(3).getReg()).addMBB(flsBB)
     .addReg(MI->getOperand(2).getReg()).addMBB(MBB);
 
@@ -331,8 +338,8 @@ LM32TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue CC = Op.getOperand(4);
   SDValue TrueVal = Op.getOperand(2);
   SDValue FalseVal = Op.getOperand(3);
-  DebugLoc dl = Op.getDebugLoc();
-  EVT ResultTy = getSetCCResultType(Op.getOperand(0).getValueType());
+  SDLoc dl(Op);
+  EVT ResultTy = getSetCCResultType(*DAG.getContext(), Op.getOperand(0).getValueType());
 
   SDValue Cond = DAG.getNode(ISD::SETCC, dl, ResultTy, LHS, RHS, CC);
   // Note it appears we need to add R0 here.  Attempting to use MI.addReg(0)
@@ -345,7 +352,7 @@ SDValue LM32TargetLowering::
 LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const
 {
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
-  DebugLoc dl = Op.getDebugLoc();
+  SDLoc dl(Op);
   SDValue GA = DAG.getTargetGlobalAddress(GV, dl, MVT::i32);
   // From XCore: If it's a debug information descriptor, don't mess with it.
 //FIXME:  The following is from xcore but doesn't appear to work there either.
@@ -392,17 +399,16 @@ LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const {
 SDValue LM32TargetLowering::
 LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
   DEBUG(assert(Op.getValueType() == MVT::i32 && "pointers should be 32 bits."));
-  DebugLoc dl = Op.getDebugLoc();
   JumpTableSDNode *JT = cast<JumpTableSDNode>(Op);
   SDValue JTI = DAG.getTargetJumpTable(JT->getIndex(), MVT::i32);
-  SDValue Hi = DAG.getNode(LM32ISD::Hi, dl, MVT::i32, JTI);
-  SDValue Lo = DAG.getNode(LM32ISD::Lo, dl, MVT::i32, JTI);
+  SDValue Hi = DAG.getNode(LM32ISD::Hi, SDLoc(JT), MVT::i32, JTI);
+  SDValue Lo = DAG.getNode(LM32ISD::Lo, SDLoc(JT), MVT::i32, JTI);
 
   // We don't support non-static relo models yet.
   if (DAG.getTarget().getRelocationModel() == Reloc::Static ) {
     // Generate non-pic code that has direct accesses to the constant pool.
     // The address of the global is just (hi(&g)+lo(&g)).
-    return DAG.getNode(ISD::OR, dl, MVT::i32, Lo, Hi);
+    return DAG.getNode(ISD::OR, SDLoc(JT), MVT::i32, Lo, Hi);
   } else {
       llvm_unreachable("JumpTables are only supported in static mode");
   }
@@ -416,7 +422,7 @@ LowerConstantPool(SDValue Op, SelectionDAG &DAG) const
 {
   ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
   // FIXME: there isn't really any debug info here
-  DebugLoc dl = Op.getDebugLoc();
+  SDLoc dl(Op);
   const Constant *C = N->getConstVal();
   SDValue CP = DAG.getTargetConstantPool(C, MVT::i32, N->getAlignment());
   SDValue Hi = DAG.getNode(LM32ISD::Hi, dl, MVT::i32, CP);
@@ -431,7 +437,7 @@ SDValue LM32TargetLowering::LowerVASTART(SDValue Op,
   MachineFunction &MF = DAG.getMachineFunction();
   LM32FunctionInfo *FuncInfo = MF.getInfo<LM32FunctionInfo>();
 
-  DebugLoc dl = Op.getDebugLoc();
+  SDLoc dl(Op);
   SDValue FI = DAG.getFrameIndex(FuncInfo->getVarArgsFrameIndex(),
                                  getPointerTy());
 
@@ -506,7 +512,7 @@ SDValue
 LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                SmallVectorImpl<SDValue> &InVals) const {
   SelectionDAG &DAG                     = CLI.DAG;
-  DebugLoc &dl                          = CLI.DL;
+  SDLoc &dl                             = CLI.DL;
   SmallVector<ISD::OutputArg, 32> &Outs = CLI.Outs;
   SmallVector<SDValue, 32> &OutVals     = CLI.OutVals;
   SmallVector<ISD::InputArg, 32> &Ins   = CLI.Ins;
@@ -527,7 +533,7 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 //FIXME: Check this 16 argument number
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                 getTargetMachine(), ArgLocs, *DAG.getContext());
+                 ArgLocs, *DAG.getContext());
 
   CCInfo.AnalyzeCallOperands(Outs, CC_LM32);
 
@@ -536,7 +542,7 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Comment from ARM: Adjust the stack pointer for the new arguments...
   // These operations are automatically eliminated by the prolog/epilog pass
-  Chain = DAG.getCALLSEQ_START(Chain, DAG.getIntPtrConstant(NumBytes, true));
+  Chain = DAG.getCALLSEQ_START(Chain, DAG.getIntPtrConstant(NumBytes, true), dl);
 
 
   // With EABI is it possible to have 16 args on registers.
@@ -594,7 +600,7 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       SDValue StackPtr = DAG.getCopyFromReg(Chain, dl, LM32::RSP,
                                             getPointerTy());
       int Offset = VA.getLocMemOffset();
-      Offset += Subtarget->hasSPBias() ? 4 : 0;
+      Offset += Subtarget.hasSPBias() ? 4 : 0;
       SDValue StackOffset = DAG.getIntPtrConstant(Offset);
       SDValue Dst = DAG.getNode(ISD::ADD, dl, getPointerTy(), StackPtr,
                                 StackOffset);
@@ -603,15 +609,15 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                           Flags.getByValAlign(),
                                           /*isVolatile=*/false,
                                           /*AlwaysInline=*/false,
-                                          MachinePointerInfo(0),
-                                          MachinePointerInfo(0)));
+                                          MachinePointerInfo(),
+                                          MachinePointerInfo()));
     } else {
       assert(VA.isMemLoc());
 
       // Create a store off the stack pointer for this argument.
       SDValue StackPtr = DAG.getRegister(LM32::RSP, MVT::i32);
       int offset = VA.getLocMemOffset();
-      offset += Subtarget->hasSPBias()? 4 : 0; 
+      offset += Subtarget.hasSPBias()? 4 : 0;
       SDValue PtrOff = DAG.getIntPtrConstant(offset);
       PtrOff = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, PtrOff);
       MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, PtrOff, 
@@ -623,8 +629,7 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // Transform all store nodes into one single node because
   // all store nodes are independent of each other.
   if (!MemOpChains.empty())
-    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, 
-                        &MemOpChains[0], MemOpChains.size());
+    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, MemOpChains);
 
   // Build a sequence of copy-to-reg nodes chained together with token 
   // chain and flag operands which copy the outgoing args into registers.
@@ -665,14 +670,14 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   if (InFlag.getNode())
     Ops.push_back(InFlag);
 
-  Chain  = DAG.getNode(LM32ISD::JmpLink, dl, NodeTys, &Ops[0], Ops.size());
+  Chain  = DAG.getNode(LM32ISD::JmpLink, dl, NodeTys, Ops);
   InFlag = Chain.getValue(1);
 
   // Create the CALLSEQ_END node.
   Chain = DAG.getCALLSEQ_END(Chain,
                              DAG.getConstant(NumBytes, getPointerTy(), true),
                              DAG.getConstant(0, getPointerTy(), true),
-                             InFlag);
+                             InFlag, dl);
   InFlag = Chain.getValue(1);
 
   // Handle result values, copying them out of physregs into vregs that we
@@ -690,12 +695,12 @@ LM32TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 SDValue LM32TargetLowering::
 LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
                 bool isVarArg, const SmallVectorImpl<ISD::InputArg> &Ins,
-                DebugLoc dl, SelectionDAG &DAG,
+                SDLoc dl, SelectionDAG &DAG,
                 SmallVectorImpl<SDValue> &InVals) const {
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                 getTargetMachine(), RVLocs, *DAG.getContext());
+                 RVLocs, *DAG.getContext());
 
   CCInfo.AnalyzeCallResult(Ins, RetCC_LM32);
 
@@ -723,7 +728,7 @@ LowerCallResult(SDValue Chain, SDValue InFlag, CallingConv::ID CallConv,
 SDValue LM32TargetLowering::
 LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                      const SmallVectorImpl<ISD::InputArg> &Ins,
-                     DebugLoc dl, SelectionDAG &DAG,
+                     SDLoc dl, SelectionDAG &DAG,
                      SmallVectorImpl<SDValue> &InVals) const {
   SmallVector<SDValue, 8> OutChains;
   MachineFunction &MF = DAG.getMachineFunction();
@@ -740,7 +745,7 @@ LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                 getTargetMachine(), ArgLocs, *DAG.getContext());
+                 ArgLocs, *DAG.getContext());
 
   CCInfo.AnalyzeFormalArguments(Ins, CC_LM32);
 
@@ -907,8 +912,7 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
   // byval arguments
   if (!OutChains.empty()) {
     OutChains.push_back(Chain);
-    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                        &OutChains[0], OutChains.size());
+    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, OutChains);
   }
   return Chain;
 }
@@ -918,32 +922,26 @@ DEBUG((cast<LoadSDNode>(/* SDNode* */lod.getNode()))->dump());
 //===----------------------------------------------------------------------===//
 
 // Note: Same as Monarch
+// See Hexagon
 SDValue LM32TargetLowering::
 LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
             const SmallVectorImpl<ISD::OutputArg> &Outs,
             const SmallVectorImpl<SDValue> &OutVals,
-            DebugLoc dl, SelectionDAG &DAG) const {
+            SDLoc dl, SelectionDAG &DAG) const {
   // CCValAssign - represent the assignment of
   // the return value to a location
   SmallVector<CCValAssign, 16> RVLocs;
 
   // CCState - Info about the registers and stack slot.
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                 getTargetMachine(), RVLocs, *DAG.getContext());
+                 RVLocs, *DAG.getContext());
 
   // Analize return values.
   CCInfo.AnalyzeReturn(Outs, RetCC_LM32);
 
-  // If this is the first return lowered for this function, add
-  // the regs to the liveout set for the function.
-  if (DAG.getMachineFunction().getRegInfo().liveout_empty()) {
-    for (unsigned i = 0; i != RVLocs.size(); ++i)
-      if (RVLocs[i].isRegLoc())
-        DAG.getMachineFunction().getRegInfo().addLiveOut(RVLocs[i].getLocReg());
-  }
-
   SDValue Flag;
-
+  SmallVector<SDValue, 4> RetOps(1, Chain);
+ 
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     CCValAssign &VA = RVLocs[i];
@@ -951,17 +949,26 @@ LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
 
     Chain = DAG.getCopyToReg(Chain, dl, VA.getLocReg(), OutVals[i], Flag);
 
-    // guarantee that all emitted copies are
-    // stuck together, avoiding something bad
+    // Guarantee that all emitted copies are stuck together with flags.
     Flag = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
   }
-
+    
+  RetOps[0] = Chain;  // Update chain.
+    
+  // Add the flag if we have it.
   if (Flag.getNode())
-    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(LM32::RRA, MVT::i32), Flag);
-  else // Return Void
-    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
-                       Chain, DAG.getRegister(LM32::RRA, MVT::i32));
+      RetOps.push_back(Flag);
+    
+  return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, RetOps);
+
+//  FIXME:  check where LM32::RRA information comes into play.
+//  if (Flag.getNode())
+//    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
+//                       Chain, DAG.getRegister(LM32::RRA, MVT::i32), Flag);
+//  else // Return Void
+//    return DAG.getNode(LM32ISD::RetFlag, dl, MVT::Other, 
+//                       Chain, DAG.getRegister(LM32::RRA, MVT::i32));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1035,7 +1042,7 @@ LM32TargetLowering::getSingleConstraintMatchWeight(
 /// this returns a register number of 0 and a null register class pointer..
 std::pair<unsigned, const TargetRegisterClass*>
 LM32TargetLowering::
-getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const {
+getRegForInlineAsmConstraint(const std::string &Constraint, MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':

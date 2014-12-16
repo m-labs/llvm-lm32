@@ -16,65 +16,32 @@
 
 #include "LM32Subtarget.h"
 #include "LM32InstrInfo.h"
-#include "LM32ISelLowering.h"
-#include "LM32SelectionDAGInfo.h"
-#include "LM32FrameLowering.h"
-#include "llvm/DataLayout.h"
-#include "llvm/MC/MCStreamer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetFrameLowering.h"
 
 
 namespace llvm {
-  class formatted_raw_ostream;
   
-  class LM32TargetMachine : public LLVMTargetMachine {
-    LM32Subtarget        Subtarget;
-    const DataLayout     Layout;       // Calculates type size & alignment
-    LM32InstrInfo        InstrInfo;
-    LM32FrameLowering    FrameLowering;
-    LM32TargetLowering   TLInfo;
-    LM32SelectionDAGInfo TSInfo;
-    //LM32ELFWriterInfo    ELFWriterInfo;
-    
-  public:
+class LM32TargetMachine : public LLVMTargetMachine {
+    std::unique_ptr<TargetLoweringObjectFile> TLOF;
+    LM32Subtarget Subtarget;
+public:
     LM32TargetMachine(const Target &T, StringRef TT,
                         StringRef CPU, StringRef FS,
                         const TargetOptions &Options,
                         Reloc::Model RM, CodeModel::Model CM,
                         CodeGenOpt::Level OL);
+    ~LM32TargetMachine() override;
+    
+    const LM32Subtarget *getSubtargetImpl() const override { return &Subtarget; }
 
-    virtual const LM32InstrInfo *getInstrInfo() const {
-      return &InstrInfo;
-    }
-  
-    virtual const TargetFrameLowering  *getFrameLowering() const {
-      return &FrameLowering;
-    }
-  
-    virtual const LM32Subtarget *getSubtargetImpl() const {
-      return &Subtarget;
-    }
-  
-    virtual const LM32RegisterInfo *getRegisterInfo() const {
-      return &InstrInfo.getRegisterInfo();
-    }
-  
-    virtual const LM32TargetLowering* getTargetLowering() const {
-      return &TLInfo;
-    }
-  
-    virtual const LM32SelectionDAGInfo* getSelectionDAGInfo() const {
-      return &TSInfo;
-    }
-  
-    virtual const DataLayout *getDataLayout() const {
-      return &Layout;
-    }
-  
     // Pass Pipeline Configuration
-    virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
-  };
+    TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
+    TargetLoweringObjectFile *getObjFileLowering() const override {
+        return TLOF.get();
+    }
+    
+};
   
 } // end namespace llvm
 

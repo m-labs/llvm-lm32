@@ -39,7 +39,7 @@ def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_LM32CallSeqEnd,
 
 // A lm32 return instruction SDNode.
 def RetFlag       : SDNode<"LM32ISD::RetFlag", SDTNone,
-                           [SDNPHasChain, SDNPOptInGlue]>;
+                           [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 def LM32Call    : SDNode<"LM32ISD::JmpLink", SDT_LM32Call,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
@@ -99,7 +99,7 @@ def simm16      : Operand<i32> {
 }
 def uimm5       : Operand<i32>;
 
-// From SPU:
+// From Hexagon:
 def symbolHi    : Operand<i32> {
   let PrintMethod = "printSymbolHi";
 }

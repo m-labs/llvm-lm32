@@ -17,16 +17,17 @@
 #include "LM32RegisterInfo.h"
 #include "LM32Subtarget.h"
 #include "LM32TargetMachine.h"
-#include "llvm/GlobalValue.h"
-#include "llvm/Instructions.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Support/CFG.h"
-#include "llvm/Type.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/Type.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/Debug.h"
@@ -45,14 +46,12 @@ using namespace llvm;
 namespace {
 
 class LM32DAGToDAGISel : public SelectionDAGISel {
-  const LM32TargetLowering &Lowering;
   const LM32Subtarget &Subtarget;
 
 public:
   explicit LM32DAGToDAGISel(LM32TargetMachine &TM, CodeGenOpt::Level OptLevel)
     :  SelectionDAGISel(TM, OptLevel),
-       Lowering(*TM.getTargetLowering()), 
-       Subtarget(TM.getSubtarget<LM32Subtarget>()) {}
+    Subtarget(*TM.getSubtargetImpl()) {}
 
   // Pass Name
   virtual const char *getPassName() const {
@@ -164,7 +163,7 @@ assert(0 && "getGlobalBaseReg() not supported.");
 SDNode* LM32DAGToDAGISel::Select(SDNode *Node) {
 //FIXME: not ported to LM32
   unsigned Opcode = Node->getOpcode();
-  DebugLoc dl = Node->getDebugLoc();
+  SDLoc dl(Node);
 
   // If we have a custom node, we already have selected!
   if (Node->isMachineOpcode())
@@ -187,11 +186,13 @@ SDNode* LM32DAGToDAGISel::Select(SDNode *Node) {
         return Node;  // quiet error message
     }
 
+    //From MSP430:
+    /// TODO: review this
     case ISD::FrameIndex: {
         SDValue imm = CurDAG->getTargetConstant(0, MVT::i32);
         int FI = dyn_cast<FrameIndexSDNode>(Node)->getIndex();
         EVT VT = Node->getValueType(0);
-//   errs() << "ISD::FrameIndex value type: " <<  VT.getEVTString() << "/n";
+  errs() << "ISD::FrameIndex value type: " <<  VT.getEVTString() << "/n";
         SDValue TFI = CurDAG->getTargetFrameIndex(FI, VT);
         unsigned Opc = LM32::ADDI;
         if (Node->hasOneUse())
