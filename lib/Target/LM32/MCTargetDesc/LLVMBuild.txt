@@ -19,6 +19,6 @@
 type = Library
 name = LM32Desc
 parent = LM32
-required_libraries = LM32Info MC Support
+required_libraries = MC LM32AsmPrinter LM32Info 
 add_to_library_groups = LM32
 
