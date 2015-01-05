@@ -16,7 +16,7 @@ BUILT_SOURCES = LM32GenRegisterInfo.inc LM32GenInstrInfo.inc \
                 LM32GenAsmWriter.inc LM32GenDAGISel.inc \
                 LM32GenCallingConv.inc LM32GenSubtargetInfo.inc 
 
-DIRS = TargetInfo MCTargetDesc
+DIRS = InstPrinter TargetInfo MCTargetDesc
 
 include $(LEVEL)/Makefile.common
 
