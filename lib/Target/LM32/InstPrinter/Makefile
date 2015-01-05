@@ -10,7 +10,7 @@
 LEVEL = ../../../..
 LIBRARYNAME = LLVMLM32AsmPrinter
 
-# Hack: we need to include 'main' mips target directory to grab private headers
+# Hack: we need to include 'main' LM32 target directory to grab private headers
 CPP.Flags += -I$(PROJ_OBJ_DIR)/.. -I$(PROJ_SRC_DIR)/..
 
 include $(LEVEL)/Makefile.common
