@@ -161,7 +161,9 @@ function(add_link_opts target_name)
   if(LLVM_LINKER_IS_GOLD)
     # With gold gc-sections is always safe.
     set_property(TARGET ${target_name} APPEND_STRING PROPERTY
-                 LINK_FLAGS " -Wl,--gc-sections -Wl,--icf=safe")
+                 LINK_FLAGS " -Wl,--gc-sections")
+    # Note that there is a bug with -Wl,--icf=safe so it is not safe
+    # to enable. See https://sourceware.org/bugzilla/show_bug.cgi?id=17704.
   endif()
 
   if(NOT LLVM_NO_DEAD_STRIP)
@@ -626,9 +628,14 @@ function(llvm_add_go_executable binary pkgpath)
     set(binpath ${CMAKE_BINARY_DIR}/bin/${binary}${CMAKE_EXECUTABLE_SUFFIX})
     set(cc "${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1}")
     set(cxx "${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ARG1}")
+    set(cppflags "")
+    get_property(include_dirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
+    foreach(d ${include_dirs})
+      set(cppflags "${cppflags} -I${d}")
+    endforeach(d)
     set(ldflags "${CMAKE_EXE_LINKER_FLAGS}")
     add_custom_command(OUTPUT ${binpath}
-      COMMAND ${CMAKE_BINARY_DIR}/bin/llvm-go "cc=${cc}" "cxx=${cxx}" "ldflags=${ldflags}"
+      COMMAND ${CMAKE_BINARY_DIR}/bin/llvm-go "cc=${cc}" "cxx=${cxx}" "cppflags=${cppflags}" "ldflags=${ldflags}"
               ${ARG_GOFLAGS} build -o ${binpath} ${pkgpath}
       DEPENDS llvm-config ${CMAKE_BINARY_DIR}/bin/llvm-go${CMAKE_EXECUTABLE_SUFFIX}
               ${llvmlibs} ${ARG_DEPENDS}

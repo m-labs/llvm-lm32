@@ -800,6 +800,12 @@ def u6_3ExtPred  : PatLeaf<(i32 imm), [{
   }
 }]>;
 
+
+// This complex pattern exists only to create a machine instruction operand
+// of type "frame index". There doesn't seem to be a way to do that directly
+// in the patterns.
+def AddrFI : ComplexPattern<i32, 1, "SelectAddrFI", [frameindex], []>;
+
 // Addressing modes.
 
 def ADDRrr : ComplexPattern<i32, 2, "SelectADDRrr", [], []>;
@@ -856,3 +862,12 @@ def symbolHi32 : Operand<i32> {
 def symbolLo32 : Operand<i32> {
   let PrintMethod = "printSymbolLo";
 }
+
+// Return true if for a 32 to 64-bit sign-extended load.
+def is_sext_i32 : PatLeaf<(i64 DoubleRegs:$src1), [{
+  LoadSDNode *LD = dyn_cast<LoadSDNode>(N);
+  if (!LD)
+    return false;
+  return LD->getExtensionType() == ISD::SEXTLOAD &&
+         LD->getMemoryVT().getScalarType() == MVT::i32;
+}]>;

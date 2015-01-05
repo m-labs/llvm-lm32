@@ -60,8 +60,8 @@ static Type *reduceToSingleValueType(Type *T) {
 }
 
 Instruction *InstCombiner::SimplifyMemTransfer(MemIntrinsic *MI) {
-  unsigned DstAlign = getKnownAlignment(MI->getArgOperand(0), DL, AT, MI, DT);
-  unsigned SrcAlign = getKnownAlignment(MI->getArgOperand(1), DL, AT, MI, DT);
+  unsigned DstAlign = getKnownAlignment(MI->getArgOperand(0), DL, AC, MI, DT);
+  unsigned SrcAlign = getKnownAlignment(MI->getArgOperand(1), DL, AC, MI, DT);
   unsigned MinAlign = std::min(DstAlign, SrcAlign);
   unsigned CopyAlign = MI->getAlignment();
 
@@ -155,7 +155,7 @@ Instruction *InstCombiner::SimplifyMemTransfer(MemIntrinsic *MI) {
 }
 
 Instruction *InstCombiner::SimplifyMemSet(MemSetInst *MI) {
-  unsigned Alignment = getKnownAlignment(MI->getDest(), DL, AT, MI, DT);
+  unsigned Alignment = getKnownAlignment(MI->getDest(), DL, AC, MI, DT);
   if (MI->getAlignment() < Alignment) {
     MI->setAlignment(ConstantInt::get(MI->getAlignmentType(),
                                              Alignment, false));
@@ -427,29 +427,24 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
         return CreateOverflowTuple(II, LHS, false, /*ReUseName*/false);
       }
     }
+    if (II->getIntrinsicID() == Intrinsic::ssub_with_overflow) {
+      if (WillNotOverflowSignedSub(LHS, RHS, II)) {
+        return CreateOverflowTuple(II, Builder->CreateNSWSub(LHS, RHS), false);
+      }
+    } else {
+      if (WillNotOverflowUnsignedSub(LHS, RHS, II)) {
+        return CreateOverflowTuple(II, Builder->CreateNUWSub(LHS, RHS), false);
+      }
+    }
     break;
   }
   case Intrinsic::umul_with_overflow: {
     Value *LHS = II->getArgOperand(0), *RHS = II->getArgOperand(1);
-    unsigned BitWidth = cast<IntegerType>(LHS->getType())->getBitWidth();
-
-    APInt LHSKnownZero(BitWidth, 0);
-    APInt LHSKnownOne(BitWidth, 0);
-    computeKnownBits(LHS, LHSKnownZero, LHSKnownOne, 0, II);
-    APInt RHSKnownZero(BitWidth, 0);
-    APInt RHSKnownOne(BitWidth, 0);
-    computeKnownBits(RHS, RHSKnownZero, RHSKnownOne, 0, II);
-
-    // Get the largest possible values for each operand.
-    APInt LHSMax = ~LHSKnownZero;
-    APInt RHSMax = ~RHSKnownZero;
-
-    // If multiplying the maximum values does not overflow then we can turn
-    // this into a plain NUW mul.
-    bool Overflow;
-    LHSMax.umul_ov(RHSMax, Overflow);
-    if (!Overflow) {
+    OverflowResult OR = computeOverflowForUnsignedMul(LHS, RHS, II);
+    if (OR == OverflowResult::NeverOverflows) {
       return CreateOverflowTuple(II, Builder->CreateNUWMul(LHS, RHS), false);
+    } else if (OR == OverflowResult::AlwaysOverflows) {
+      return CreateOverflowTuple(II, Builder->CreateMul(LHS, RHS), true);
     }
   } // FALL THROUGH
   case Intrinsic::smul_with_overflow:
@@ -475,6 +470,12 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       if (RHSI->equalsInt(1)) {
         return CreateOverflowTuple(II, II->getArgOperand(0), false,
                                     /*ReUseName*/false);
+      }
+    }
+    if (II->getIntrinsicID() == Intrinsic::smul_with_overflow) {
+      Value *LHS = II->getArgOperand(0), *RHS = II->getArgOperand(1);
+      if (WillNotOverflowSignedMul(LHS, RHS, II)) {
+        return CreateOverflowTuple(II, Builder->CreateNSWMul(LHS, RHS), false);
       }
     }
     break;
@@ -565,8 +566,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   case Intrinsic::ppc_altivec_lvx:
   case Intrinsic::ppc_altivec_lvxl:
     // Turn PPC lvx -> load if the pointer is known aligned.
-    if (getOrEnforceKnownAlignment(II->getArgOperand(0), 16,
-                                   DL, AT, II, DT) >= 16) {
+    if (getOrEnforceKnownAlignment(II->getArgOperand(0), 16, DL, AC, II, DT) >=
+        16) {
       Value *Ptr = Builder->CreateBitCast(II->getArgOperand(0),
                                          PointerType::getUnqual(II->getType()));
       return new LoadInst(Ptr);
@@ -582,8 +583,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   case Intrinsic::ppc_altivec_stvx:
   case Intrinsic::ppc_altivec_stvxl:
     // Turn stvx -> store if the pointer is known aligned.
-    if (getOrEnforceKnownAlignment(II->getArgOperand(1), 16,
-                                   DL, AT, II, DT) >= 16) {
+    if (getOrEnforceKnownAlignment(II->getArgOperand(1), 16, DL, AC, II, DT) >=
+        16) {
       Type *OpPtrTy =
         PointerType::getUnqual(II->getArgOperand(0)->getType());
       Value *Ptr = Builder->CreateBitCast(II->getArgOperand(1), OpPtrTy);
@@ -601,8 +602,8 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   case Intrinsic::x86_sse2_storeu_pd:
   case Intrinsic::x86_sse2_storeu_dq:
     // Turn X86 storeu -> store if the pointer is known aligned.
-    if (getOrEnforceKnownAlignment(II->getArgOperand(0), 16,
-                                   DL, AT, II, DT) >= 16) {
+    if (getOrEnforceKnownAlignment(II->getArgOperand(0), 16, DL, AC, II, DT) >=
+        16) {
       Type *OpPtrTy =
         PointerType::getUnqual(II->getArgOperand(1)->getType());
       Value *Ptr = Builder->CreateBitCast(II->getArgOperand(0), OpPtrTy);
@@ -733,7 +734,22 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
     // TODO: eventually we should lower this intrinsic to IR
     if (auto CIWidth = dyn_cast<ConstantInt>(II->getArgOperand(2))) {
       if (auto CIStart = dyn_cast<ConstantInt>(II->getArgOperand(3))) {
-        if (CIWidth->equalsInt(64) && CIStart->isZero()) {
+        unsigned Index = CIStart->getZExtValue();
+        // From AMD documentation: "a value of zero in the field length is
+        // defined as length of 64".
+        unsigned Length = CIWidth->equalsInt(0) ? 64 : CIWidth->getZExtValue();
+
+        // From AMD documentation: "If the sum of the bit index + length field
+        // is greater than 64, the results are undefined".
+
+        // Note that both field index and field length are 8-bit quantities.
+        // Since variables 'Index' and 'Length' are unsigned values
+        // obtained from zero-extending field index and field length
+        // respectively, their sum should never wrap around.
+        if ((Index + Length) > 64)
+          return ReplaceInstUsesWith(CI, UndefValue::get(II->getType()));
+
+        if (Length == 64 && Index == 0) {
           Value *Vec = II->getArgOperand(1);
           Value *Undef = UndefValue::get(Vec->getType());
           const uint32_t Mask[] = { 0, 2 };
@@ -947,7 +963,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   case Intrinsic::arm_neon_vst2lane:
   case Intrinsic::arm_neon_vst3lane:
   case Intrinsic::arm_neon_vst4lane: {
-    unsigned MemAlign = getKnownAlignment(II->getArgOperand(0), DL, AT, II, DT);
+    unsigned MemAlign = getKnownAlignment(II->getArgOperand(0), DL, AC, II, DT);
     unsigned AlignArg = II->getNumArgOperands() - 1;
     ConstantInt *IntrAlign = dyn_cast<ConstantInt>(II->getArgOperand(AlignArg));
     if (IntrAlign && IntrAlign->getZExtValue() < MemAlign) {
@@ -1103,6 +1119,42 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       return EraseInstFromFunction(*II);
 
     break;
+  }
+  case Intrinsic::experimental_gc_relocate: {
+    // Translate facts known about a pointer before relocating into
+    // facts about the relocate value, while being careful to
+    // preserve relocation semantics.
+    GCRelocateOperands Operands(II);
+    Value *DerivedPtr = Operands.derivedPtr();
+
+    // Remove the relocation if unused, note that this check is required
+    // to prevent the cases below from looping forever.
+    if (II->use_empty())
+      return EraseInstFromFunction(*II);
+
+    // Undef is undef, even after relocation.
+    // TODO: provide a hook for this in GCStrategy.  This is clearly legal for
+    // most practical collectors, but there was discussion in the review thread
+    // about whether it was legal for all possible collectors.
+    if (isa<UndefValue>(DerivedPtr))
+      return ReplaceInstUsesWith(*II, DerivedPtr);
+
+    // The relocation of null will be null for most any collector.
+    // TODO: provide a hook for this in GCStrategy.  There might be some weird
+    // collector this property does not hold for.
+    if (isa<ConstantPointerNull>(DerivedPtr))
+      return ReplaceInstUsesWith(*II, DerivedPtr);
+
+    // isKnownNonNull -> nonnull attribute
+    if (isKnownNonNull(DerivedPtr))
+      II->addAttribute(AttributeSet::ReturnIndex, Attribute::NonNull);
+
+    // TODO: dereferenceable -> deref attribute
+
+    // TODO: bitcast(relocate(p)) -> relocate(bitcast(p))
+    // Canonicalize on the type from the uses to the defs
+    
+    // TODO: relocate((gep p, C, C2, ...)) -> gep(relocate(p), C, C2, ...)
   }
   }
 

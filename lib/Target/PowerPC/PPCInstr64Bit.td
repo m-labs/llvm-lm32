@@ -167,6 +167,17 @@ let isCall = 1, PPC970_Unit = 7, Defs = [LR8] in {
     }
   }
 }
+
+let isCall = 1, PPC970_Unit = 7, isCodeGenOnly = 1,
+    Defs = [LR8, X2], Uses = [CTR8, RM], RST = 2 in {
+  def BCTRL8_LDinto_toc :
+    XLForm_2_ext_and_DSForm_1<19, 528, 20, 0, 1, 58, 0, (outs),
+                              (ins memrix:$src),
+                              "bctrl\n\tld 2, $src", IIC_BrB,
+                              [(PPCbctrl_load_toc ixaddr:$src)]>,
+    Requires<[In64BitMode]>;
+}
+
 } // Interpretation64Bit
 
 // FIXME: Duplicating this for the asm parser should be unnecessary, but the
@@ -547,6 +558,11 @@ defm EXTSB8 : XForm_11r<31, 954, (outs g8rc:$rA), (ins g8rc:$rS),
 defm EXTSH8 : XForm_11r<31, 922, (outs g8rc:$rA), (ins g8rc:$rS),
                         "extsh", "$rA, $rS", IIC_IntSimple,
                         [(set i64:$rA, (sext_inreg i64:$rS, i16))]>;
+
+defm SLW8  : XForm_6r<31,  24, (outs g8rc:$rA), (ins g8rc:$rS, g8rc:$rB),
+                      "slw", "$rA, $rS, $rB", IIC_IntGeneral, []>;
+defm SRW8  : XForm_6r<31, 536, (outs g8rc:$rA), (ins g8rc:$rS, g8rc:$rB),
+                      "srw", "$rA, $rS, $rB", IIC_IntGeneral, []>;
 } // Interpretation64Bit
 
 // For fast-isel:
@@ -575,6 +591,11 @@ def POPCNTD : XForm_11<31, 506, (outs g8rc:$rA), (ins g8rc:$rS),
                        "popcntd $rA, $rS", IIC_IntGeneral,
                        [(set i64:$rA, (ctpop i64:$rS))]>;
 
+let isCodeGenOnly = 1, isCommutable = 1 in
+def CMPB8 : XForm_6<31, 508, (outs g8rc:$rA), (ins g8rc:$rS, g8rc:$rB),
+                    "cmpb $rA, $rS, $rB", IIC_IntGeneral,
+                    [(set i64:$rA, (PPCcmpb i64:$rS, i64:$rB))]>;
+
 // popcntw also does a population count on the high 32 bits (storing the
 // results in the high 32-bits of the output). We'll ignore that here (which is
 // safe because we never separately use the high part of the 64-bit registers).
@@ -601,13 +622,11 @@ def MULLI8 : DForm_2<7, (outs g8rc:$rD), (ins g8rc:$rA, s16imm64:$imm),
 }
 
 let hasSideEffects = 0 in {
-let isCommutable = 1 in {
 defm RLDIMI : MDForm_1r<30, 3, (outs g8rc:$rA),
                         (ins g8rc:$rSi, g8rc:$rS, u6imm:$SH, u6imm:$MBE),
                         "rldimi", "$rA, $rS, $SH, $MBE", IIC_IntRotateDI,
                         []>, isPPC64, RegConstraint<"$rSi = $rA">,
                         NoEncode<"$rSi">;
-}
 
 // Rotate instructions.
 defm RLDCL  : MDSForm_1r<30, 8,
@@ -645,7 +664,11 @@ defm RLWINM8 : MForm_2r<21, (outs g8rc:$rA),
                         "rlwinm", "$rA, $rS, $SH, $MB, $ME", IIC_IntGeneral,
                         []>;
 
-let isCommutable = 1 in {
+defm RLWNM8  : MForm_2r<23, (outs g8rc:$rA),
+                        (ins g8rc:$rS, g8rc:$rB, u5imm:$MB, u5imm:$ME),
+                        "rlwnm", "$rA, $rS, $rB, $MB, $ME", IIC_IntGeneral,
+                        []>;
+
 // RLWIMI can be commuted if the rotate amount is zero.
 let Interpretation64Bit = 1, isCodeGenOnly = 1 in
 defm RLWIMI8 : MForm_2r<20, (outs g8rc:$rA),
@@ -653,7 +676,6 @@ defm RLWIMI8 : MForm_2r<20, (outs g8rc:$rA),
                         u5imm:$ME), "rlwimi", "$rA, $rS, $SH, $MB, $ME",
                         IIC_IntRotate, []>, PPC970_DGroup_Cracked,
                         RegConstraint<"$rSi = $rA">, NoEncode<"$rSi">;
-}
 
 let isSelect = 1 in
 def ISEL8   : AForm_4<31, 15,

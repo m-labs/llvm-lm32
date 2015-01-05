@@ -51,6 +51,7 @@ namespace llvm {
   class MachineFunction;
   class MachineInstr;
   class MachineJumpTableInfo;
+  class MachineLoop;
   class Mangler;
   class MCContext;
   class MCExpr;
@@ -249,6 +250,16 @@ public:
     return true;
   }
 
+  /// \brief Return true if it is cheap to speculate a call to intrinsic cttz.
+  virtual bool isCheapToSpeculateCttz() const {
+    return false;
+  }
+  
+  /// \brief Return true if it is cheap to speculate a call to intrinsic ctlz.
+  virtual bool isCheapToSpeculateCtlz() const {
+    return false;
+  }
+
   /// \brief Return if the target supports combining a
   /// chain like:
   /// \code
@@ -263,6 +274,11 @@ public:
   bool isMaskAndBranchFoldingLegal() const {
     return MaskAndBranchFoldingIsLegal;
   }
+
+  /// \brief Return true if the target wants to use the optimization that
+  /// turns ext(promotableInst1(...(promotableInstN(load)))) into
+  /// promotedInst1(...(promotedInstN(ext(load)))).
+  bool enableExtLdPromotion() const { return EnableExtLdPromotion; }
 
   /// Return true if the target can combine store(extractelement VectorTy,
   /// Idx).
@@ -753,6 +769,16 @@ public:
   /// reduce runtime.
   virtual bool ShouldShrinkFPConstant(EVT) const { return true; }
 
+  // Return true if it is profitable to reduce the given load node to a smaller
+  // type.
+  //
+  // e.g. (i16 (trunc (i32 (load x))) -> i16 load x should be performed
+  virtual bool shouldReduceLoadWidth(SDNode *Load,
+                                     ISD::LoadExtType ExtTy,
+                                     EVT NewVT) const {
+    return true;
+  }
+
   /// When splitting a value of the specified type into parts, does the Lo
   /// or Hi part come first?  This usually follows the endianness, except
   /// for ppcf128, where the Hi part always comes first.
@@ -904,7 +930,7 @@ public:
   }
 
   /// Return the preferred loop alignment.
-  unsigned getPrefLoopAlignment() const {
+  virtual unsigned getPrefLoopAlignment(MachineLoop *ML = nullptr) const {
     return PrefLoopAlignment;
   }
 
@@ -1311,7 +1337,8 @@ protected:
 
   /// Set the target's preferred loop alignment. Default alignment is zero, it
   /// means the target does not care about loop alignment.  The alignment is
-  /// specified in log2(bytes).
+  /// specified in log2(bytes). The target may also override
+  /// getPrefLoopAlignment to provide per-loop values.
   void setPrefLoopAlignment(unsigned Align) {
     PrefLoopAlignment = Align;
   }
@@ -1516,6 +1543,15 @@ public:
                                                  Type *Ty) const {
     return false;
   }
+
+  /// Return true if EXTRACT_SUBVECTOR is cheap for this result type
+  /// with this index. This is needed because EXTRACT_SUBVECTOR usually
+  /// has custom lowering that depends on the index of the first element,
+  /// and only the target knows which lowering is cheap.
+  virtual bool isExtractSubvectorCheap(EVT ResVT, unsigned Index) const {
+    return false;
+  }
+
   //===--------------------------------------------------------------------===//
   // Runtime Library hooks
   //
@@ -1943,6 +1979,9 @@ protected:
   /// MaskAndBranchFoldingIsLegal - Indicates if the target supports folding
   /// a mask of a single bit, a compare, and a branch into a single instruction.
   bool MaskAndBranchFoldingIsLegal;
+
+  /// \see enableExtLdPromotion.
+  bool EnableExtLdPromotion;
 
 protected:
   /// Return true if the value types that can be represented by the specified

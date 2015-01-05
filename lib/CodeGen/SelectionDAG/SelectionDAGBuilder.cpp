@@ -566,6 +566,7 @@ static void getCopyToPartsVector(SelectionDAG &DAG, SDLoc DL,
   } else if (NumParts > 0) {
     // If the intermediate type was expanded, split each the value into
     // legal parts.
+    assert(NumIntermediates != 0 && "division by zero");
     assert(NumParts % NumIntermediates == 0 &&
            "Must expand into a divisible number of parts!");
     unsigned Factor = NumParts / NumIntermediates;
@@ -1408,7 +1409,7 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
         if (TM.Options.NoNaNsFPMath)
           Condition = getFCmpCodeWithoutNaN(Condition);
       } else {
-        Condition = ISD::SETEQ; // silence warning.
+        (void)Condition; // silence warning.
         llvm_unreachable("Unknown compare instruction");
       }
 
@@ -2711,8 +2712,8 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
       !Cases.empty()) {
     // Replace an unreachable default destination with the most popular case
     // destination.
-    DenseMap<const BasicBlock *, uint64_t> Popularity;
-    uint64_t MaxPop = 0;
+    DenseMap<const BasicBlock *, unsigned> Popularity;
+    unsigned MaxPop = 0;
     const BasicBlock *MaxBB = nullptr;
     for (auto I : SI.cases()) {
       const BasicBlock *BB = I.getCaseSuccessor();
@@ -3643,9 +3644,10 @@ void SelectionDAGBuilder::visitStore(const StoreInst &I) {
 void SelectionDAGBuilder::visitMaskedStore(const CallInst &I) {
   SDLoc sdl = getCurSDLoc();
 
-  Value  *PtrOperand = I.getArgOperand(0);
+  // llvm.masked.store.*(Src0, Ptr, alignemt, Mask)
+  Value  *PtrOperand = I.getArgOperand(1);
   SDValue Ptr = getValue(PtrOperand);
-  SDValue Src0 = getValue(I.getArgOperand(1));
+  SDValue Src0 = getValue(I.getArgOperand(0));
   SDValue Mask = getValue(I.getArgOperand(3));
   EVT VT = Src0.getValueType();
   unsigned Alignment = (cast<ConstantInt>(I.getArgOperand(2)))->getZExtValue();
@@ -3668,14 +3670,15 @@ void SelectionDAGBuilder::visitMaskedStore(const CallInst &I) {
 void SelectionDAGBuilder::visitMaskedLoad(const CallInst &I) {
   SDLoc sdl = getCurSDLoc();
 
+  // @llvm.masked.load.*(Ptr, alignment, Mask, Src0)
   Value  *PtrOperand = I.getArgOperand(0);
   SDValue Ptr = getValue(PtrOperand);
-  SDValue Src0 = getValue(I.getArgOperand(1));
-  SDValue Mask = getValue(I.getArgOperand(3));
+  SDValue Src0 = getValue(I.getArgOperand(3));
+  SDValue Mask = getValue(I.getArgOperand(2));
 
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   EVT VT = TLI.getValueType(I.getType());
-  unsigned Alignment = (cast<ConstantInt>(I.getArgOperand(2)))->getZExtValue();
+  unsigned Alignment = (cast<ConstantInt>(I.getArgOperand(1)))->getZExtValue();
   if (!Alignment)
     Alignment = DAG.getEVTAlignment(VT);
 

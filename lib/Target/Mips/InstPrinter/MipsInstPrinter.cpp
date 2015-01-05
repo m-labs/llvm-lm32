@@ -134,8 +134,8 @@ static void printExpr(const MCExpr *Expr, raw_ostream &OS) {
   } else if (const MipsMCExpr *ME = dyn_cast<MipsMCExpr>(Expr)) {
     ME->print(OS);
     return;
-  } else if (!(SRE = dyn_cast<MCSymbolRefExpr>(Expr)))
-    assert(false && "Unexpected MCExpr type.");
+  } else
+    SRE = cast<MCSymbolRefExpr>(Expr);
 
   MCSymbolRefExpr::VariantKind Kind = SRE->getKind();
 
@@ -259,6 +259,11 @@ void MipsInstPrinter::
 printFCCOperand(const MCInst *MI, int opNum, raw_ostream &O) {
   const MCOperand& MO = MI->getOperand(opNum);
   O << MipsFCCToString((Mips::CondCode)MO.getImm());
+}
+
+void MipsInstPrinter::
+printRegisterPair(const MCInst *MI, int opNum, raw_ostream &O) {
+  printRegName(O, MI->getOperand(opNum).getReg());
 }
 
 void MipsInstPrinter::

@@ -22,7 +22,6 @@
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LeakDetector.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueHandle.h"
 
@@ -173,7 +172,8 @@ void ReplaceableMetadataImpl::replaceAllUsesWith(Metadata *MD) {
       // Update unowned tracking references directly.
       Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
       Ref = MD;
-      MetadataTracking::track(Ref);
+      if (MD)
+        MetadataTracking::track(Ref);
       UseMap.erase(Pair.first);
       continue;
     }
@@ -595,13 +595,11 @@ MDNode *MDNode::getMDNode(LLVMContext &Context, ArrayRef<Metadata *> MDs,
 MDNodeFwdDecl *MDNode::getTemporary(LLVMContext &Context,
                                     ArrayRef<Metadata *> MDs) {
   MDNodeFwdDecl *N = new (MDs.size()) MDNodeFwdDecl(Context, MDs);
-  LeakDetector::addGarbageObject(N);
   return N;
 }
 
 void MDNode::deleteTemporary(MDNode *N) {
   assert(isa<MDNodeFwdDecl>(N) && "Expected forward declaration");
-  LeakDetector::removeGarbageObject(N);
   delete cast<MDNodeFwdDecl>(N);
 }
 
@@ -838,8 +836,6 @@ unsigned NamedMDNode::getNumOperands() const {
 MDNode *NamedMDNode::getOperand(unsigned i) const {
   assert(i < getNumOperands() && "Invalid Operand number!");
   auto *N = getNMDOps(Operands)[i].get();
-  if (N && i > 10000)
-    N->dump();
   return cast_or_null<MDNode>(N);
 }
 
@@ -1050,4 +1046,3 @@ void Instruction::clearMetadataHashEntries() {
   getContext().pImpl->MetadataStore.erase(this);
   setHasMetadataHashEntry(false);
 }
-

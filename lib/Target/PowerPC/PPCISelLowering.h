@@ -61,6 +61,9 @@ namespace llvm {
       ///
       VPERM,
 
+      /// The CMPB instruction (takes two operands of i32 or i64).
+      CMPB,
+
       /// Hi/Lo - These represent the high and low 16-bit parts of a global
       /// address respectively.  These nodes have two operands, the first of
       /// which must be a TargetGlobalAddress, and the second of which must be a
@@ -94,6 +97,12 @@ namespace llvm {
       /// code.
       SRL, SRA, SHL,
 
+      /// The combination of sra[wd]i and addze used to implemented signed
+      /// integer division by a power of 2. The first operand is the dividend,
+      /// and the second is the constant shift amount (representing the
+      /// divisor).
+      SRA_ADDZE,
+
       /// CALL - A direct function call.
       /// CALL_NOP is a call with the special NOP which follows 64-bit
       /// SVR4 calls.
@@ -110,6 +119,10 @@ namespace llvm {
       /// CHAIN,FLAG = BCTRL(CHAIN, INFLAG) - Directly corresponds to a
       /// BCTRL instruction.
       BCTRL,
+
+      /// CHAIN,FLAG = BCTRL(CHAIN, ADDR, INFLAG) - The combination of a bctrl
+      /// instruction and the TOC reload required on SVR4 PPC64.
+      BCTRL_LOAD_TOC,
 
       /// Return with a flag operand, matched by 'blr'
       RET_FLAG,
@@ -374,6 +387,14 @@ namespace llvm {
 
     MVT getScalarShiftAmountTy(EVT LHSTy) const override { return MVT::i32; }
 
+    bool isCheapToSpeculateCttz() const override {
+      return true;
+    }
+
+    bool isCheapToSpeculateCtlz() const override {
+      return true;
+    }
+
     /// getSetCCResultType - Return the ISD::SETCC ValueType
     EVT getSetCCResultType(LLVMContext &Context, EVT VT) const override;
 
@@ -425,6 +446,9 @@ namespace llvm {
 
     SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
+    SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
+                          std::vector<SDNode *> *Created) const override;
+
     unsigned getRegisterByName(const char* RegName, EVT VT) const override;
 
     void computeKnownBitsForTargetNode(const SDValue Op,
@@ -432,6 +456,8 @@ namespace llvm {
                                        APInt &KnownOne,
                                        const SelectionDAG &DAG,
                                        unsigned Depth = 0) const override;
+
+    unsigned getPrefLoopAlignment(MachineLoop *ML) const override;
 
     Instruction* emitLeadingFence(IRBuilder<> &Builder, AtomicOrdering Ord,
                                   bool IsStore, bool IsLoad) const override;

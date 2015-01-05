@@ -698,3 +698,167 @@ define <4 x i32> @compr10(<4 x i32> %data, i8 %mask) {
 }
 
 declare <4 x i32> @llvm.x86.avx512.mask.compress.d.128(<4 x i32> %data, <4 x i32> %src0, i8 %mask)
+
+; Expand
+
+; CHECK-LABEL: expand1
+; CHECK: vexpandpd (%rdi), %zmm0 {%k1}  ## encoding: [0x62,0xf2,0xfd,0x49,0x88,0x07]
+define <8 x double> @expand1(i8* %addr, <8 x double> %data, i8 %mask) {
+  %res = call <8 x double> @llvm.x86.avx512.mask.expand.load.pd.512(i8* %addr, <8 x double> %data, i8 %mask)
+  ret <8 x double> %res
+}
+
+declare <8 x double> @llvm.x86.avx512.mask.expand.load.pd.512(i8* %addr, <8 x double> %data, i8 %mask)
+
+; CHECK-LABEL: expand2
+; CHECK: vexpandpd (%rdi), %ymm0 {%k1} ## encoding: [0x62,0xf2,0xfd,0x29,0x88,0x07]
+define <4 x double> @expand2(i8* %addr, <4 x double> %data, i8 %mask) {
+  %res = call <4 x double> @llvm.x86.avx512.mask.expand.load.pd.256(i8* %addr, <4 x double> %data, i8 %mask)
+  ret <4 x double> %res
+}
+
+declare <4 x double> @llvm.x86.avx512.mask.expand.load.pd.256(i8* %addr, <4 x double> %data, i8 %mask)
+
+; CHECK-LABEL: expand3
+; CHECK: vexpandps (%rdi), %xmm0 {%k1} ## encoding: [0x62,0xf2,0x7d,0x09,0x88,0x07]
+define <4 x float> @expand3(i8* %addr, <4 x float> %data, i8 %mask) {
+  %res = call <4 x float> @llvm.x86.avx512.mask.expand.load.ps.128(i8* %addr, <4 x float> %data, i8 %mask)
+  ret <4 x float> %res
+}
+
+declare <4 x float> @llvm.x86.avx512.mask.expand.load.ps.128(i8* %addr, <4 x float> %data, i8 %mask)
+
+; CHECK-LABEL: expand4
+; CHECK: vexpandpd %zmm0, %zmm0 {%k1} {z} ## encoding: [0x62,0xf2,0xfd,0xc9,0x88,0xc0]
+define <8 x double> @expand4(i8* %addr, <8 x double> %data, i8 %mask) {
+  %res = call <8 x double> @llvm.x86.avx512.mask.expand.pd.512(<8 x double> %data, <8 x double> zeroinitializer, i8 %mask)
+  ret <8 x double> %res
+}
+
+declare <8 x double> @llvm.x86.avx512.mask.expand.pd.512(<8 x double> %data, <8 x double> %src0, i8 %mask)
+
+; CHECK-LABEL: expand5
+; CHECK: vexpandpd %ymm0, %ymm1 {%k1}  ## encoding: [0x62,0xf2,0xfd,0x29,0x88,0xc8]
+define <4 x double> @expand5(<4 x double> %data, <4 x double> %src0, i8 %mask) {
+  %res = call <4 x double> @llvm.x86.avx512.mask.expand.pd.256( <4 x double> %data, <4 x double> %src0, i8 %mask)
+  ret <4 x double> %res
+}
+
+declare <4 x double> @llvm.x86.avx512.mask.expand.pd.256(<4 x double> %data, <4 x double> %src0, i8 %mask)
+
+; CHECK-LABEL: expand6
+; CHECK: vexpandps %xmm0
+define <4 x float> @expand6(<4 x float> %data, i8 %mask) {
+  %res = call <4 x float> @llvm.x86.avx512.mask.expand.ps.128(<4 x float> %data, <4 x float>zeroinitializer, i8 %mask)
+  ret <4 x float> %res
+}
+
+declare <4 x float> @llvm.x86.avx512.mask.expand.ps.128(<4 x float> %data, <4 x float> %src0, i8 %mask)
+
+; CHECK-LABEL: expand7
+; CHECK-NOT: vexpand
+; CHECK: vmovapd
+define <8 x double> @expand7(i8* %addr, <8 x double> %data) {
+  %res = call <8 x double> @llvm.x86.avx512.mask.expand.load.pd.512(i8* %addr, <8 x double> %data, i8 -1)
+  ret <8 x double> %res
+}
+
+; CHECK-LABEL: expand8
+; CHECK-NOT: vexpandps %xmm0
+define <4 x float> @expand8(<4 x float> %data) {
+  %res = call <4 x float> @llvm.x86.avx512.mask.expand.ps.128(<4 x float> %data, <4 x float>zeroinitializer, i8 -1)
+  ret <4 x float> %res
+}
+
+; CHECK-LABEL: expand9
+; CHECK: vpexpandq (%rdi), %zmm0 {%k1} ## encoding: [0x62,0xf2,0xfd,0x49,0x89,0x07]
+define <8 x i64> @expand9(i8* %addr, <8 x i64> %data, i8 %mask) {
+  %res = call <8 x i64> @llvm.x86.avx512.mask.expand.load.q.512(i8* %addr, <8 x i64> %data, i8 %mask)
+  ret <8 x i64> %res
+}
+
+declare <8 x i64> @llvm.x86.avx512.mask.expand.load.q.512(i8* %addr, <8 x i64> %data, i8 %mask)
+
+; CHECK-LABEL: expand10
+; CHECK: vpexpandd %xmm0, %xmm0 {%k1} {z} ## encoding: [0x62,0xf2,0x7d,0x89,0x89,0xc0]
+define <4 x i32> @expand10(<4 x i32> %data, i8 %mask) {
+  %res = call <4 x i32> @llvm.x86.avx512.mask.expand.d.128(<4 x i32> %data, <4 x i32>zeroinitializer, i8 %mask)
+  ret <4 x i32> %res
+}
+
+declare <4 x i32> @llvm.x86.avx512.mask.expand.d.128(<4 x i32> %data, <4 x i32> %src0, i8 %mask)
+
+define <8 x float> @test_x86_mask_blend_ps_256(i8 %a0, <8 x float> %a1, <8 x float> %a2) {
+  ; CHECK: vblendmps %ymm1, %ymm0
+  %res = call <8 x float> @llvm.x86.avx512.mask.blend.ps.256(<8 x float> %a1, <8 x float> %a2, i8 %a0) ; <<8 x float>> [#uses=1]
+  ret <8 x float> %res
+}
+
+declare <8 x float> @llvm.x86.avx512.mask.blend.ps.256(<8 x float>, <8 x float>, i8) nounwind readonly
+
+define <4 x double> @test_x86_mask_blend_pd_256(i8 %a0, <4 x double> %a1, <4 x double> %a2) {
+  ; CHECK: vblendmpd %ymm1, %ymm0
+  %res = call <4 x double> @llvm.x86.avx512.mask.blend.pd.256(<4 x double> %a1, <4 x double> %a2, i8 %a0) ; <<4 x double>> [#uses=1]
+  ret <4 x double> %res
+}
+
+define <4 x double> @test_x86_mask_blend_pd_256_memop(<4 x double> %a, <4 x double>* %ptr, i8 %mask) {
+  ; CHECK-LABEL: test_x86_mask_blend_pd_256_memop
+  ; CHECK: vblendmpd (%
+  %b = load <4 x double>* %ptr
+  %res = call <4 x double> @llvm.x86.avx512.mask.blend.pd.256(<4 x double> %a, <4 x double> %b, i8 %mask) ; <<4 x double>> [#uses=1]
+  ret <4 x double> %res
+}
+declare <4 x double> @llvm.x86.avx512.mask.blend.pd.256(<4 x double>, <4 x double>, i8) nounwind readonly
+
+; CHECK-LABEL: test_x86_mask_blend_d_256
+; CHECK: vpblendmd
+define <8 x i32> @test_x86_mask_blend_d_256(i8 %a0, <8 x i32> %a1, <8 x i32> %a2) {
+  %res = call <8 x i32> @llvm.x86.avx512.mask.blend.d.256(<8 x i32> %a1, <8 x i32> %a2, i8 %a0) ; <<8 x i32>> [#uses=1]
+  ret <8 x i32> %res
+}
+declare <8 x i32> @llvm.x86.avx512.mask.blend.d.256(<8 x i32>, <8 x i32>, i8) nounwind readonly
+
+define <4 x i64> @test_x86_mask_blend_q_256(i8 %a0, <4 x i64> %a1, <4 x i64> %a2) {
+  ; CHECK: vpblendmq
+  %res = call <4 x i64> @llvm.x86.avx512.mask.blend.q.256(<4 x i64> %a1, <4 x i64> %a2, i8 %a0) ; <<4 x i64>> [#uses=1]
+  ret <4 x i64> %res
+}
+declare <4 x i64> @llvm.x86.avx512.mask.blend.q.256(<4 x i64>, <4 x i64>, i8) nounwind readonly
+
+define <4 x float> @test_x86_mask_blend_ps_128(i8 %a0, <4 x float> %a1, <4 x float> %a2) {
+  ; CHECK: vblendmps %xmm1, %xmm0
+  %res = call <4 x float> @llvm.x86.avx512.mask.blend.ps.128(<4 x float> %a1, <4 x float> %a2, i8 %a0) ; <<4 x float>> [#uses=1]
+  ret <4 x float> %res
+}
+
+declare <4 x float> @llvm.x86.avx512.mask.blend.ps.128(<4 x float>, <4 x float>, i8) nounwind readonly
+
+define <2 x double> @test_x86_mask_blend_pd_128(i8 %a0, <2 x double> %a1, <2 x double> %a2) {
+  ; CHECK: vblendmpd %xmm1, %xmm0
+  %res = call <2 x double> @llvm.x86.avx512.mask.blend.pd.128(<2 x double> %a1, <2 x double> %a2, i8 %a0) ; <<2 x double>> [#uses=1]
+  ret <2 x double> %res
+}
+
+define <2 x double> @test_x86_mask_blend_pd_128_memop(<2 x double> %a, <2 x double>* %ptr, i8 %mask) {
+  ; CHECK-LABEL: test_x86_mask_blend_pd_128_memop
+  ; CHECK: vblendmpd (%
+  %b = load <2 x double>* %ptr
+  %res = call <2 x double> @llvm.x86.avx512.mask.blend.pd.128(<2 x double> %a, <2 x double> %b, i8 %mask) ; <<2 x double>> [#uses=1]
+  ret <2 x double> %res
+}
+declare <2 x double> @llvm.x86.avx512.mask.blend.pd.128(<2 x double>, <2 x double>, i8) nounwind readonly
+
+define <4 x i32> @test_x86_mask_blend_d_128(i8 %a0, <4 x i32> %a1, <4 x i32> %a2) {
+  ; CHECK: vpblendmd
+  %res = call <4 x i32> @llvm.x86.avx512.mask.blend.d.128(<4 x i32> %a1, <4 x i32> %a2, i8 %a0) ; <<4 x i32>> [#uses=1]
+  ret <4 x i32> %res
+}
+declare <4 x i32> @llvm.x86.avx512.mask.blend.d.128(<4 x i32>, <4 x i32>, i8) nounwind readonly
+
+define <2 x i64> @test_x86_mask_blend_q_128(i8 %a0, <2 x i64> %a1, <2 x i64> %a2) {
+  ; CHECK: vpblendmq
+  %res = call <2 x i64> @llvm.x86.avx512.mask.blend.q.128(<2 x i64> %a1, <2 x i64> %a2, i8 %a0) ; <<2 x i64>> [#uses=1]
+  ret <2 x i64> %res
+}
+declare <2 x i64> @llvm.x86.avx512.mask.blend.q.128(<2 x i64>, <2 x i64>, i8) nounwind readonly

@@ -47,7 +47,7 @@ D: libc++
 
 N: Peter Collingbourne
 E: peter@pcc.me.uk
-D: libclc, llgo
+D: llgo
 
 N: Anshuman Dasgupta
 E: adasgupt@codeaurora.org
@@ -134,10 +134,6 @@ N: Daniel Sanders
 E: daniel.sanders@imgtec.com
 D: MIPS Backend (lib/Target/Mips/*)
 
-N: Richard Sandiford
-E: rsandifo@linux.vnet.ibm.com
-D: SystemZ Backend
-
 N: Duncan Sands
 E: baldrick@free.fr
 D: DragonEgg
@@ -153,7 +149,7 @@ D: Windows parts of Support, Object, ar, nm, objdump, ranlib, size
 N: Tom Stellard
 E: thomas.stellard@amd.com
 E: mesa-dev@lists.freedesktop.org
-D: Release manager for the 3.5 branch, R600 Backend
+D: Release manager for the 3.5 branch, R600 Backend, libclc
 
 N: Evgeniy Stepanov
 E: eugenis@google.com
@@ -162,6 +158,10 @@ D: MemorySanitizer (LLVM part)
 N: Andrew Trick
 E: atrick@apple.com
 D: IndVar Simplify, Loop Strength Reduction, Instruction Scheduling
+
+N: Ulrich Weigand
+E: uweigand@de.ibm.com
+D: SystemZ Backend
 
 N: Bill Wendling
 E: isanbard@gmail.com

@@ -156,6 +156,8 @@ def HasMips3     :    Predicate<"Subtarget->hasMips3()">,
                       AssemblerPredicate<"FeatureMips3">;
 def HasMips4_32  :    Predicate<"Subtarget->hasMips4_32()">,
                       AssemblerPredicate<"FeatureMips4_32">;
+def NotMips4_32  :    Predicate<"!Subtarget->hasMips4_32()">,
+                      AssemblerPredicate<"FeatureMips4_32">;
 def HasMips4_32r2 :   Predicate<"Subtarget->hasMips4_32r2()">,
                       AssemblerPredicate<"FeatureMips4_32r2">;
 def HasMips5_32r2 :   Predicate<"Subtarget->hasMips5_32r2()">,
@@ -220,6 +222,9 @@ class GPR_64 { list<Predicate> GPRPredicates = [IsGP64bit]; }
 //        subtractive predicate will hopefully keep us under the 32 predicate
 //        limit long enough to develop an alternative way to handle P1||P2
 //        predicates.
+class ISA_MIPS1_NOT_4_32 {
+  list<Predicate> InsnPredicates = [NotMips4_32];
+}
 class ISA_MIPS1_NOT_32R6_64R6 {
   list<Predicate> InsnPredicates = [NotMips32r6, NotMips64r6];
 }
@@ -1461,10 +1466,10 @@ def MFC2 : MFC3OP<"mfc2", GPR32Opnd>, MFC3OP_FM<0x12, 0>;
 def MTC2 : MFC3OP<"mtc2", GPR32Opnd>, MFC3OP_FM<0x12, 4>;
 
 class Barrier<string asmstr> : InstSE<(outs), (ins), asmstr, [], NoItinerary,
-                                      FrmOther>;
-def SSNOP : Barrier<"ssnop">, BARRIER_FM<1>;
-def EHB : Barrier<"ehb">, BARRIER_FM<3>;
-def PAUSE : Barrier<"pause">, BARRIER_FM<5>, ISA_MIPS32R2;
+                                      FrmOther, asmstr>;
+def SSNOP : MMRel, Barrier<"ssnop">, BARRIER_FM<1>;
+def EHB : MMRel, Barrier<"ehb">, BARRIER_FM<3>;
+def PAUSE : MMRel, Barrier<"pause">, BARRIER_FM<5>, ISA_MIPS32R2;
 
 // JR_HB and JALR_HB are defined here using the new style naming
 // scheme because some of this code is shared with Mips32r6InstrInfo.td
@@ -1515,13 +1520,14 @@ def TLBWR : MMRel, TLB<"tlbwr">, COP0_TLB_FM<0x06>;
 
 class CacheOp<string instr_asm, Operand MemOpnd> :
     InstSE<(outs), (ins  MemOpnd:$addr, uimm5:$hint),
-           !strconcat(instr_asm, "\t$hint, $addr"), [], NoItinerary, FrmOther> {
+           !strconcat(instr_asm, "\t$hint, $addr"), [], NoItinerary, FrmOther,
+           instr_asm> {
   let DecoderMethod = "DecodeCacheOp";
 }
 
-def CACHE : CacheOp<"cache", mem>, CACHEOP_FM<0b101111>,
+def CACHE : MMRel, CacheOp<"cache", mem>, CACHEOP_FM<0b101111>,
             INSN_MIPS3_32_NOT_32R6_64R6;
-def PREF :  CacheOp<"pref", mem>, CACHEOP_FM<0b110011>,
+def PREF :  MMRel, CacheOp<"pref", mem>, CACHEOP_FM<0b110011>,
             INSN_MIPS3_32_NOT_32R6_64R6;
 
 //===----------------------------------------------------------------------===//

@@ -152,7 +152,7 @@ bool HexagonPeephole::runOnMachineFunction(MachineFunction &MF) {
       // Look for  %vreg170<def> = COMBINE_ir_V4 (0, %vreg169)
       // %vreg170:DoublRegs, %vreg169:IntRegs
       if (!DisableOptExtTo64 &&
-          MI->getOpcode () == Hexagon::COMBINE_Ir_V4) {
+          MI->getOpcode () == Hexagon::A4_combineir) {
         assert (MI->getNumOperands() == 3);
         MachineOperand &Dst = MI->getOperand(0);
         MachineOperand &Src1 = MI->getOperand(1);
@@ -169,7 +169,7 @@ bool HexagonPeephole::runOnMachineFunction(MachineFunction &MF) {
       // %vregIntReg = COPY %vregDoubleReg1:subreg_loreg.
       // and convert into
       // %vregIntReg = COPY %vregDoubleReg0:subreg_hireg.
-      if (MI->getOpcode() == Hexagon::LSRd_ri) {
+      if (MI->getOpcode() == Hexagon::S2_lsr_i_p) {
         assert(MI->getNumOperands() == 3);
         MachineOperand &Dst = MI->getOperand(0);
         MachineOperand &Src1 = MI->getOperand(1);

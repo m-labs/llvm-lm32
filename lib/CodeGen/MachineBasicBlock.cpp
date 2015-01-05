@@ -24,7 +24,6 @@
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/LeakDetector.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Support/Debug.h"
@@ -45,7 +44,6 @@ MachineBasicBlock::MachineBasicBlock(MachineFunction &mf, const BasicBlock *bb)
 }
 
 MachineBasicBlock::~MachineBasicBlock() {
-  LeakDetector::removeGarbageObject(this);
 }
 
 /// getSymbol - Return the MCSymbol for this basic block.
@@ -85,14 +83,11 @@ void ilist_traits<MachineBasicBlock>::addNodeToList(MachineBasicBlock *N) {
   for (MachineBasicBlock::instr_iterator
          I = N->instr_begin(), E = N->instr_end(); I != E; ++I)
     I->AddRegOperandsToUseLists(RegInfo);
-
-  LeakDetector::removeGarbageObject(N);
 }
 
 void ilist_traits<MachineBasicBlock>::removeNodeFromList(MachineBasicBlock *N) {
   N->getParent()->removeFromMBBNumbering(N->Number);
   N->Number = -1;
-  LeakDetector::addGarbageObject(N);
 }
 
 
@@ -107,8 +102,6 @@ void ilist_traits<MachineInstr>::addNodeToList(MachineInstr *N) {
   // use/def lists.
   MachineFunction *MF = Parent->getParent();
   N->AddRegOperandsToUseLists(MF->getRegInfo());
-
-  LeakDetector::removeGarbageObject(N);
 }
 
 /// removeNodeFromList (MI) - When we remove an instruction from a basic block
@@ -122,8 +115,6 @@ void ilist_traits<MachineInstr>::removeNodeFromList(MachineInstr *N) {
     N->RemoveRegOperandsFromUseLists(MF->getRegInfo());
 
   N->setParent(nullptr);
-
-  LeakDetector::addGarbageObject(N);
 }
 
 /// transferNodesFromList (MI) - When moving a range of instructions from one

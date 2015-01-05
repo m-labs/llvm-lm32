@@ -336,11 +336,11 @@ std::error_code copy_file(const Twine &From, const Twine &To);
 
 /// @brief Resize path to size. File is resized as if by POSIX truncate().
 ///
-/// @param path Input path.
-/// @param size Size to resize to.
+/// @param FD Input file descriptor.
+/// @param Size Size to resize to.
 /// @returns errc::success if \a path has been resized to \a size, otherwise a
 ///          platform-specific error_code.
-std::error_code resize_file(const Twine &path, uint64_t size);
+std::error_code resize_file(int FD, uint64_t Size);
 
 /// @}
 /// @name Physical Observers
@@ -637,28 +637,17 @@ public:
 
 private:
   /// Platform-specific mapping state.
-  mapmode Mode;
   uint64_t Size;
   void *Mapping;
-#ifdef LLVM_ON_WIN32
-  int FileDescriptor;
-  void *FileHandle;
-  void *FileMappingHandle;
-#endif
 
-  std::error_code init(int FD, bool CloseFD, uint64_t Offset);
+  std::error_code init(int FD, uint64_t Offset, mapmode Mode);
 
 public:
-  typedef char char_type;
-
-  mapped_file_region(mapped_file_region&&);
-  mapped_file_region &operator =(mapped_file_region&&);
-
   /// \param fd An open file descriptor to map. mapped_file_region takes
   ///   ownership if closefd is true. It must have been opended in the correct
   ///   mode.
-  mapped_file_region(int fd, bool closefd, mapmode mode, uint64_t length,
-                     uint64_t offset, std::error_code &ec);
+  mapped_file_region(int fd, mapmode mode, uint64_t length, uint64_t offset,
+                     std::error_code &ec);
 
   ~mapped_file_region();
 
