@@ -17,15 +17,12 @@
 
 [common]
 subdirectories = InstPrinter MCTargetDesc TargetInfo
-;subdirectories = AsmParser Disassembler InstPrinter MCTargetDesc TargetInfo
 
 [component_0]
 type = TargetGroup
 name = LM32
 parent = Target
-has_asmparser = 1
 has_asmprinter = 1
-has_disassembler = 1
 
 [component_1]
 type = Library
