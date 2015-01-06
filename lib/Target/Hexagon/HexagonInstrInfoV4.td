@@ -31,6 +31,13 @@ let isCodeGenOnly = 1 in {
   def A4_ext_g : T_Immext<globaladdress>;
 }
 
+def BITPOS32 : SDNodeXForm<imm, [{
+   // Return the bit position we will set [0-31].
+   // As an SDNode.
+   int32_t imm = N->getSExtValue();
+   return XformMskToBitPosU5Imm(imm);
+}]>;
+
 // Fold (add (CONST32 tglobaladdr:$addr) <offset>) into a global address.
 def FoldGlobalAddr : ComplexPattern<i32, 1, "foldGlobalAddress", [], []>;
 
@@ -1747,257 +1754,132 @@ def M4_xor_xacc
     let Inst{12-8}  = Rtt;
     let Inst{4-0}   = Rxx;
   }
+  
+// Split bitfield
+let isCodeGenOnly = 0 in
+def A4_bitspliti : T_S2op_2_di <"bitsplit", 0b110, 0b100>;
 
-//  Add and accumulate.
-//  Rd=add(Rs,add(Ru,#s6))
-let isExtendable = 1, opExtendable = 3, isExtentSigned = 1, opExtentBits = 6,
-validSubTargets = HasV4SubT in
-def ADDr_ADDri_V4 : MInst<(outs IntRegs:$dst),
-          (ins IntRegs:$src1, IntRegs:$src2, s6Ext:$src3),
-          "$dst = add($src1, add($src2, #$src3))",
-          [(set (i32 IntRegs:$dst),
-           (add (i32 IntRegs:$src1), (add (i32 IntRegs:$src2),
-                                          s6_16ExtPred:$src3)))]>,
-          Requires<[HasV4T]>;
+// Arithmetic/Convergent round
+let isCodeGenOnly = 0 in
+def A4_cround_ri : T_S2op_2_ii <"cround", 0b111, 0b000>;
 
-//  Rd=add(Rs,sub(#s6,Ru))
-let isExtendable = 1, opExtendable = 2, isExtentSigned = 1, opExtentBits = 6,
-validSubTargets = HasV4SubT in
-def ADDr_SUBri_V4 : MInst<(outs IntRegs:$dst),
-          (ins IntRegs:$src1, s6Ext:$src2, IntRegs:$src3),
-          "$dst = add($src1, sub(#$src2, $src3))",
-          [(set (i32 IntRegs:$dst),
-           (add (i32 IntRegs:$src1), (sub s6_10ExtPred:$src2,
-                                          (i32 IntRegs:$src3))))]>,
-          Requires<[HasV4T]>;
+let isCodeGenOnly = 0 in
+def A4_round_ri  : T_S2op_2_ii <"round", 0b111, 0b100>;
 
-// Generates the same instruction as ADDr_SUBri_V4 but matches different
-// pattern.
-//  Rd=add(Rs,sub(#s6,Ru))
-let isExtendable = 1, opExtendable = 2, isExtentSigned = 1, opExtentBits = 6,
-validSubTargets = HasV4SubT in
-def ADDri_SUBr_V4 : MInst<(outs IntRegs:$dst),
-          (ins IntRegs:$src1, s6Ext:$src2, IntRegs:$src3),
-          "$dst = add($src1, sub(#$src2, $src3))",
-          [(set (i32 IntRegs:$dst),
-                (sub (add (i32 IntRegs:$src1), s6_10ExtPred:$src2),
-                     (i32 IntRegs:$src3)))]>,
-          Requires<[HasV4T]>;
-
-
-//  Add or subtract doublewords with carry.
-//TODO:
-//  Rdd=add(Rss,Rtt,Px):carry
-//TODO:
-//  Rdd=sub(Rss,Rtt,Px):carry
-
-
-//  Logical doublewords.
-//  Rdd=and(Rtt,~Rss)
-let validSubTargets = HasV4SubT in
-def ANDd_NOTd_V4 : MInst<(outs DoubleRegs:$dst),
-          (ins DoubleRegs:$src1, DoubleRegs:$src2),
-          "$dst = and($src1, ~$src2)",
-          [(set (i64 DoubleRegs:$dst), (and (i64 DoubleRegs:$src1),
-                                      (not (i64 DoubleRegs:$src2))))]>,
-          Requires<[HasV4T]>;
-
-//  Rdd=or(Rtt,~Rss)
-let validSubTargets = HasV4SubT in
-def ORd_NOTd_V4 : MInst<(outs DoubleRegs:$dst),
-          (ins DoubleRegs:$src1, DoubleRegs:$src2),
-          "$dst = or($src1, ~$src2)",
-          [(set (i64 DoubleRegs:$dst),
-           (or (i64 DoubleRegs:$src1), (not (i64 DoubleRegs:$src2))))]>,
-          Requires<[HasV4T]>;
-
-
-//  Logical-logical doublewords.
-//  Rxx^=xor(Rss,Rtt)
-let validSubTargets = HasV4SubT in
-def XORd_XORdd: MInst_acc<(outs DoubleRegs:$dst),
-          (ins DoubleRegs:$src1, DoubleRegs:$src2, DoubleRegs:$src3),
-          "$dst ^= xor($src2, $src3)",
-          [(set (i64 DoubleRegs:$dst),
-           (xor (i64 DoubleRegs:$src1), (xor (i64 DoubleRegs:$src2),
-                                             (i64 DoubleRegs:$src3))))],
-          "$src1 = $dst">,
-          Requires<[HasV4T]>;
-
+let Defs = [USR_OVF], isCodeGenOnly = 0 in
+def A4_round_ri_sat : T_S2op_2_ii <"round", 0b111, 0b110, 1>;
 
 // Logical-logical words.
-// Rx=or(Ru,and(Rx,#s10))
-let isExtendable = 1, opExtendable = 3, isExtentSigned = 1, opExtentBits = 10,
-validSubTargets = HasV4SubT in
-def ORr_ANDri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, s10Ext:$src3),
-            "$dst = or($src1, and($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (or (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                s10ExtPred:$src3)))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
+// Compound or-and -- Rx=or(Ru,and(Rx,#s10))
+let isExtentSigned = 1, hasNewValue = 1, isExtendable = 1, opExtentBits = 10,
+    opExtendable = 3, isCodeGenOnly = 0 in
+def S4_or_andix:
+  ALU64Inst<(outs IntRegs:$Rx),
+            (ins IntRegs:$Ru, IntRegs:$_src_, s10Ext:$s10),
+  "$Rx = or($Ru, and($_src_, #$s10))" ,
+  [(set (i32 IntRegs:$Rx),
+        (or (i32 IntRegs:$Ru), (and (i32 IntRegs:$_src_), s10ExtPred:$s10)))] ,
+  "$_src_ = $Rx", ALU64_tc_2_SLOT23> {
+    bits<5> Rx;
+    bits<5> Ru;
+    bits<10> s10;
 
-// Rx[&|^]=and(Rs,Rt)
-// Rx&=and(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def ANDr_ANDrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst &= and($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (and (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                 (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+    let IClass = 0b1101;
 
-// Rx|=and(Rs,Rt)
-let validSubTargets = HasV4SubT, CextOpcode = "ORr_ANDr", InputType = "reg" in
-def ORr_ANDrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst |= and($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (or (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>, ImmRegRel;
+    let Inst{27-22} = 0b101001;
+    let Inst{20-16} = Rx;
+    let Inst{21}    = s10{9};
+    let Inst{13-5}  = s10{8-0};
+    let Inst{4-0}   = Ru;
+  }
 
-// Rx^=and(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def XORr_ANDrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst ^= and($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-             (xor (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                            (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+// Miscellaneous ALU64 instructions.
+//
+let hasNewValue = 1, hasSideEffects = 0, isCodeGenOnly = 0 in
+def A4_modwrapu: ALU64Inst<(outs IntRegs:$Rd), (ins IntRegs:$Rs, IntRegs:$Rt),
+      "$Rd = modwrap($Rs, $Rt)", [], "", ALU64_tc_2_SLOT23> {
+  bits<5> Rd;
+  bits<5> Rs;
+  bits<5> Rt;
 
-// Rx[&|^]=and(Rs,~Rt)
-// Rx&=and(Rs,~Rt)
-let validSubTargets = HasV4SubT in
-def ANDr_ANDr_NOTr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst &= and($src2, ~$src3)",
-            [(set (i32 IntRegs:$dst),
-                  (and (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                 (not (i32 IntRegs:$src3)))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+  let IClass = 0b1101;
+  let Inst{27-21} = 0b0011111;
+  let Inst{20-16} = Rs;
+  let Inst{12-8} = Rt;
+  let Inst{7-5} = 0b111;
+  let Inst{4-0} = Rd;
+}
 
-// Rx|=and(Rs,~Rt)
-let validSubTargets = HasV4SubT in
-def ORr_ANDr_NOTr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst |= and($src2, ~$src3)",
-            [(set (i32 IntRegs:$dst),
-             (or (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                           (not (i32 IntRegs:$src3)))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+let hasSideEffects = 0, isCodeGenOnly = 0 in
+def A4_bitsplit: ALU64Inst<(outs DoubleRegs:$Rd),
+      (ins IntRegs:$Rs, IntRegs:$Rt),
+      "$Rd = bitsplit($Rs, $Rt)", [], "", ALU64_tc_1_SLOT23> {
+  bits<5> Rd;
+  bits<5> Rs;
+  bits<5> Rt;
 
-// Rx^=and(Rs,~Rt)
-let validSubTargets = HasV4SubT in
-def XORr_ANDr_NOTr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst ^= and($src2, ~$src3)",
-            [(set (i32 IntRegs:$dst),
-             (xor (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                            (not (i32 IntRegs:$src3)))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+  let IClass = 0b1101;
+  let Inst{27-24} = 0b0100;
+  let Inst{21} = 0b1;
+  let Inst{20-16} = Rs;
+  let Inst{12-8} = Rt;
+  let Inst{4-0} = Rd;
+}
+
+let isCodeGenOnly = 0 in {
+// Rx[&|]=xor(Rs,Rt)
+def M4_or_xor   : T_MType_acc_rr < "|= xor", 0b110, 0b001, 0>;
+def M4_and_xor  : T_MType_acc_rr < "&= xor", 0b010, 0b010, 0>;
 
 // Rx[&|^]=or(Rs,Rt)
-// Rx&=or(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def ANDr_ORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst &= or($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (and (i32 IntRegs:$src1), (or (i32 IntRegs:$src2),
-                                                (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+def M4_xor_or   : T_MType_acc_rr < "^= or",  0b110, 0b011, 0>;
 
-// Rx|=or(Rs,Rt)
-let validSubTargets = HasV4SubT, CextOpcode = "ORr_ORr", InputType = "reg" in
-def ORr_ORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst |= or($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (or (i32 IntRegs:$src1), (or (i32 IntRegs:$src2),
-                                               (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>, ImmRegRel;
+let CextOpcode = "ORr_ORr" in
+def M4_or_or    : T_MType_acc_rr < "|= or",  0b110, 0b000, 0>;
+def M4_and_or   : T_MType_acc_rr < "&= or",  0b010, 0b001, 0>;
 
-// Rx^=or(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def XORr_ORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst ^= or($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-             (xor (i32 IntRegs:$src1), (or (i32 IntRegs:$src2),
-                                           (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+// Rx[&|^]=and(Rs,Rt)
+def M4_xor_and  : T_MType_acc_rr < "^= and", 0b110, 0b010, 0>;
 
-// Rx[&|^]=xor(Rs,Rt)
-// Rx&=xor(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def ANDr_XORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst &= xor($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (and (i32 IntRegs:$src1), (xor (i32 IntRegs:$src2),
-                                                 (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+let CextOpcode = "ORr_ANDr" in
+def M4_or_and   : T_MType_acc_rr < "|= and", 0b010, 0b011, 0>;
+def M4_and_and  : T_MType_acc_rr < "&= and", 0b010, 0b000, 0>;
 
-// Rx|=xor(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def ORr_XORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst |= xor($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-                  (and (i32 IntRegs:$src1), (xor (i32 IntRegs:$src2),
-                                                 (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+// Rx[&|^]=and(Rs,~Rt)
+def M4_xor_andn : T_MType_acc_rr < "^= and", 0b001, 0b010, 0, [], 1>;
+def M4_or_andn  : T_MType_acc_rr < "|= and", 0b001, 0b000, 0, [], 1>;
+def M4_and_andn : T_MType_acc_rr < "&= and", 0b001, 0b001, 0, [], 1>;
+}
 
-// Rx^=xor(Rs,Rt)
-let validSubTargets = HasV4SubT in
-def XORr_XORrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, IntRegs:$src3),
-            "$dst ^= xor($src2, $src3)",
-            [(set (i32 IntRegs:$dst),
-             (and (i32 IntRegs:$src1), (xor (i32 IntRegs:$src2),
-                                            (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+// Compound or-or and or-and
+let isExtentSigned = 1, InputType = "imm", hasNewValue = 1, isExtendable = 1,
+    opExtentBits = 10, opExtendable = 3 in
+class T_CompOR <string mnemonic, bits<2> MajOp, SDNode OpNode>
+  : MInst_acc <(outs IntRegs:$Rx),
+               (ins IntRegs:$src1, IntRegs:$Rs, s10Ext:$s10),
+  "$Rx |= "#mnemonic#"($Rs, #$s10)",
+  [(set (i32 IntRegs:$Rx), (or (i32 IntRegs:$src1),
+                           (OpNode (i32 IntRegs:$Rs), s10ExtPred:$s10)))],
+  "$src1 = $Rx", ALU64_tc_2_SLOT23>, ImmRegRel {
+    bits<5> Rx;
+    bits<5> Rs;
+    bits<10> s10;
 
-// Rx|=and(Rs,#s10)
-let isExtendable = 1, opExtendable = 3, isExtentSigned = 1, opExtentBits = 10,
-validSubTargets = HasV4SubT, CextOpcode = "ORr_ANDr", InputType = "imm" in
-def ORr_ANDri2_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, s10Ext:$src3),
-            "$dst |= and($src2, #$src3)",
-            [(set (i32 IntRegs:$dst),
-                  (or (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                s10ExtPred:$src3)))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>, ImmRegRel;
+    let IClass = 0b1101;
 
-// Rx|=or(Rs,#s10)
-let isExtendable = 1, opExtendable = 3, isExtentSigned = 1, opExtentBits = 10,
-validSubTargets = HasV4SubT, CextOpcode = "ORr_ORr", InputType = "imm" in
-def ORr_ORri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs: $src2, s10Ext:$src3),
-            "$dst |= or($src2, #$src3)",
-            [(set (i32 IntRegs:$dst),
-                  (or (i32 IntRegs:$src1), (and (i32 IntRegs:$src2),
-                                                s10ExtPred:$src3)))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>, ImmRegRel;
+    let Inst{27-24} = 0b1010;
+    let Inst{23-22} = MajOp;
+    let Inst{20-16} = Rs;
+    let Inst{21}    = s10{9};
+    let Inst{13-5}  = s10{8-0};
+    let Inst{4-0}   = Rx;
+  }
 
+let CextOpcode = "ORr_ANDr", isCodeGenOnly = 0 in
+def S4_or_andi : T_CompOR <"and", 0b00, and>;
+
+let CextOpcode = "ORr_ORr", isCodeGenOnly = 0 in
+def S4_or_ori : T_CompOR <"or", 0b10, or>;
 
 //    Modulo wrap
 //        Rd=modwrap(Rs,Rt)
@@ -2036,78 +1918,228 @@ def ORr_ORri_V4 : MInst_acc<(outs IntRegs:$dst),
 // XTYPE/ALU -
 //===----------------------------------------------------------------------===//
 
+//===----------------------------------------------------------------------===//
+// XTYPE/BIT +
+//===----------------------------------------------------------------------===//
+
+// Bit reverse
+let isCodeGenOnly = 0 in
+def S2_brevp : T_S2op_3 <"brev", 0b11, 0b110>;
+
+// Bit count
+let isCodeGenOnly = 0 in {
+def S2_ct0p : T_COUNT_LEADING_64<"ct0", 0b111, 0b010>;
+def S2_ct1p : T_COUNT_LEADING_64<"ct1", 0b111, 0b100>;
+def S4_clbpnorm : T_COUNT_LEADING_64<"normamt", 0b011, 0b000>;
+}
+
+def: Pat<(i32 (trunc (cttz (i64 DoubleRegs:$Rss)))),
+         (S2_ct0p (i64 DoubleRegs:$Rss))>;
+def: Pat<(i32 (trunc (cttz (not (i64 DoubleRegs:$Rss))))),
+         (S2_ct1p (i64 DoubleRegs:$Rss))>;
+
+let hasSideEffects = 0, hasNewValue = 1, isCodeGenOnly = 0 in
+def S4_clbaddi : SInst<(outs IntRegs:$Rd), (ins IntRegs:$Rs, s6Imm:$s6),
+    "$Rd = add(clb($Rs), #$s6)", [], "", S_2op_tc_2_SLOT23> {
+  bits<5> Rs;
+  bits<5> Rd;
+  bits<6> s6;
+  let IClass = 0b1000;
+  let Inst{27-24} = 0b1100;
+  let Inst{23-21} = 0b001;
+  let Inst{20-16} = Rs;
+  let Inst{13-8} = s6;
+  let Inst{7-5} = 0b000;
+  let Inst{4-0} = Rd;
+}
+
+let hasSideEffects = 0, hasNewValue = 1, isCodeGenOnly = 0 in
+def S4_clbpaddi : SInst<(outs IntRegs:$Rd), (ins DoubleRegs:$Rs, s6Imm:$s6),
+    "$Rd = add(clb($Rs), #$s6)", [], "", S_2op_tc_2_SLOT23> {
+  bits<5> Rs;
+  bits<5> Rd;
+  bits<6> s6;
+  let IClass = 0b1000;
+  let Inst{27-24} = 0b1000;
+  let Inst{23-21} = 0b011;
+  let Inst{20-16} = Rs;
+  let Inst{13-8} = s6;
+  let Inst{7-5} = 0b010;
+  let Inst{4-0} = Rd;
+}
+
+
+// Bit test/set/clear
+let isCodeGenOnly = 0 in {
+def S4_ntstbit_i : T_TEST_BIT_IMM<"!tstbit", 0b001>;
+def S4_ntstbit_r : T_TEST_BIT_REG<"!tstbit", 1>;
+}
+
+let AddedComplexity = 20 in {   // Complexity greater than cmp reg-imm.
+  def: Pat<(i1 (seteq (and (shl 1, u5ImmPred:$u5), (i32 IntRegs:$Rs)), 0)),
+           (S4_ntstbit_i (i32 IntRegs:$Rs), u5ImmPred:$u5)>;
+  def: Pat<(i1 (seteq (and (shl 1, (i32 IntRegs:$Rt)), (i32 IntRegs:$Rs)), 0)),
+           (S4_ntstbit_r (i32 IntRegs:$Rs), (i32 IntRegs:$Rt))>;
+}
+
+// Add extra complexity to prefer these instructions over bitsset/bitsclr.
+// The reason is that tstbit/ntstbit can be folded into a compound instruction:
+//   if ([!]tstbit(...)) jump ...
+let AddedComplexity = 100 in
+def: Pat<(i1 (setne (and (i32 IntRegs:$Rs), (i32 Set5ImmPred:$u5)), (i32 0))),
+         (S2_tstbit_i (i32 IntRegs:$Rs), (BITPOS32 Set5ImmPred:$u5))>;
+
+let AddedComplexity = 100 in
+def: Pat<(i1 (seteq (and (i32 IntRegs:$Rs), (i32 Set5ImmPred:$u5)), (i32 0))),
+         (S4_ntstbit_i (i32 IntRegs:$Rs), (BITPOS32 Set5ImmPred:$u5))>;
+
+let isCodeGenOnly = 0 in {
+def C4_nbitsset  : T_TEST_BITS_REG<"!bitsset", 0b01, 1>;
+def C4_nbitsclr  : T_TEST_BITS_REG<"!bitsclr", 0b10, 1>;
+def C4_nbitsclri : T_TEST_BITS_IMM<"!bitsclr", 0b10, 1>;
+}
+
+// Do not increase complexity of these patterns. In the DAG, "cmp i8" may be
+// represented as a compare against "value & 0xFF", which is an exact match
+// for cmpb (same for cmph). The patterns below do not contain any additional
+// complexity that would make them preferable, and if they were actually used
+// instead of cmpb/cmph, they would result in a compare against register that
+// is loaded with the byte/half mask (i.e. 0xFF or 0xFFFF).
+def: Pat<(i1 (setne (and I32:$Rs, u6ImmPred:$u6), 0)),
+         (C4_nbitsclri I32:$Rs, u6ImmPred:$u6)>;
+def: Pat<(i1 (setne (and I32:$Rs, I32:$Rt), 0)),
+         (C4_nbitsclr I32:$Rs, I32:$Rt)>;
+def: Pat<(i1 (setne (and I32:$Rs, I32:$Rt), I32:$Rt)),
+         (C4_nbitsset I32:$Rs, I32:$Rt)>;
+
+//===----------------------------------------------------------------------===//
+// XTYPE/BIT -
+//===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
 // XTYPE/MPY +
 //===----------------------------------------------------------------------===//
 
-// Multiply and user lower result.
-// Rd=add(#u6,mpyi(Rs,#U6))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 6,
-validSubTargets = HasV4SubT in
-def ADDi_MPYri_V4 : MInst<(outs IntRegs:$dst),
-            (ins u6Ext:$src1, IntRegs:$src2, u6Imm:$src3),
-            "$dst = add(#$src1, mpyi($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (add (mul (i32 IntRegs:$src2), u6ImmPred:$src3),
-                       u6ExtPred:$src1))]>,
-            Requires<[HasV4T]>;
+// Rd=add(#u6,mpyi(Rs,#U6)) -- Multiply by immed and add immed.
+
+let hasNewValue = 1, isExtendable = 1, opExtentBits = 6, opExtendable = 1,
+    isCodeGenOnly = 0 in
+def M4_mpyri_addi : MInst<(outs IntRegs:$Rd),
+  (ins u6Ext:$u6, IntRegs:$Rs, u6Imm:$U6),
+  "$Rd = add(#$u6, mpyi($Rs, #$U6))" ,
+  [(set (i32 IntRegs:$Rd),
+        (add (mul (i32 IntRegs:$Rs), u6ImmPred:$U6),
+             u6ExtPred:$u6))] ,"",ALU64_tc_3x_SLOT23> {
+    bits<5> Rd;
+    bits<6> u6;
+    bits<5> Rs;
+    bits<6> U6;
+
+    let IClass = 0b1101;
+
+    let Inst{27-24} = 0b1000;
+    let Inst{23}    = U6{5};
+    let Inst{22-21} = u6{5-4};
+    let Inst{20-16} = Rs;
+    let Inst{13}    = u6{3};
+    let Inst{12-8}  = Rd;
+    let Inst{7-5}   = u6{2-0};
+    let Inst{4-0}   = U6{4-0};
+  }
+
+// Rd=add(#u6,mpyi(Rs,Rt))
+let CextOpcode = "ADD_MPY", InputType = "imm", hasNewValue = 1,
+    isExtendable = 1, opExtentBits = 6, opExtendable = 1, isCodeGenOnly = 0 in
+def M4_mpyrr_addi : MInst <(outs IntRegs:$Rd),
+  (ins u6Ext:$u6, IntRegs:$Rs, IntRegs:$Rt),
+  "$Rd = add(#$u6, mpyi($Rs, $Rt))" ,
+  [(set (i32 IntRegs:$Rd),
+        (add (mul (i32 IntRegs:$Rs), (i32 IntRegs:$Rt)), u6ExtPred:$u6))],
+  "", ALU64_tc_3x_SLOT23>, ImmRegRel {
+    bits<5> Rd;
+    bits<6> u6;
+    bits<5> Rs;
+    bits<5> Rt;
+
+    let IClass = 0b1101;
+
+    let Inst{27-23} = 0b01110;
+    let Inst{22-21} = u6{5-4};
+    let Inst{20-16} = Rs;
+    let Inst{13}    = u6{3};
+    let Inst{12-8}  = Rt;
+    let Inst{7-5}   = u6{2-0};
+    let Inst{4-0}   = Rd;
+  }
+
+let hasNewValue = 1 in
+class T_AddMpy <bit MajOp, PatLeaf ImmPred, dag ins>
+  : ALU64Inst <(outs IntRegs:$dst), ins,
+  "$dst = add($src1, mpyi("#!if(MajOp,"$src3, #$src2))",
+                                      "#$src2, $src3))"),
+  [(set (i32 IntRegs:$dst),
+        (add (i32 IntRegs:$src1), (mul (i32 IntRegs:$src3), ImmPred:$src2)))],
+  "", ALU64_tc_3x_SLOT23> {
+    bits<5> dst;
+    bits<5> src1;
+    bits<8> src2;
+    bits<5> src3;
+
+    let IClass = 0b1101;
+
+    bits<6> ImmValue = !if(MajOp, src2{5-0}, src2{7-2});
+
+    let Inst{27-24} = 0b1111;
+    let Inst{23}    = MajOp;
+    let Inst{22-21} = ImmValue{5-4};
+    let Inst{20-16} = src3;
+    let Inst{13}    = ImmValue{3};
+    let Inst{12-8}  = dst;
+    let Inst{7-5}   = ImmValue{2-0};
+    let Inst{4-0}   = src1;
+  }
+
+let isCodeGenOnly = 0 in
+def M4_mpyri_addr_u2 : T_AddMpy<0b0, u6_2ImmPred,
+                       (ins IntRegs:$src1, u6_2Imm:$src2, IntRegs:$src3)>;
+
+let isExtendable = 1, opExtentBits = 6, opExtendable = 3,
+    CextOpcode = "ADD_MPY", InputType = "imm", isCodeGenOnly = 0 in
+def M4_mpyri_addr : T_AddMpy<0b1, u6ExtPred,
+                    (ins IntRegs:$src1, IntRegs:$src3, u6Ext:$src2)>, ImmRegRel;
+
+// Rx=add(Ru,mpyi(Rx,Rs))
+let validSubTargets = HasV4SubT, CextOpcode = "ADD_MPY", InputType = "reg",
+    hasNewValue = 1, isCodeGenOnly = 0 in
+def M4_mpyrr_addr: MInst_acc <(outs IntRegs:$Rx),
+                              (ins IntRegs:$Ru, IntRegs:$_src_, IntRegs:$Rs),
+  "$Rx = add($Ru, mpyi($_src_, $Rs))",
+  [(set (i32 IntRegs:$Rx), (add (i32 IntRegs:$Ru),
+                           (mul (i32 IntRegs:$_src_), (i32 IntRegs:$Rs))))],
+  "$_src_ = $Rx", M_tc_3x_SLOT23>, ImmRegRel {
+    bits<5> Rx;
+    bits<5> Ru;
+    bits<5> Rs;
+
+    let IClass = 0b1110;
+
+    let Inst{27-21} = 0b0011000;
+    let Inst{12-8} = Rx;
+    let Inst{4-0} = Ru;
+    let Inst{20-16} = Rs;
+  }
 
 // Rd=add(##,mpyi(Rs,#U6))
 def : Pat <(add (mul (i32 IntRegs:$src2), u6ImmPred:$src3),
                      (HexagonCONST32 tglobaladdr:$src1)),
-           (i32 (ADDi_MPYri_V4 tglobaladdr:$src1, IntRegs:$src2,
+           (i32 (M4_mpyri_addi tglobaladdr:$src1, IntRegs:$src2,
                                u6ImmPred:$src3))>;
-
-// Rd=add(#u6,mpyi(Rs,Rt))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 6,
-validSubTargets = HasV4SubT, InputType = "imm", CextOpcode = "ADD_MPY" in
-def ADDi_MPYrr_V4 : MInst<(outs IntRegs:$dst),
-            (ins u6Ext:$src1, IntRegs:$src2, IntRegs:$src3),
-            "$dst = add(#$src1, mpyi($src2, $src3))",
-            [(set (i32 IntRegs:$dst),
-                  (add (mul (i32 IntRegs:$src2), (i32 IntRegs:$src3)),
-                       u6ExtPred:$src1))]>,
-            Requires<[HasV4T]>, ImmRegRel;
 
 // Rd=add(##,mpyi(Rs,Rt))
 def : Pat <(add (mul (i32 IntRegs:$src2), (i32 IntRegs:$src3)),
                      (HexagonCONST32 tglobaladdr:$src1)),
-           (i32 (ADDi_MPYrr_V4 tglobaladdr:$src1, IntRegs:$src2,
+           (i32 (M4_mpyrr_addi tglobaladdr:$src1, IntRegs:$src2,
                                IntRegs:$src3))>;
-
-// Rd=add(Ru,mpyi(#u6:2,Rs))
-let validSubTargets = HasV4SubT in
-def ADDr_MPYir_V4 : MInst<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, u6Imm:$src2, IntRegs:$src3),
-            "$dst = add($src1, mpyi(#$src2, $src3))",
-            [(set (i32 IntRegs:$dst),
-             (add (i32 IntRegs:$src1), (mul (i32 IntRegs:$src3),
-                                            u6_2ImmPred:$src2)))]>,
-            Requires<[HasV4T]>;
-
-// Rd=add(Ru,mpyi(Rs,#u6))
-let isExtendable = 1, opExtendable = 3, isExtentSigned = 0, opExtentBits = 6,
-validSubTargets = HasV4SubT, InputType = "imm", CextOpcode = "ADD_MPY" in
-def ADDr_MPYri_V4 : MInst<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs:$src2, u6Ext:$src3),
-            "$dst = add($src1, mpyi($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (add (i32 IntRegs:$src1), (mul (i32 IntRegs:$src2),
-                                                 u6ExtPred:$src3)))]>,
-            Requires<[HasV4T]>, ImmRegRel;
-
-// Rx=add(Ru,mpyi(Rx,Rs))
-let validSubTargets = HasV4SubT, InputType = "reg", CextOpcode = "ADD_MPY" in
-def ADDr_MPYrr_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins IntRegs:$src1, IntRegs:$src2, IntRegs:$src3),
-            "$dst = add($src1, mpyi($src2, $src3))",
-            [(set (i32 IntRegs:$dst),
-             (add (i32 IntRegs:$src1), (mul (i32 IntRegs:$src2),
-                                            (i32 IntRegs:$src3))))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>, ImmRegRel;
-
 
 // Polynomial multiply words
 // Rdd=pmpyw(Rs,Rt)
@@ -2146,158 +2178,114 @@ def ADDr_MPYrr_V4 : MInst_acc<(outs IntRegs:$dst),
 //===----------------------------------------------------------------------===//
 // XTYPE/SHIFT +
 //===----------------------------------------------------------------------===//
-
-// Shift by immediate and accumulate.
-// Rx=add(#u8,asl(Rx,#U5))
+// Shift by immediate and accumulate/logical.
+// Rx=add(#u8,asl(Rx,#U5))  Rx=add(#u8,lsr(Rx,#U5))
+// Rx=sub(#u8,asl(Rx,#U5))  Rx=sub(#u8,lsr(Rx,#U5))
+// Rx=and(#u8,asl(Rx,#U5))  Rx=and(#u8,lsr(Rx,#U5))
+// Rx=or(#u8,asl(Rx,#U5))   Rx=or(#u8,lsr(Rx,#U5))
 let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def ADDi_ASLri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = add(#$src1, asl($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (add (shl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
+    hasNewValue = 1, opNewValue = 0, validSubTargets = HasV4SubT in
+class T_S4_ShiftOperate<string MnOp, string MnSh, SDNode Op, SDNode Sh,
+                        bit asl_lsr, bits<2> MajOp, InstrItinClass Itin>
+  : MInst_acc<(outs IntRegs:$Rd), (ins u8Ext:$u8, IntRegs:$Rx, u5Imm:$U5),
+      "$Rd = "#MnOp#"(#$u8, "#MnSh#"($Rx, #$U5))",
+      [(set (i32 IntRegs:$Rd),
+            (Op (Sh I32:$Rx, u5ImmPred:$U5), u8ExtPred:$u8))],
+      "$Rd = $Rx", Itin> {
 
-// Rx=add(#u8,lsr(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def ADDi_LSRri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = add(#$src1, lsr($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (add (srl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
+  bits<5> Rd;
+  bits<8> u8;
+  bits<5> Rx;
+  bits<5> U5;
 
-// Rx=sub(#u8,asl(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def SUBi_ASLri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = sub(#$src1, asl($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (sub (shl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-// Rx=sub(#u8,lsr(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def SUBi_LSRri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = sub(#$src1, lsr($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (sub (srl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-
-//Shift by immediate and logical.
-//Rx=and(#u8,asl(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def ANDi_ASLri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = and(#$src1, asl($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (and (shl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rx=and(#u8,lsr(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-validSubTargets = HasV4SubT in
-def ANDi_LSRri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = and(#$src1, lsr($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (and (srl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                       u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rx=or(#u8,asl(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-AddedComplexity = 30, validSubTargets = HasV4SubT in
-def ORi_ASLri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = or(#$src1, asl($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (or (shl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                      u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rx=or(#u8,lsr(Rx,#U5))
-let isExtendable = 1, opExtendable = 1, isExtentSigned = 0, opExtentBits = 8,
-AddedComplexity = 30, validSubTargets = HasV4SubT in
-def ORi_LSRri_V4 : MInst_acc<(outs IntRegs:$dst),
-            (ins u8Ext:$src1, IntRegs:$src2, u5Imm:$src3),
-            "$dst = or(#$src1, lsr($src2, #$src3))",
-            [(set (i32 IntRegs:$dst),
-                  (or (srl (i32 IntRegs:$src2), u5ImmPred:$src3),
-                      u8ExtPred:$src1))],
-            "$src2 = $dst">,
-            Requires<[HasV4T]>;
-
-
-//Shift by register.
-//Rd=lsl(#s6,Rt)
-let validSubTargets = HasV4SubT in {
-def LSLi_V4 : MInst<(outs IntRegs:$dst), (ins s6Imm:$src1, IntRegs:$src2),
-            "$dst = lsl(#$src1, $src2)",
-            [(set (i32 IntRegs:$dst), (shl s6ImmPred:$src1,
-                                           (i32 IntRegs:$src2)))]>,
-            Requires<[HasV4T]>;
-
-
-//Shift by register and logical.
-//Rxx^=asl(Rss,Rt)
-def ASLd_rr_xor_V4 : MInst_acc<(outs DoubleRegs:$dst),
-            (ins DoubleRegs:$src1, DoubleRegs:$src2, IntRegs:$src3),
-            "$dst ^= asl($src2, $src3)",
-            [(set (i64 DoubleRegs:$dst),
-                  (xor (i64 DoubleRegs:$src1), (shl (i64 DoubleRegs:$src2),
-                                                    (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rxx^=asr(Rss,Rt)
-def ASRd_rr_xor_V4 : MInst_acc<(outs DoubleRegs:$dst),
-            (ins DoubleRegs:$src1, DoubleRegs:$src2, IntRegs:$src3),
-            "$dst ^= asr($src2, $src3)",
-            [(set (i64 DoubleRegs:$dst),
-                  (xor (i64 DoubleRegs:$src1), (sra (i64 DoubleRegs:$src2),
-                                                    (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rxx^=lsl(Rss,Rt)
-def LSLd_rr_xor_V4 : MInst_acc<(outs DoubleRegs:$dst),
-            (ins DoubleRegs:$src1, DoubleRegs:$src2, IntRegs:$src3),
-            "$dst ^= lsl($src2, $src3)",
-            [(set (i64 DoubleRegs:$dst), (xor (i64 DoubleRegs:$src1),
-                                              (shl (i64 DoubleRegs:$src2),
-                                                   (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
-
-//Rxx^=lsr(Rss,Rt)
-def LSRd_rr_xor_V4 : MInst_acc<(outs DoubleRegs:$dst),
-            (ins DoubleRegs:$src1, DoubleRegs:$src2, IntRegs:$src3),
-            "$dst ^= lsr($src2, $src3)",
-            [(set (i64 DoubleRegs:$dst),
-                  (xor (i64 DoubleRegs:$src1), (srl (i64 DoubleRegs:$src2),
-                                                    (i32 IntRegs:$src3))))],
-            "$src1 = $dst">,
-            Requires<[HasV4T]>;
+  let IClass = 0b1101;
+  let Inst{27-24} = 0b1110;
+  let Inst{23-21} = u8{7-5};
+  let Inst{20-16} = Rd;
+  let Inst{13} = u8{4};
+  let Inst{12-8} = U5;
+  let Inst{7-5} = u8{3-1};
+  let Inst{4} = asl_lsr;
+  let Inst{3} = u8{0};
+  let Inst{2-1} = MajOp;
 }
+
+multiclass T_ShiftOperate<string mnemonic, SDNode Op, bits<2> MajOp,
+                          InstrItinClass Itin> {
+  def _asl_ri : T_S4_ShiftOperate<mnemonic, "asl", Op, shl, 0, MajOp, Itin>;
+  def _lsr_ri : T_S4_ShiftOperate<mnemonic, "lsr", Op, srl, 1, MajOp, Itin>;
+}
+
+let AddedComplexity = 200, isCodeGenOnly = 0 in {
+  defm S4_addi : T_ShiftOperate<"add", add, 0b10, ALU64_tc_2_SLOT23>;
+  defm S4_andi : T_ShiftOperate<"and", and, 0b00, ALU64_tc_2_SLOT23>;
+}
+
+let AddedComplexity = 30, isCodeGenOnly = 0 in
+defm S4_ori  : T_ShiftOperate<"or",  or,  0b01, ALU64_tc_1_SLOT23>;
+
+let isCodeGenOnly = 0 in
+defm S4_subi : T_ShiftOperate<"sub", sub, 0b11, ALU64_tc_1_SLOT23>;
+
+
+// Rd=[cround|round](Rs,Rt)
+let hasNewValue = 1, Itinerary = S_3op_tc_2_SLOT23, isCodeGenOnly = 0 in {
+  def A4_cround_rr    : T_S3op_3 < "cround", IntRegs, 0b11, 0b00>;
+  def A4_round_rr     : T_S3op_3 < "round", IntRegs, 0b11, 0b10>;
+}
+
+// Rd=round(Rs,Rt):sat
+let hasNewValue = 1, Defs = [USR_OVF], Itinerary = S_3op_tc_2_SLOT23,
+    isCodeGenOnly = 0 in
+def A4_round_rr_sat : T_S3op_3 < "round", IntRegs, 0b11, 0b11, 1>;
+
+// Rdd=[add|sub](Rss,Rtt,Px):carry
+let isPredicateLate = 1, hasSideEffects = 0 in
+class T_S3op_carry <string mnemonic, bits<3> MajOp>
+  : SInst < (outs DoubleRegs:$Rdd, PredRegs:$Px),
+            (ins DoubleRegs:$Rss, DoubleRegs:$Rtt, PredRegs:$Pu),
+  "$Rdd = "#mnemonic#"($Rss, $Rtt, $Pu):carry",
+  [], "$Px = $Pu", S_3op_tc_1_SLOT23 > {
+    bits<5> Rdd;
+    bits<5> Rss;
+    bits<5> Rtt;
+    bits<2> Pu;
+
+    let IClass = 0b1100;
+
+    let Inst{27-24} = 0b0010;
+    let Inst{23-21} = MajOp;
+    let Inst{20-16} = Rss;
+    let Inst{12-8}  = Rtt;
+    let Inst{6-5}   = Pu;
+    let Inst{4-0}   = Rdd;
+  }
+
+let isCodeGenOnly = 0 in {
+def A4_addp_c : T_S3op_carry < "add", 0b110 >;
+def A4_subp_c : T_S3op_carry < "sub", 0b111 >;
+}
+
+// Shift an immediate left by register amount.
+let hasNewValue = 1, hasSideEffects = 0, isCodeGenOnly = 0 in
+def S4_lsli: SInst <(outs IntRegs:$Rd), (ins s6Imm:$s6, IntRegs:$Rt),
+  "$Rd = lsl(#$s6, $Rt)" ,
+  [(set (i32 IntRegs:$Rd), (shl s6ImmPred:$s6,
+                                 (i32 IntRegs:$Rt)))],
+  "", S_3op_tc_1_SLOT23> {
+    bits<5> Rd;
+    bits<6> s6;
+    bits<5> Rt;
+
+    let IClass = 0b1100;
+
+    let Inst{27-22} = 0b011010;
+    let Inst{20-16} = s6{5-1};
+    let Inst{12-8}  = Rt;
+    let Inst{7-6}   = 0b11;
+    let Inst{4-0}   = Rd;
+    let Inst{5}     = s6{0};
+  }
 
 //===----------------------------------------------------------------------===//
 // XTYPE/SHIFT -
@@ -2386,7 +2374,7 @@ class MemOp_rr_base <string opc, bits<2> opcBits, Operand ImmOp,
                  (ins IntRegs:$base, ImmOp:$offset, IntRegs:$delta),
                  opc#"($base+#$offset)"#memOp#"$delta",
                  []>,
-                 Requires<[HasV4T, UseMEMOP]> {
+                 Requires<[UseMEMOP]> {
 
     bits<5> base;
     bits<5> delta;
@@ -2397,6 +2385,7 @@ class MemOp_rr_base <string opc, bits<2> opcBits, Operand ImmOp,
                      !if (!eq(opcBits, 0b01), offset{6-1},
                      !if (!eq(opcBits, 0b10), offset{7-2},0)));
 
+    let opExtentAlign = opcBits;
     let IClass = 0b0011;
     let Inst{27-24} = 0b1110;
     let Inst{22-21} = opcBits;
@@ -2417,7 +2406,7 @@ class MemOp_ri_base <string opc, bits<2> opcBits, Operand ImmOp,
                   opc#"($base+#$offset)"#memOp#"#$delta"
                   #!if(memOpBits{1},")", ""), // clrbit, setbit - include ')'
                   []>,
-                  Requires<[HasV4T, UseMEMOP]> {
+                  Requires<[UseMEMOP]> {
 
     bits<5> base;
     bits<5> delta;
@@ -2428,6 +2417,7 @@ class MemOp_ri_base <string opc, bits<2> opcBits, Operand ImmOp,
                      !if (!eq(opcBits, 0b01), offset{6-1},
                      !if (!eq(opcBits, 0b10), offset{7-2},0)));
 
+    let opExtentAlign = opcBits;
     let IClass = 0b0011;
     let Inst{27-24} = 0b1111;
     let Inst{22-21} = opcBits;
@@ -2440,36 +2430,36 @@ class MemOp_ri_base <string opc, bits<2> opcBits, Operand ImmOp,
 
 // multiclass to define MemOp instructions with register operand.
 multiclass MemOp_rr<string opc, bits<2> opcBits, Operand ImmOp> {
-  def _ADD#NAME#_V4 : MemOp_rr_base <opc, opcBits, ImmOp, " += ", 0b00>; // add
-  def _SUB#NAME#_V4 : MemOp_rr_base <opc, opcBits, ImmOp, " -= ", 0b01>; // sub
-  def _AND#NAME#_V4 : MemOp_rr_base <opc, opcBits, ImmOp, " &= ", 0b10>; // and
-  def _OR#NAME#_V4  : MemOp_rr_base <opc, opcBits, ImmOp, " |= ", 0b11>; // or
+  def L4_add#NAME : MemOp_rr_base <opc, opcBits, ImmOp, " += ", 0b00>; // add
+  def L4_sub#NAME : MemOp_rr_base <opc, opcBits, ImmOp, " -= ", 0b01>; // sub
+  def L4_and#NAME : MemOp_rr_base <opc, opcBits, ImmOp, " &= ", 0b10>; // and
+  def L4_or#NAME  : MemOp_rr_base <opc, opcBits, ImmOp, " |= ", 0b11>; // or
 }
 
 // multiclass to define MemOp instructions with immediate Operand.
 multiclass MemOp_ri<string opc, bits<2> opcBits, Operand ImmOp> {
-  def _ADD#NAME#_V4 : MemOp_ri_base <opc, opcBits, ImmOp, " += ", 0b00 >;
-  def _SUB#NAME#_V4 : MemOp_ri_base <opc, opcBits, ImmOp, " -= ", 0b01 >;
-  def _CLRBIT#NAME#_V4 : MemOp_ri_base<opc, opcBits, ImmOp, " =clrbit(", 0b10>;
-  def _SETBIT#NAME#_V4 : MemOp_ri_base<opc, opcBits, ImmOp, " =setbit(", 0b11>;
+  def L4_iadd#NAME : MemOp_ri_base <opc, opcBits, ImmOp, " += ", 0b00 >;
+  def L4_isub#NAME : MemOp_ri_base <opc, opcBits, ImmOp, " -= ", 0b01 >;
+  def L4_iand#NAME : MemOp_ri_base<opc, opcBits, ImmOp, " = clrbit(", 0b10>;
+  def L4_ior#NAME : MemOp_ri_base<opc, opcBits, ImmOp, " = setbit(", 0b11>;
 }
 
 multiclass MemOp_base <string opc, bits<2> opcBits, Operand ImmOp> {
-  defm r : MemOp_rr <opc, opcBits, ImmOp>;
-  defm i : MemOp_ri <opc, opcBits, ImmOp>;
+  defm _#NAME : MemOp_rr <opc, opcBits, ImmOp>;
+  defm _#NAME : MemOp_ri <opc, opcBits, ImmOp>;
 }
 
 // Define MemOp instructions.
 let isExtendable = 1, opExtendable = 1, isExtentSigned = 0,
-validSubTargets =HasV4SubT in {
-  let opExtentBits = 6, accessSize = ByteAccess in
-  defm MemOPb : MemOp_base <"memb", 0b00, u6_0Ext>;
+    validSubTargets =HasV4SubT in {
+  let opExtentBits = 6, accessSize = ByteAccess, isCodeGenOnly = 0 in
+  defm memopb_io : MemOp_base <"memb", 0b00, u6_0Ext>;
 
-  let opExtentBits = 7, accessSize = HalfWordAccess in
-  defm MemOPh : MemOp_base <"memh", 0b01, u6_1Ext>;
+  let opExtentBits = 7, accessSize = HalfWordAccess, isCodeGenOnly = 0 in
+  defm memoph_io : MemOp_base <"memh", 0b01, u6_1Ext>;
 
-  let opExtentBits = 8, accessSize = WordAccess in
-  defm MemOPw : MemOp_base <"memw", 0b10, u6_2Ext>;
+  let opExtentBits = 8, accessSize = WordAccess, isCodeGenOnly = 0 in
+  defm memopw_io : MemOp_base <"memw", 0b10, u6_2Ext>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2502,10 +2492,10 @@ multiclass MemOpi_u5ALUOp<PatFrag ldOp, PatFrag stOp, PatLeaf ExtPred,
 multiclass MemOpi_u5ExtType<PatFrag ldOpByte, PatFrag ldOpHalf > {
   // Half Word
   defm : MemOpi_u5ALUOp <ldOpHalf, truncstorei16, u6_1ExtPred,
-                         MemOPh_ADDi_V4, MemOPh_SUBi_V4>;
+                         L4_iadd_memoph_io, L4_isub_memoph_io>;
   // Byte
   defm : MemOpi_u5ALUOp <ldOpByte, truncstorei8, u6ExtPred,
-                         MemOPb_ADDi_V4, MemOPb_SUBi_V4>;
+                         L4_iadd_memopb_io, L4_isub_memopb_io>;
 }
 
 let Predicates = [HasV4T, UseMEMOP] in {
@@ -2514,8 +2504,8 @@ let Predicates = [HasV4T, UseMEMOP] in {
   defm : MemOpi_u5ExtType<extloadi8,  extloadi16>;  // any extend
 
   // Word
-  defm : MemOpi_u5ALUOp <load, store, u6_2ExtPred, MemOPw_ADDi_V4,
-                         MemOPw_SUBi_V4>;
+  defm : MemOpi_u5ALUOp <load, store, u6_2ExtPred, L4_iadd_memopw_io,
+                         L4_isub_memopw_io>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2543,10 +2533,10 @@ multiclass MemOpi_m5Pats <PatFrag ldOp, PatFrag stOp, PatLeaf extPred,
 multiclass MemOpi_m5ExtType<PatFrag ldOpByte, PatFrag ldOpHalf > {
   // Half Word
   defm : MemOpi_m5Pats <ldOpHalf, truncstorei16, u6_1ExtPred, m5HImmPred,
-                        ADDRriU6_1, MEMOPIMM_HALF, MemOPh_SUBi_V4>;
+                        ADDRriU6_1, MEMOPIMM_HALF, L4_isub_memoph_io>;
   // Byte
   defm : MemOpi_m5Pats <ldOpByte, truncstorei8, u6ExtPred, m5BImmPred,
-                        ADDRriU6_0, MEMOPIMM_BYTE, MemOPb_SUBi_V4>;
+                        ADDRriU6_0, MEMOPIMM_BYTE, L4_isub_memopb_io>;
 }
 
 let Predicates = [HasV4T, UseMEMOP] in {
@@ -2556,7 +2546,7 @@ let Predicates = [HasV4T, UseMEMOP] in {
 
   // Word
   defm : MemOpi_m5Pats <load, store, u6_2ExtPred, m5ImmPred,
-                          ADDRriU6_2, MEMOPIMM, MemOPw_SUBi_V4>;
+                          ADDRriU6_2, MEMOPIMM, L4_isub_memopw_io>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2587,16 +2577,16 @@ multiclass MemOpi_bitPats <PatFrag ldOp, PatFrag stOp, PatLeaf immPred,
 multiclass MemOpi_bitExtType<PatFrag ldOpByte, PatFrag ldOpHalf > {
   // Byte - clrbit
   defm : MemOpi_bitPats<ldOpByte, truncstorei8, Clr3ImmPred, u6ExtPred,
-                       ADDRriU6_0, CLRMEMIMM_BYTE, MemOPb_CLRBITi_V4, and>;
+                       ADDRriU6_0, CLRMEMIMM_BYTE, L4_iand_memopb_io, and>;
   // Byte - setbit
   defm : MemOpi_bitPats<ldOpByte, truncstorei8, Set3ImmPred,  u6ExtPred,
-                       ADDRriU6_0, SETMEMIMM_BYTE, MemOPb_SETBITi_V4, or>;
+                       ADDRriU6_0, SETMEMIMM_BYTE, L4_ior_memopb_io, or>;
   // Half Word - clrbit
   defm : MemOpi_bitPats<ldOpHalf, truncstorei16, Clr4ImmPred, u6_1ExtPred,
-                       ADDRriU6_1, CLRMEMIMM_SHORT, MemOPh_CLRBITi_V4, and>;
+                       ADDRriU6_1, CLRMEMIMM_SHORT, L4_iand_memoph_io, and>;
   // Half Word - setbit
   defm : MemOpi_bitPats<ldOpHalf, truncstorei16, Set4ImmPred, u6_1ExtPred,
-                       ADDRriU6_1, SETMEMIMM_SHORT, MemOPh_SETBITi_V4, or>;
+                       ADDRriU6_1, SETMEMIMM_SHORT, L4_ior_memoph_io, or>;
 }
 
 let Predicates = [HasV4T, UseMEMOP] in {
@@ -2609,9 +2599,9 @@ let Predicates = [HasV4T, UseMEMOP] in {
   // memw(Rs+#0) = [clrbit|setbit](#U5)
   // memw(Rs+#u6:2) = [clrbit|setbit](#U5)
   defm : MemOpi_bitPats<load, store, Clr5ImmPred, u6_2ExtPred, ADDRriU6_2,
-                       CLRMEMIMM, MemOPw_CLRBITi_V4, and>;
+                       CLRMEMIMM, L4_iand_memopw_io, and>;
   defm : MemOpi_bitPats<load, store, Set5ImmPred, u6_2ExtPred, ADDRriU6_2,
-                       SETMEMIMM, MemOPw_SETBITi_V4, or>;
+                       SETMEMIMM, L4_ior_memopw_io, or>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2652,12 +2642,12 @@ multiclass MemOPr_ALUOp<PatFrag ldOp, PatFrag stOp,
 multiclass MemOPr_ExtType<PatFrag ldOpByte, PatFrag ldOpHalf > {
   // Half Word
   defm : MemOPr_ALUOp <ldOpHalf, truncstorei16, ADDRriU6_1, u6_1ExtPred,
-                       MemOPh_ADDr_V4, MemOPh_SUBr_V4,
-                       MemOPh_ANDr_V4, MemOPh_ORr_V4>;
+                       L4_add_memoph_io, L4_sub_memoph_io,
+                       L4_and_memoph_io, L4_or_memoph_io>;
   // Byte
   defm : MemOPr_ALUOp <ldOpByte, truncstorei8, ADDRriU6_0, u6ExtPred,
-                       MemOPb_ADDr_V4, MemOPb_SUBr_V4,
-                       MemOPb_ANDr_V4, MemOPb_ORr_V4>;
+                       L4_add_memopb_io, L4_sub_memopb_io,
+                       L4_and_memopb_io, L4_or_memopb_io>;
 }
 
 // Define 'def Pats' for MemOps with register addend.
@@ -2667,8 +2657,8 @@ let Predicates = [HasV4T, UseMEMOP] in {
   defm : MemOPr_ExtType<sextloadi8, sextloadi16>; // sign extend
   defm : MemOPr_ExtType<extloadi8,  extloadi16>;  // any extend
   // Word
-  defm : MemOPr_ALUOp <load, store, ADDRriU6_2, u6_2ExtPred, MemOPw_ADDr_V4,
-                       MemOPw_SUBr_V4, MemOPw_ANDr_V4, MemOPw_ORr_V4 >;
+  defm : MemOPr_ALUOp <load, store, ADDRriU6_2, u6_2ExtPred, L4_add_memopw_io,
+                       L4_sub_memopw_io, L4_and_memopw_io, L4_or_memopw_io >;
 }
 
 //===----------------------------------------------------------------------===//

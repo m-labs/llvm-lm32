@@ -146,14 +146,10 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
     { X86::AND8rr,      X86::AND8mr,     0 },
     { X86::DEC16r,      X86::DEC16m,     0 },
     { X86::DEC32r,      X86::DEC32m,     0 },
-    { X86::DEC64_16r,   X86::DEC64_16m,  0 },
-    { X86::DEC64_32r,   X86::DEC64_32m,  0 },
     { X86::DEC64r,      X86::DEC64m,     0 },
     { X86::DEC8r,       X86::DEC8m,      0 },
     { X86::INC16r,      X86::INC16m,     0 },
     { X86::INC32r,      X86::INC32m,     0 },
-    { X86::INC64_16r,   X86::INC64_16m,  0 },
-    { X86::INC64_32r,   X86::INC64_32m,  0 },
     { X86::INC64r,      X86::INC64m,     0 },
     { X86::INC8r,       X86::INC8m,      0 },
     { X86::NEG16r,      X86::NEG16m,     0 },
@@ -2175,11 +2171,9 @@ X86InstrInfo::convertToThreeAddressWithLEA(unsigned MIOpc,
     break;
   }
   case X86::INC16r:
-  case X86::INC64_16r:
     addRegOffset(MIB, leaInReg, true, 1);
     break;
   case X86::DEC16r:
-  case X86::DEC64_16r:
     addRegOffset(MIB, leaInReg, true, -1);
     break;
   case X86::ADD16ri:
@@ -2332,8 +2326,7 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     switch (MIOpc) {
     default: return nullptr;
     case X86::INC64r:
-    case X86::INC32r:
-    case X86::INC64_32r: {
+    case X86::INC32r: {
       assert(MI->getNumOperands() >= 2 && "Unknown inc instruction!");
       unsigned Opc = MIOpc == X86::INC64r ? X86::LEA64r
         : (is64Bit ? X86::LEA64_32r : X86::LEA32r);
@@ -2354,7 +2347,6 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       break;
     }
     case X86::INC16r:
-    case X86::INC64_16r:
       if (DisableLEA16)
         return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV)
                        : nullptr;
@@ -2363,8 +2355,7 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
                         .addOperand(Dest).addOperand(Src), 1);
       break;
     case X86::DEC64r:
-    case X86::DEC32r:
-    case X86::DEC64_32r: {
+    case X86::DEC32r: {
       assert(MI->getNumOperands() >= 2 && "Unknown dec instruction!");
       unsigned Opc = MIOpc == X86::DEC64r ? X86::LEA64r
         : (is64Bit ? X86::LEA64_32r : X86::LEA32r);
@@ -2387,7 +2378,6 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       break;
     }
     case X86::DEC16r:
-    case X86::DEC64_16r:
       if (DisableLEA16)
         return is64Bit ? convertToThreeAddressWithLEA(MIOpc, MFI, MBBI, LV)
                        : nullptr;
@@ -2723,22 +2713,22 @@ bool X86InstrInfo::findCommutedOpIndices(MachineInstr *MI, unsigned &SrcOpIdx1,
 static X86::CondCode getCondFromBranchOpc(unsigned BrOpc) {
   switch (BrOpc) {
   default: return X86::COND_INVALID;
-  case X86::JE_4:  return X86::COND_E;
-  case X86::JNE_4: return X86::COND_NE;
-  case X86::JL_4:  return X86::COND_L;
-  case X86::JLE_4: return X86::COND_LE;
-  case X86::JG_4:  return X86::COND_G;
-  case X86::JGE_4: return X86::COND_GE;
-  case X86::JB_4:  return X86::COND_B;
-  case X86::JBE_4: return X86::COND_BE;
-  case X86::JA_4:  return X86::COND_A;
-  case X86::JAE_4: return X86::COND_AE;
-  case X86::JS_4:  return X86::COND_S;
-  case X86::JNS_4: return X86::COND_NS;
-  case X86::JP_4:  return X86::COND_P;
-  case X86::JNP_4: return X86::COND_NP;
-  case X86::JO_4:  return X86::COND_O;
-  case X86::JNO_4: return X86::COND_NO;
+  case X86::JE_1:  return X86::COND_E;
+  case X86::JNE_1: return X86::COND_NE;
+  case X86::JL_1:  return X86::COND_L;
+  case X86::JLE_1: return X86::COND_LE;
+  case X86::JG_1:  return X86::COND_G;
+  case X86::JGE_1: return X86::COND_GE;
+  case X86::JB_1:  return X86::COND_B;
+  case X86::JBE_1: return X86::COND_BE;
+  case X86::JA_1:  return X86::COND_A;
+  case X86::JAE_1: return X86::COND_AE;
+  case X86::JS_1:  return X86::COND_S;
+  case X86::JNS_1: return X86::COND_NS;
+  case X86::JP_1:  return X86::COND_P;
+  case X86::JNP_1: return X86::COND_NP;
+  case X86::JO_1:  return X86::COND_O;
+  case X86::JNO_1: return X86::COND_NO;
   }
 }
 
@@ -2823,22 +2813,22 @@ X86::CondCode X86::getCondFromCMovOpc(unsigned Opc) {
 unsigned X86::GetCondBranchFromCond(X86::CondCode CC) {
   switch (CC) {
   default: llvm_unreachable("Illegal condition code!");
-  case X86::COND_E:  return X86::JE_4;
-  case X86::COND_NE: return X86::JNE_4;
-  case X86::COND_L:  return X86::JL_4;
-  case X86::COND_LE: return X86::JLE_4;
-  case X86::COND_G:  return X86::JG_4;
-  case X86::COND_GE: return X86::JGE_4;
-  case X86::COND_B:  return X86::JB_4;
-  case X86::COND_BE: return X86::JBE_4;
-  case X86::COND_A:  return X86::JA_4;
-  case X86::COND_AE: return X86::JAE_4;
-  case X86::COND_S:  return X86::JS_4;
-  case X86::COND_NS: return X86::JNS_4;
-  case X86::COND_P:  return X86::JP_4;
-  case X86::COND_NP: return X86::JNP_4;
-  case X86::COND_O:  return X86::JO_4;
-  case X86::COND_NO: return X86::JNO_4;
+  case X86::COND_E:  return X86::JE_1;
+  case X86::COND_NE: return X86::JNE_1;
+  case X86::COND_L:  return X86::JL_1;
+  case X86::COND_LE: return X86::JLE_1;
+  case X86::COND_G:  return X86::JG_1;
+  case X86::COND_GE: return X86::JGE_1;
+  case X86::COND_B:  return X86::JB_1;
+  case X86::COND_BE: return X86::JBE_1;
+  case X86::COND_A:  return X86::JA_1;
+  case X86::COND_AE: return X86::JAE_1;
+  case X86::COND_S:  return X86::JS_1;
+  case X86::COND_NS: return X86::JNS_1;
+  case X86::COND_P:  return X86::JP_1;
+  case X86::COND_NP: return X86::JNP_1;
+  case X86::COND_O:  return X86::JO_1;
+  case X86::COND_NO: return X86::JNO_1;
   }
 }
 
@@ -2996,7 +2986,7 @@ bool X86InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
       return true;
 
     // Handle unconditional branches.
-    if (I->getOpcode() == X86::JMP_4) {
+    if (I->getOpcode() == X86::JMP_1) {
       UnCondBrIter = I;
 
       if (!AllowModify) {
@@ -3058,7 +3048,7 @@ bool X86InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
 
         BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(JNCC))
           .addMBB(UnCondBrIter->getOperand(0).getMBB());
-        BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(X86::JMP_4))
+        BuildMI(MBB, UnCondBrIter, MBB.findDebugLoc(I), get(X86::JMP_1))
           .addMBB(TargetBB);
 
         OldInst->eraseFromParent();
@@ -3123,7 +3113,7 @@ unsigned X86InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
     --I;
     if (I->isDebugValue())
       continue;
-    if (I->getOpcode() != X86::JMP_4 &&
+    if (I->getOpcode() != X86::JMP_1 &&
         getCondFromBranchOpc(I->getOpcode()) == X86::COND_INVALID)
       break;
     // Remove the branch.
@@ -3148,7 +3138,7 @@ X86InstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   if (Cond.empty()) {
     // Unconditional branch?
     assert(!FBB && "Unconditional branch with multiple successors!");
-    BuildMI(&MBB, DL, get(X86::JMP_4)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(X86::JMP_1)).addMBB(TBB);
     return 1;
   }
 
@@ -3158,16 +3148,16 @@ X86InstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   switch (CC) {
   case X86::COND_NP_OR_E:
     // Synthesize NP_OR_E with two branches.
-    BuildMI(&MBB, DL, get(X86::JNP_4)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(X86::JNP_1)).addMBB(TBB);
     ++Count;
-    BuildMI(&MBB, DL, get(X86::JE_4)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(X86::JE_1)).addMBB(TBB);
     ++Count;
     break;
   case X86::COND_NE_OR_P:
     // Synthesize NE_OR_P with two branches.
-    BuildMI(&MBB, DL, get(X86::JNE_4)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(X86::JNE_1)).addMBB(TBB);
     ++Count;
-    BuildMI(&MBB, DL, get(X86::JP_4)).addMBB(TBB);
+    BuildMI(&MBB, DL, get(X86::JP_1)).addMBB(TBB);
     ++Count;
     break;
   default: {
@@ -3178,7 +3168,7 @@ X86InstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   }
   if (FBB) {
     // Two-way Conditional branch. Insert the second branch.
-    BuildMI(&MBB, DL, get(X86::JMP_4)).addMBB(FBB);
+    BuildMI(&MBB, DL, get(X86::JMP_1)).addMBB(FBB);
     ++Count;
   }
   return Count;
@@ -3718,14 +3708,12 @@ inline static bool isDefConvertible(MachineInstr *MI) {
   case X86::SUB16rr:   case X86::SUB8rr:   case X86::SUB64rm:
   case X86::SUB32rm:   case X86::SUB16rm:  case X86::SUB8rm:
   case X86::DEC64r:    case X86::DEC32r:   case X86::DEC16r: case X86::DEC8r:
-  case X86::DEC64_32r: case X86::DEC64_16r:
   case X86::ADD64ri32: case X86::ADD64ri8: case X86::ADD32ri:
   case X86::ADD32ri8:  case X86::ADD16ri:  case X86::ADD16ri8:
   case X86::ADD8ri:    case X86::ADD64rr:  case X86::ADD32rr:
   case X86::ADD16rr:   case X86::ADD8rr:   case X86::ADD64rm:
   case X86::ADD32rm:   case X86::ADD16rm:  case X86::ADD8rm:
   case X86::INC64r:    case X86::INC32r:   case X86::INC16r: case X86::INC8r:
-  case X86::INC64_32r: case X86::INC64_16r:
   case X86::AND64ri32: case X86::AND64ri8: case X86::AND32ri:
   case X86::AND32ri8:  case X86::AND16ri:  case X86::AND16ri8:
   case X86::AND8ri:    case X86::AND64rr:  case X86::AND32rr:
@@ -5344,26 +5332,26 @@ bool X86InstrInfo::shouldScheduleAdjacent(MachineInstr* First,
   switch(Second->getOpcode()) {
   default:
     return false;
-  case X86::JE_4:
-  case X86::JNE_4:
-  case X86::JL_4:
-  case X86::JLE_4:
-  case X86::JG_4:
-  case X86::JGE_4:
+  case X86::JE_1:
+  case X86::JNE_1:
+  case X86::JL_1:
+  case X86::JLE_1:
+  case X86::JG_1:
+  case X86::JGE_1:
     FuseKind = FuseInc;
     break;
-  case X86::JB_4:
-  case X86::JBE_4:
-  case X86::JA_4:
-  case X86::JAE_4:
+  case X86::JB_1:
+  case X86::JBE_1:
+  case X86::JA_1:
+  case X86::JAE_1:
     FuseKind = FuseCmp;
     break;
-  case X86::JS_4:
-  case X86::JNS_4:
-  case X86::JP_4:
-  case X86::JNP_4:
-  case X86::JO_4:
-  case X86::JNO_4:
+  case X86::JS_1:
+  case X86::JNS_1:
+  case X86::JP_1:
+  case X86::JNP_1:
+  case X86::JO_1:
+  case X86::JNO_1:
     FuseKind = FuseTest;
     break;
   }
@@ -5476,14 +5464,10 @@ bool X86InstrInfo::shouldScheduleAdjacent(MachineInstr* First,
     return FuseKind == FuseCmp || FuseKind == FuseInc;
   case X86::INC16r:
   case X86::INC32r:
-  case X86::INC64_16r:
-  case X86::INC64_32r:
   case X86::INC64r:
   case X86::INC8r:
   case X86::DEC16r:
   case X86::DEC32r:
-  case X86::DEC64_16r:
-  case X86::DEC64_32r:
   case X86::DEC64r:
   case X86::DEC8r:
     return FuseKind == FuseInc;
@@ -5652,7 +5636,7 @@ void X86InstrInfo::getNoopForMachoTarget(MCInst &NopInst) const {
 // getUnconditionalBranch and getTrap.
 void X86InstrInfo::getUnconditionalBranch(
     MCInst &Branch, const MCSymbolRefExpr *BranchTarget) const {
-  Branch.setOpcode(X86::JMP_4);
+  Branch.setOpcode(X86::JMP_1);
   Branch.addOperand(MCOperand::CreateExpr(BranchTarget));
 }
 

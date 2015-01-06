@@ -551,7 +551,10 @@ defm SRAD : XForm_6rc<31, 794, (outs g8rc:$rA), (ins g8rc:$rS, gprc:$rB),
                       "srad", "$rA, $rS, $rB", IIC_IntRotateD,
                       [(set i64:$rA, (PPCsra i64:$rS, i32:$rB))]>, isPPC64;
 
-let Interpretation64Bit = 1, isCodeGenOnly = 1 in { 
+let Interpretation64Bit = 1, isCodeGenOnly = 1 in {
+defm CNTLZW8 : XForm_11r<31,  26, (outs g8rc:$rA), (ins g8rc:$rS),
+                        "cntlzw", "$rA, $rS", IIC_IntGeneral, []>;
+
 defm EXTSB8 : XForm_11r<31, 954, (outs g8rc:$rA), (ins g8rc:$rS),
                         "extsb", "$rA, $rS", IIC_IntSimple,
                         [(set i64:$rA, (sext_inreg i64:$rS, i8))]>;
@@ -842,6 +845,13 @@ def LDX  : XForm_1<31,  21, (outs g8rc:$rD), (ins memrr:$src),
 def LDBRX : XForm_1<31,  532, (outs g8rc:$rD), (ins memrr:$src),
                    "ldbrx $rD, $src", IIC_LdStLoad,
                    [(set i64:$rD, (PPClbrx xoaddr:$src, i64))]>, isPPC64;
+
+let mayLoad = 1, hasSideEffects = 0, isCodeGenOnly = 1 in {
+def LHBRX8 : XForm_1<31, 790, (outs g8rc:$rD), (ins memrr:$src),
+                   "lhbrx $rD, $src", IIC_LdStLoad, []>;
+def LWBRX8 : XForm_1<31,  534, (outs g8rc:$rD), (ins memrr:$src),
+                   "lwbrx $rD, $src", IIC_LdStLoad, []>;
+}
 
 let mayLoad = 1, hasSideEffects = 0 in {
 def LDU  : DSForm_1<58, 1, (outs g8rc:$rD, ptr_rc_nor0:$ea_result), (ins memrix:$addr),

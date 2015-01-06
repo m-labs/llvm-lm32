@@ -31,40 +31,6 @@ Ick.
 
 ===-------------------------------------------------------------------------===
 
-Support 'update' load/store instructions.  These are cracked on the G5, but are
-still a codesize win.
-
-With preinc enabled, this:
-
-long *%test4(long *%X, long *%dest) {
-        %Y = getelementptr long* %X, int 4
-        %A = load long* %Y
-        store long %A, long* %dest
-        ret long* %Y
-}
-
-compiles to:
-
-_test4:
-        mr r2, r3
-        lwzu r5, 32(r2)
-        lwz r3, 36(r3)
-        stw r5, 0(r4)
-        stw r3, 4(r4)
-        mr r3, r2
-        blr 
-
-with -sched=list-burr, I get:
-
-_test4:
-        lwz r2, 36(r3)
-        lwzu r5, 32(r3)
-        stw r2, 4(r4)
-        stw r5, 0(r4)
-        blr 
-
-===-------------------------------------------------------------------------===
-
 We compile the hottest inner loop of viterbi to:
 
         li r6, 0
@@ -152,14 +118,6 @@ http://gcc.gnu.org/ml/gcc-patches/2006-02/msg00133.html
 
 ===-------------------------------------------------------------------------===
 
-No loads or stores of the constants should be needed:
-
-struct foo { double X, Y; };
-void xxx(struct foo F);
-void bar() { struct foo R = { 1.0, 2.0 }; xxx(R); }
-
-===-------------------------------------------------------------------------===
-
 Darwin Stub removal:
 
 We still generate calls to foo$stub, and stubs, on Darwin.  This is not
@@ -218,57 +176,6 @@ just fastcc.
 
 ===-------------------------------------------------------------------------===
 
-Compile this:
-
-int foo(int a) {
-  int b = (a < 8);
-  if (b) {
-    return b * 3;     // ignore the fact that this is always 3.
-  } else {
-    return 2;
-  }
-}
-
-into something not this:
-
-_foo:
-1)      cmpwi cr7, r3, 8
-        mfcr r2, 1
-        rlwinm r2, r2, 29, 31, 31
-1)      cmpwi cr0, r3, 7
-        bgt cr0, LBB1_2 ; UnifiedReturnBlock
-LBB1_1: ; then
-        rlwinm r2, r2, 0, 31, 31
-        mulli r3, r2, 3
-        blr
-LBB1_2: ; UnifiedReturnBlock
-        li r3, 2
-        blr
-
-In particular, the two compares (marked 1) could be shared by reversing one.
-This could be done in the dag combiner, by swapping a BR_CC when a SETCC of the
-same operands (but backwards) exists.  In this case, this wouldn't save us 
-anything though, because the compares still wouldn't be shared.
-
-===-------------------------------------------------------------------------===
-
-We should custom expand setcc instead of pretending that we have it.  That
-would allow us to expose the access of the crbit after the mfcr, allowing
-that access to be trivially folded into other ops.  A simple example:
-
-int foo(int a, int b) { return (a < b) << 4; }
-
-compiles into:
-
-_foo:
-        cmpw cr7, r3, r4
-        mfcr r2, 1
-        rlwinm r2, r2, 29, 31, 31
-        slwi r3, r2, 4
-        blr
-
-===-------------------------------------------------------------------------===
-
 Fold add and sub with constant into non-extern, non-weak addresses so this:
 
 static int a;
@@ -292,34 +199,6 @@ _foo:
         lis r2, ha16(_a+3)
         lbz r2, lo16(_a+3)(r2)
         stb r2, 0(r3)
-        blr
-
-===-------------------------------------------------------------------------===
-
-We generate really bad code for this:
-
-int f(signed char *a, _Bool b, _Bool c) {
-   signed char t = 0;
-  if (b)  t = *a;
-  if (c)  *a = t;
-}
-
-===-------------------------------------------------------------------------===
-
-This:
-int test(unsigned *P) { return *P >> 24; }
-
-Should compile to:
-
-_test:
-        lbz r3,0(r3)
-        blr
-
-not:
-
-_test:
-        lwz r2, 0(r3)
-        srwi r3, r2, 24
         blr
 
 ===-------------------------------------------------------------------------===
@@ -594,19 +473,6 @@ _bar:
         addic r3,r3,-1
         subfe r3,r3,r3
         blr
-
-===-------------------------------------------------------------------------===
-
-test/CodeGen/PowerPC/2007-03-24-cntlzd.ll compiles to:
-
-__ZNK4llvm5APInt17countLeadingZerosEv:
-        ld r2, 0(r3)
-        cntlzd r2, r2
-        or r2, r2, r2     <<-- silly.
-        addi r3, r2, -64
-        blr 
-
-The dead or is a 'truncate' from 64- to 32-bits.
 
 ===-------------------------------------------------------------------------===
 

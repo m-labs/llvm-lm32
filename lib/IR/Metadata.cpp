@@ -255,9 +255,9 @@ ValueAsMetadata *ValueAsMetadata::get(Value *V) {
            "Expected this to be the only metadata use");
     V->NameAndIsUsedByMD.setInt(true);
     if (auto *C = dyn_cast<Constant>(V))
-      Entry = new ConstantAsMetadata(Context, C);
+      Entry = new ConstantAsMetadata(C);
     else
-      Entry = new LocalAsMetadata(Context, V);
+      Entry = new LocalAsMetadata(V);
   }
 
   return Entry;
@@ -515,13 +515,8 @@ void GenericMDNode::handleChangedOperand(void *Ref, Metadata *New) {
   Metadata *Old = getOperand(Op);
   setOperand(Op, New);
 
-  // Drop uniquing for self-reference cycles or if an operand drops to null.
-  //
-  // FIXME: Stop dropping uniquing when an operand drops to null.  The original
-  // motivation was to prevent madness during teardown of LLVMContextImpl, but
-  // dropAllReferences() fixes that problem in a better way.  (It's just here
-  // now for better staging of semantic changes.)
-  if (New == this || !New) {
+  // Drop uniquing for self-reference cycles.
+  if (New == this) {
     storeDistinctInContext();
     setHash(0);
     if (!isResolved())
