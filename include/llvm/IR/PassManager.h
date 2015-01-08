@@ -92,9 +92,12 @@ public:
   }
 
   /// \brief Mark a particular pass as preserved, adding it to the set.
-  template <typename PassT> void preserve() {
+  template <typename PassT> void preserve() { preserve(PassT::ID()); }
+
+  /// \brief Mark an abstract PassID as preserved, adding it to the set.
+  void preserve(void *PassID) {
     if (!areAllPreserved())
-      PreservedPassIDs.insert(PassT::ID());
+      PreservedPassIDs.insert(PassID);
   }
 
   /// \brief Intersect this set with another in place.
@@ -383,8 +386,11 @@ public:
   ///
   /// Walk through all of the analyses pertaining to this unit of IR and
   /// invalidate them unless they are preserved by the PreservedAnalyses set.
-  void invalidate(IRUnitT IR, const PreservedAnalyses &PA) {
-    derived_this()->invalidateImpl(IR, PA);
+  /// We accept the PreservedAnalyses set by value and update it with each
+  /// analyis pass which has been successfully invalidated and thus can be
+  /// preserved going forward. The updated set is returned.
+  PreservedAnalyses invalidate(IRUnitT IR, PreservedAnalyses PA) {
+    return derived_this()->invalidateImpl(IR, std::move(PA));
   }
 
 protected:
@@ -451,7 +457,7 @@ private:
   void invalidateImpl(void *PassID, Module &M);
 
   /// \brief Invalidate results across a module.
-  void invalidateImpl(Module &M, const PreservedAnalyses &PA);
+  PreservedAnalyses invalidateImpl(Module &M, PreservedAnalyses PA);
 
   /// \brief Map type from module analysis pass ID to pass result concept
   /// pointer.
@@ -515,7 +521,7 @@ private:
   void invalidateImpl(void *PassID, Function &F);
 
   /// \brief Invalidate the results for a function..
-  void invalidateImpl(Function &F, const PreservedAnalyses &PA);
+  PreservedAnalyses invalidateImpl(Function &F, PreservedAnalyses PA);
 
   /// \brief List of function analysis pass IDs and associated concept pointers.
   ///
@@ -738,9 +744,11 @@ public:
 
       // We know that the function pass couldn't have invalidated any other
       // function's analyses (that's the contract of a function pass), so
-      // directly handle the function analysis manager's invalidation here.
+      // directly handle the function analysis manager's invalidation here and
+      // update our preserved set to reflect that these have already been
+      // handled.
       if (FAM)
-        FAM->invalidate(*I, PassPA);
+        PassPA = FAM->invalidate(*I, std::move(PassPA));
 
       // Then intersect the preserved set so that invalidation of module
       // analyses will eventually occur when the module pass completes.
@@ -773,7 +781,7 @@ createModuleToFunctionPassAdaptor(FunctionPassT Pass) {
 ///
 /// This is a no-op pass which simply forces a specific analysis pass's result
 /// to be available when it is run.
-template <typename AnalysisT> struct NoopAnalysisRequirementPass {
+template <typename AnalysisT> struct RequireAnalysisPass {
   /// \brief Run this pass over some unit of IR.
   ///
   /// This pass can be run over any unit of IR and use any analysis manager
@@ -788,7 +796,7 @@ template <typename AnalysisT> struct NoopAnalysisRequirementPass {
     return PreservedAnalyses::all();
   }
 
-  static StringRef name() { return "No-op Analysis Requirement Pass"; }
+  static StringRef name() { return "RequireAnalysisPass"; }
 };
 
 /// \brief A template utility pass to force an analysis result to be
@@ -796,7 +804,7 @@ template <typename AnalysisT> struct NoopAnalysisRequirementPass {
 ///
 /// This is a no-op pass which simply forces a specific analysis result to be
 /// invalidated when it is run.
-template <typename AnalysisT> struct NoopAnalysisInvalidationPass {
+template <typename AnalysisT> struct InvalidateAnalysisPass {
   /// \brief Run this pass over some unit of IR.
   ///
   /// This pass can be run over any unit of IR and use any analysis manager
@@ -813,7 +821,7 @@ template <typename AnalysisT> struct NoopAnalysisInvalidationPass {
     return PreservedAnalyses::all();
   }
 
-  static StringRef name() { return "No-op Analysis Invalidation Pass"; }
+  static StringRef name() { return "InvalidateAnalysisPass"; }
 };
 
 /// \brief A utility pass that does nothing but preserves no analyses.

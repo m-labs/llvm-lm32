@@ -203,20 +203,6 @@ _foo:
 
 ===-------------------------------------------------------------------------===
 
-On the G5, logical CR operations are more expensive in their three
-address form: ops that read/write the same register are half as expensive as
-those that read from two registers that are different from their destination.
-
-We should model this with two separate instructions.  The isel should generate
-the "two address" form of the instructions.  When the register allocator 
-detects that it needs to insert a copy due to the two-addresness of the CR
-logical op, it will invoke PPCInstrInfo::convertToThreeAddress.  At this point
-we can convert to the "three address" instruction, to save code space.
-
-This only matters when we start generating cr logical ops.
-
-===-------------------------------------------------------------------------===
-
 We should compile these two functions to the same thing:
 
 #include <stdlib.h>
@@ -299,27 +285,6 @@ We generate relatively atrocious code for this loop compared to gcc.
 
 We could also strength reduce the rem and the div:
 http://www.lcs.mit.edu/pubs/pdf/MIT-LCS-TM-600.pdf
-
-===-------------------------------------------------------------------------===
-
-float foo(float X) { return (int)(X); }
-
-Currently produces:
-
-_foo:
-        fctiwz f0, f1
-        stfd f0, -8(r1)
-        lwz r2, -4(r1)
-        extsw r2, r2
-        std r2, -16(r1)
-        lfd f0, -16(r1)
-        fcfid f0, f0
-        frsp f1, f0
-        blr
-
-We could use a target dag combine to turn the lwz/extsw into an lwa when the 
-lwz has a single use.  Since LWA is cracked anyway, this would be a codesize
-win only.
 
 ===-------------------------------------------------------------------------===
 
