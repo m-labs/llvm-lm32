@@ -526,6 +526,8 @@ namespace llvm {
     bool isTruncateFree(Type *Ty1, Type *Ty2) const override;
     bool isTruncateFree(EVT VT1, EVT VT2) const override;
 
+    bool isZExtFree(SDValue Val, EVT VT2) const override;
+
     /// \brief Returns true if it is beneficial to convert a load of a constant
     /// to just the constant itself.
     bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
@@ -606,7 +608,8 @@ namespace llvm {
     };
 
     bool canReuseLoadAddress(SDValue Op, EVT MemVT, ReuseLoadInfo &RLI,
-                             SelectionDAG &DAG) const;
+                             SelectionDAG &DAG,
+                             ISD::LoadExtType ET = ISD::NON_EXTLOAD) const;
     void spliceIntoChain(SDValue ResChain, SDValue NewResChain,
                          SelectionDAG &DAG) const;
 
