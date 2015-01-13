@@ -67,9 +67,11 @@ LM32TargetLowering::LM32TargetLowering(const TargetMachine &TM)
   addRegisterClass(MVT::i32, &LM32::GPRRegClass);
 
   // Load extented operations for i1 types must be promoted
-  setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
-  setLoadExtAction(ISD::ZEXTLOAD, MVT::i1,  Promote);
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i1,  Promote);
+  for (MVT VT : MVT::integer_valuetypes()) {
+    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1, Promote);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1, Promote);
+    setLoadExtAction(ISD::EXTLOAD,  VT, MVT::i1, Promote);
+  }
 
   // Sign extended loads must be expanded
 // FIXME: FIXED: are supported
