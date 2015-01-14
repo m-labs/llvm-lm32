@@ -31,8 +31,8 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
@@ -706,12 +706,12 @@ bool RegisterCoalescer::removeCopyByCommutingDef(const CoalescerPair &CP,
   // Update uses of IntA of the specific Val# with IntB.
   for (MachineRegisterInfo::use_iterator UI = MRI->use_begin(IntA.reg),
                                          UE = MRI->use_end();
-       UI != UE;) {
+       UI != UE; /* ++UI is below because of possible MI removal */) {
     MachineOperand &UseMO = *UI;
+    ++UI;
     if (UseMO.isUndef())
       continue;
     MachineInstr *UseMI = UseMO.getParent();
-    ++UI;
     if (UseMI->isDebugValue()) {
       // FIXME These don't have an instruction index.  Not clear we have enough
       // info to decide whether to do this replacement or not.  For now do it.

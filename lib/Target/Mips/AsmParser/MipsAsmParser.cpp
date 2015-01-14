@@ -12,8 +12,8 @@
 #include "MipsRegisterInfo.h"
 #include "MipsTargetStreamer.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
@@ -26,8 +26,8 @@
 #include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetRegistry.h"
 #include <memory>
 
 using namespace llvm;
@@ -1205,6 +1205,17 @@ bool MipsAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
         return Error(IDLoc, "branch target out of range");
       if (OffsetToAlignment(Offset.getImm(),
                             1LL << (inMicroMipsMode() ? 1 : 2)))
+        return Error(IDLoc, "branch to misaligned address");
+      break;
+    case Mips::BEQZ16_MM:
+    case Mips::BNEZ16_MM:
+      assert(MCID.getNumOperands() == 2 && "unexpected number of operands");
+      Offset = Inst.getOperand(1);
+      if (!Offset.isImm())
+        break; // We'll deal with this situation later on when applying fixups.
+      if (!isIntN(8, Offset.getImm()))
+        return Error(IDLoc, "branch target out of range");
+      if (OffsetToAlignment(Offset.getImm(), 2LL))
         return Error(IDLoc, "branch to misaligned address");
       break;
     }

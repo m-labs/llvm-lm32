@@ -48,6 +48,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Statepoint.h"
+#include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -2070,10 +2071,14 @@ void SelectionDAGBuilder::visitLandingPad(const LandingPadInst &LP) {
   // Get the two live-in registers as SDValues. The physregs have already been
   // copied into virtual registers.
   SDValue Ops[2];
-  Ops[0] = DAG.getZExtOrTrunc(
-      DAG.getCopyFromReg(DAG.getEntryNode(), getCurSDLoc(),
-                         FuncInfo.ExceptionPointerVirtReg, TLI.getPointerTy()),
-      getCurSDLoc(), ValueVTs[0]);
+  if (FuncInfo.ExceptionPointerVirtReg) {
+    Ops[0] = DAG.getZExtOrTrunc(
+        DAG.getCopyFromReg(DAG.getEntryNode(), getCurSDLoc(),
+                           FuncInfo.ExceptionPointerVirtReg, TLI.getPointerTy()),
+        getCurSDLoc(), ValueVTs[0]);
+  } else {
+    Ops[0] = DAG.getConstant(0, TLI.getPointerTy());
+  }
   Ops[1] = DAG.getZExtOrTrunc(
       DAG.getCopyFromReg(DAG.getEntryNode(), getCurSDLoc(),
                          FuncInfo.ExceptionSelectorVirtReg, TLI.getPointerTy()),
@@ -2083,6 +2088,27 @@ void SelectionDAGBuilder::visitLandingPad(const LandingPadInst &LP) {
   SDValue Res = DAG.getNode(ISD::MERGE_VALUES, getCurSDLoc(),
                             DAG.getVTList(ValueVTs), Ops);
   setValue(&LP, Res);
+}
+
+unsigned
+SelectionDAGBuilder::visitLandingPadClauseBB(GlobalValue *ClauseGV,
+                                             MachineBasicBlock *LPadBB) {
+  SDValue Chain = getControlRoot();
+
+  // Get the typeid that we will dispatch on later.
+  const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+  const TargetRegisterClass *RC = TLI.getRegClassFor(TLI.getPointerTy());
+  unsigned VReg = FuncInfo.MF->getRegInfo().createVirtualRegister(RC);
+  unsigned TypeID = DAG.getMachineFunction().getMMI().getTypeIDFor(ClauseGV);
+  SDValue Sel = DAG.getConstant(TypeID, TLI.getPointerTy());
+  Chain = DAG.getCopyToReg(Chain, getCurSDLoc(), VReg, Sel);
+
+  // Branch to the main landing pad block.
+  MachineBasicBlock *ClauseMBB = FuncInfo.MBB;
+  ClauseMBB->addSuccessor(LPadBB);
+  DAG.setRoot(DAG.getNode(ISD::BR, getCurSDLoc(), MVT::Other, Chain,
+                          DAG.getBasicBlock(LPadBB)));
+  return VReg;
 }
 
 /// handleSmallSwitchCaseRange - Emit a series of specific tests (suitable for
@@ -5581,6 +5607,58 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
   }
   case Intrinsic::instrprof_increment:
     llvm_unreachable("instrprof failed to lower an increment");
+
+  case Intrinsic::frameallocate: {
+    MachineFunction &MF = DAG.getMachineFunction();
+    const TargetInstrInfo *TII = DAG.getSubtarget().getInstrInfo();
+
+    // Do the allocation and map it as a normal value.
+    // FIXME: Maybe we should add this to the alloca map so that we don't have
+    // to register allocate it?
+    uint64_t Size = cast<ConstantInt>(I.getArgOperand(0))->getZExtValue();
+    int Alloc = MF.getFrameInfo()->CreateFrameAllocation(Size);
+    MVT PtrVT = TLI.getPointerTy(0);
+    SDValue FIVal = DAG.getFrameIndex(Alloc, PtrVT);
+    setValue(&I, FIVal);
+
+    // Directly emit a FRAME_ALLOC machine instr. Label assignment emission is
+    // the same on all targets.
+    MCSymbol *FrameAllocSym =
+        MF.getMMI().getContext().getOrCreateFrameAllocSymbol(MF.getName());
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, dl,
+            TII->get(TargetOpcode::FRAME_ALLOC))
+        .addSym(FrameAllocSym)
+        .addFrameIndex(Alloc);
+
+    return nullptr;
+  }
+
+  case Intrinsic::framerecover: {
+    // i8* @llvm.framerecover(i8* %fn, i8* %fp)
+    MachineFunction &MF = DAG.getMachineFunction();
+    MVT PtrVT = TLI.getPointerTy(0);
+
+    // Get the symbol that defines the frame offset.
+    Function *Fn = cast<Function>(I.getArgOperand(0)->stripPointerCasts());
+    MCSymbol *FrameAllocSym =
+        MF.getMMI().getContext().getOrCreateFrameAllocSymbol(Fn->getName());
+
+    // Create a TargetExternalSymbol for the label to avoid any target lowering
+    // that would make this PC relative.
+    StringRef Name = FrameAllocSym->getName();
+    assert(Name.size() == strlen(Name.data()) && "not null terminated");
+    SDValue OffsetSym = DAG.getTargetExternalSymbol(Name.data(), PtrVT);
+    SDValue OffsetVal =
+        DAG.getNode(ISD::FRAME_ALLOC_RECOVER, sdl, PtrVT, OffsetSym);
+
+    // Add the offset to the FP.
+    Value *FP = I.getArgOperand(1);
+    SDValue FPVal = getValue(FP);
+    SDValue Add = DAG.getNode(ISD::ADD, sdl, PtrVT, FPVal, OffsetVal);
+    setValue(&I, Add);
+
+    return nullptr;
+  }
   }
 }
 
@@ -6970,7 +7048,8 @@ std::pair<SDValue, SDValue>
 SelectionDAGBuilder::lowerCallOperands(ImmutableCallSite CS, unsigned ArgIdx,
                                        unsigned NumArgs, SDValue Callee,
                                        bool UseVoidTy,
-                                       MachineBasicBlock *LandingPad) {
+                                       MachineBasicBlock *LandingPad,
+                                       bool IsPatchPoint) {
   TargetLowering::ArgListTy Args;
   Args.reserve(NumArgs);
 
@@ -6993,7 +7072,7 @@ SelectionDAGBuilder::lowerCallOperands(ImmutableCallSite CS, unsigned ArgIdx,
   TargetLowering::CallLoweringInfo CLI(DAG);
   CLI.setDebugLoc(getCurSDLoc()).setChain(getRoot())
     .setCallee(CS.getCallingConv(), retTy, Callee, std::move(Args), NumArgs)
-    .setDiscardResult(CS->use_empty());
+    .setDiscardResult(CS->use_empty()).setIsPatchPoint(IsPatchPoint);
 
   return lowerInvokable(CLI, LandingPad);
 }
@@ -7125,7 +7204,7 @@ void SelectionDAGBuilder::visitPatchpoint(ImmutableCallSite CS,
   unsigned NumCallArgs = IsAnyRegCC ? 0 : NumArgs;
   std::pair<SDValue, SDValue> Result =
     lowerCallOperands(CS, NumMetaOpers, NumCallArgs, Callee, IsAnyRegCC,
-                      LandingPad);
+                      LandingPad, true);
 
   SDNode *CallEnd = Result.second.getNode();
   if (HasDef && (CallEnd->getOpcode() == ISD::CopyFromReg))
