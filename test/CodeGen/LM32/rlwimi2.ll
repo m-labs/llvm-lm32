@@ -1,11 +1,6 @@
-; All of these ands and shifts should be folded into rlwimi's
 ; RUN: llvm-as < %s | llc -march=lm32 -o %t 
+; END.
 ; 
-; All of these ands and shifts should be folded into rlwimi's
-; RUN: llc < %s -march=ppc32 -o %t
-; RUN: grep rlwimi %t | count 3
-; RUN: grep srwi   %t | count 1
-; RUN: not grep slwi %t
 
 define i16 @test1(i32 %srcA, i32 %srcB, i32 %alpha) {
 entry:
